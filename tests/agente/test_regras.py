@@ -14,8 +14,10 @@ from backend.agente.regras import (
     avaliar_requisitos,
     classificar_evidencia,
     classificar_faixa,
+    contem_termo,
     decidir,
     pode_contatar,
+    separar_palavras,
     validar_criterios,
     verificar_requisitos,
 )
@@ -839,3 +841,9 @@ def test_vaga_com_criterio_sensivel_nao_e_decidida_mesmo_com_mandato() -> None:
 
     with pytest.raises(MandatoInvalido, match="sensível"):
         decidir(vaga, _candidato_faixa(), _analise(), mandato, HOJE, AGORA, "rastro-1")
+
+
+def test_normalizacao_de_palavras_e_publica() -> None:
+    assert separar_palavras("Cor_da Pele") == ("cor", "da", "pele")
+    assert contem_termo(("a", "cor", "da", "pele"), ("cor", "da", "pele"))
+    assert not contem_termo(("cor", "pele"), ("cor", "da", "pele"))

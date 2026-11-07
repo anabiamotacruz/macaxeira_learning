@@ -60,13 +60,13 @@ def _sem_acento(texto: str) -> str:
     return "".join(c for c in decomposto if not unicodedata.combining(c))
 
 
-def _palavras(texto: str) -> tuple[str, ...]:
+def separar_palavras(texto: str) -> tuple[str, ...]:
     """Separa em palavras: sem acento e sem caixa, tratando `_` e camelCase como divisão."""
     separado = re.sub(r"([a-z])([A-Z])", r"\1 \2", _sem_acento(texto))
     return tuple(re.findall(r"[^\W_]+", separado.casefold()))
 
 
-def _contem(palavras: tuple[str, ...], termo: tuple[str, ...]) -> bool:
+def contem_termo(palavras: tuple[str, ...], termo: tuple[str, ...]) -> bool:
     tamanho = len(termo)
     return any(palavras[i : i + tamanho] == termo for i in range(len(palavras) - tamanho + 1))
 
@@ -76,7 +76,7 @@ def _termos_sensiveis(*textos: str) -> list[str]:
         " ".join(termo)
         for texto in textos
         for termo in TERMOS_SENSIVEIS
-        if _contem(_palavras(texto), termo)
+        if contem_termo(separar_palavras(texto), termo)
     }
     return sorted(achados)
 
@@ -160,7 +160,7 @@ def pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga, hoje: date)
 def _trecho_no_perfil(trecho: str, perfil: str) -> bool:
     """Confere o trecho inteiro, palavra a palavra: `Java` não confere com `JavaScript`."""
     alvo = _normalizar_valor(trecho)
-    if not _palavras(alvo):
+    if not separar_palavras(alvo):
         return False
     return re.search(rf"(?<!\w){re.escape(alvo)}(?!\w)", _normalizar_valor(perfil)) is not None
 

@@ -15,7 +15,12 @@ from pydantic import BaseModel, Field, model_validator
 
 from backend.agente import prompts
 from backend.agente.auditoria import contexto_rastro, rastreado
-from backend.agente.regras import TERMOS_SENSIVEIS, _contem, _palavras, validar_criterios
+from backend.agente.regras import (
+    TERMOS_SENSIVEIS,
+    contem_termo,
+    separar_palavras,
+    validar_criterios,
+)
 from backend.contratos.erros import RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
 from backend.contratos.modelos import Competencia, Contrato, Requisito, Texto, Vaga
@@ -196,7 +201,7 @@ def _id_da_vaga(empresa_id: str, descricao: str) -> str:
 
 def _alertar_instrucao_embutida(descricao: str, empresa_id: str) -> None:
     """Registra o alerta sem copiar o texto, que é dado não confiável."""
-    normalizado = " ".join(_palavras(descricao))
+    normalizado = " ".join(separar_palavras(descricao))
     if any(padrao.search(normalizado) for padrao in PADROES_DE_INSTRUCAO):
         logger.warning(
             "descrição de vaga com possível instrução embutida: empresa=%s vaga=%s",
@@ -206,9 +211,9 @@ def _alertar_instrucao_embutida(descricao: str, empresa_id: str) -> None:
 
 
 def _termos_no_texto(texto: str) -> list[str]:
-    palavras = _palavras(texto)
+    palavras = separar_palavras(texto)
     termos = TERMOS_SENSIVEIS + TERMOS_SENSIVEIS_TEXTO
-    achados = {" ".join(termo) for termo in termos if _contem(palavras, termo)}
+    achados = {" ".join(termo) for termo in termos if contem_termo(palavras, termo)}
     if LIMITE_DE_IDADE.search(" ".join(palavras)):
         achados.add("idade")
     return sorted(achados)
@@ -218,15 +223,15 @@ def _restringe_quem_concorre(palavras: tuple[str, ...]) -> bool:
     if any(p in MARCADORES_DE_RESTRICAO or p.isdigit() for p in palavras):
         return True
     termos = TERMOS_SENSIVEIS + TERMOS_SENSIVEIS_TEXTO
-    return any(_contem(palavras, ("para", *termo)) for termo in termos)
+    return any(contem_termo(palavras, ("para", *termo)) for termo in termos)
 
 
 def _e_aviso_de_nao_discriminacao(frase: str) -> bool:
     """Reconhece o aviso frase a frase: ele não pode servir de escudo para um critério."""
-    palavras = _palavras(frase)
+    palavras = separar_palavras(frase)
     if _restringe_quem_concorre(palavras):
         return False
-    return any(_contem(palavras, marcador) for marcador in MARCADORES_DE_AVISO)
+    return any(contem_termo(palavras, marcador) for marcador in MARCADORES_DE_AVISO)
 
 
 def _pergunta_sobre_dado_sensivel(
