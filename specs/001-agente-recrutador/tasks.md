@@ -205,11 +205,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** implementação de `BancoTalentos`.
 
-- [ ] Testar `test_importa_base_e_remove_duplicatas`, com a origem registrada.
-- [ ] Testar `test_empresas_nao_veem_dados_uma_da_outra`.
-- [ ] Testar `test_busca_ignora_quem_nao_tem_autorizacao_valida`.
-- [ ] Testar `test_remover_apaga_dados_e_impede_novo_contato`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_importa_base_e_remove_duplicatas`, com a origem registrada.
+- [x] Testar `test_empresas_nao_veem_dados_uma_da_outra`.
+- [x] Testar `test_busca_ignora_quem_nao_tem_autorizacao_valida`.
+- [x] Testar `test_remover_apaga_dados_e_impede_novo_contato`.
+- [x] Implementar e verificar.
 
 ### T2.2 [P] (onda 2): rede de talentos simulada
 
@@ -240,11 +240,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** `priorizar(vaga: Vaga, candidatos: list[Candidato], limite: int = 20) -> list[Candidato]` e `CacheAnalise`, com chave por vaga, perfil e versão da configuração.
 
-- [ ] Testar `test_ordem_reproduzivel`.
-- [ ] Testar `test_exclui_sem_autorizacao_ou_requisito`.
-- [ ] Testar `test_ordem_nao_muda_com_nome_ou_genero`.
-- [ ] Testar `test_cache_evita_nova_analise_e_expira_ao_mudar_vaga`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_ordem_reproduzivel`.
+- [x] Testar `test_exclui_sem_autorizacao_ou_requisito`.
+- [x] Testar `test_ordem_nao_muda_com_nome_ou_genero`.
+- [x] Testar `test_cache_evita_nova_analise_e_expira_ao_mudar_vaga`.
+- [x] Implementar e verificar.
 
 ### T2.3 (onda 2): analisador
 
@@ -252,11 +252,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Consome:** `ClienteModelo`, regras. **Produz:** implementação de `Analisador`.
 
-- [ ] Com o modelo simulado, testar `test_evidencias_citam_trecho_do_perfil`.
-- [ ] Testar `test_remove_afirmacao_sem_trecho`.
-- [ ] Testar `test_instrucao_no_curriculo_vira_alerta`, sem alterar a nota.
-- [ ] Testar `test_lacuna_nao_reduz_nota_sozinha`.
-- [ ] Implementar e verificar.
+- [x] Com o modelo simulado, testar `test_evidencias_citam_trecho_do_perfil`.
+- [x] Testar `test_remove_afirmacao_sem_trecho`.
+- [x] Testar `test_instrucao_no_curriculo_vira_alerta`, sem alterar a nota.
+- [x] Testar `test_lacuna_nao_reduz_nota_sozinha`.
+- [x] Implementar e verificar.
 
 ### T2.4 (onda 2): revisor independente
 
@@ -264,8 +264,8 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** implementação de `Revisor`, em uma chamada separada, sem receber a justificativa do analisador como verdade.
 
-- [ ] Testar `test_aponta_exagero_sem_evidencia`, `test_nao_inventa_problema_em_caso_solido` e `test_resposta_invalida_pede_humano`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_aponta_exagero_sem_evidencia`, `test_nao_inventa_problema_em_caso_solido` e `test_resposta_invalida_pede_humano`.
+- [x] Implementar e verificar.
 
 ### T2.9 (onda 2): documentos enviados pela pessoa
 
