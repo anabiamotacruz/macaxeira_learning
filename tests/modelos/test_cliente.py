@@ -738,3 +738,26 @@ def test_chamada_de_modelo_com_falha_entra_no_rastro_so_com_o_tipo():
     registro = auditoria.RASTRO_LOCAL.listar("empresa-a", "v1", "c1")[-1]
     assert registro.erro_tipo == "RespostaInvalida"
     assert TEXTO_CANDIDATO not in registro.model_dump_json()
+
+
+def test_env_example_lista_as_variaveis_que_o_cliente_le():
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    nomes = {
+        linha.split("=")[0]
+        for linha in (raiz / ".env.example").read_text(encoding="utf-8").splitlines()
+        if linha and not linha.startswith("#")
+    }
+    assert {
+        "FEATHERLESS_API_KEY",
+        "FEATHERLESS_BASE_URL",
+        "MODELO_PADRAO",
+        "MODELO_ALTERNATIVO",
+        "LIMITE_GASTO_SESSAO_USD",
+    } <= nomes
+    assert all(
+        not linha.split("=", 1)[1]
+        for linha in (raiz / ".env.example").read_text(encoding="utf-8").splitlines()
+        if "=" in linha and not linha.startswith("#")
+    )
