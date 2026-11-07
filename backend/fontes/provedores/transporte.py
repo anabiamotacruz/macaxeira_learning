@@ -20,7 +20,12 @@ TEMPO_LIMITE_PADRAO_S = 60.0
 """Abaixo do `TEMPO_LIMITE_INTEGRACAO_S` de `com_tentativas`, como ele exige."""
 TAMANHO_MAXIMO_PADRAO = 2 * 1024 * 1024
 HOSTS_OFICIAIS = frozenset(
-    {"api.brightdata.com", "api.peopledatalabs.com", "sandbox.api.peopledatalabs.com"}
+    {
+        "api.brightdata.com",
+        "api.peopledatalabs.com",
+        "api.search.brave.com",
+        "sandbox.api.peopledatalabs.com",
+    }
 )
 """A chave só sai para estes hosts."""
 

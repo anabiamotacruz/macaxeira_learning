@@ -9,6 +9,7 @@ from backend.fontes.provedores.transporte import PedidoHttp, RespostaHttp
 MOMENTO = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
 TOKEN_BRIGHT = "token-sintetico-bright-0123456789"
 CHAVE_PDL = "chave-sintetica-pdl-0123456789"
+CHAVE_BRAVE = "chave-sintetica-brave-0123456789"
 IP_PUBLICO = "93.184.216.34"
 
 

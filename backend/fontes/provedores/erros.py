@@ -21,6 +21,7 @@ class MotivoTroca(StrEnum):
     RESPOSTA_GRANDE_DEMAIS = "resposta_grande_demais"
     CONFIGURACAO_INCOMPLETA = "configuracao_incompleta"
     CONSULTA_NAO_SUPORTADA = "consulta_nao_suportada"
+    CONSULTA_INVALIDA = "consulta_invalida"
     ORCAMENTO_ESGOTADO = "orcamento_esgotado"
     DOMINIO_RECUSADO = "dominio_recusado"
     ENDERECO_NAO_PUBLICO = "endereco_nao_publico"
