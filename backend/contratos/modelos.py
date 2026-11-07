@@ -4,11 +4,11 @@ Mudanças aqui exigem aviso às quatro frentes (constituição, princípio III).
 Campos seguem `specs/001-agente-recrutador/plan.md`.
 """
 
-from datetime import date, datetime
+from datetime import date
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints
 
 
 class Contrato(BaseModel):
@@ -17,7 +17,7 @@ class Contrato(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-Texto = Annotated[str, StringConstraints(min_length=1)]
+Texto = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 """Texto obrigatório e não vazio, para identificadores, regras e chaves."""
 
 
@@ -86,6 +86,7 @@ class Evidencia(Contrato):
 
 
 class Analise(Contrato):
+    empresa_id: Texto
     vaga_id: str
     candidato_id: str
     requisitos_ok: dict[str, bool]
@@ -104,6 +105,7 @@ class TipoDecisao(StrEnum):
 
 
 class Decisao(Contrato):
+    empresa_id: Texto
     vaga_id: str
     candidato_id: str
     tipo: TipoDecisao
@@ -113,7 +115,7 @@ class Decisao(Contrato):
     rastro_id: str
     entrada: dict[str, str]
     evidencias: list[Evidencia]
-    momento: datetime
+    momento: AwareDatetime
 
 
 class TipoConvite(StrEnum):
@@ -149,6 +151,7 @@ class RespostaCandidato(Contrato):
 
 
 class PacoteNara(Contrato):
+    empresa_id: Texto
     vaga_id: Texto
     candidato_id: Texto
     motivo_por_criterio: dict[str, str]
@@ -161,9 +164,11 @@ class PacoteNara(Contrato):
     fonte: str
     rastro_id: str
     chave_idempotencia: Texto
+    simulado: bool
 
 
 class ResultadoNara(Contrato):
+    empresa_id: Texto
     vaga_id: str
     candidato_id: str
     notas: dict[str, float]
@@ -181,9 +186,10 @@ class PropostaAjuste(Contrato):
 
 
 class EventoFluxo(Contrato):
+    empresa_id: Texto
     vaga_id: str
     etapa: str
     mensagem: str
     candidato_id: str | None = None
     custo_usd: float = 0
-    momento: datetime
+    momento: AwareDatetime
