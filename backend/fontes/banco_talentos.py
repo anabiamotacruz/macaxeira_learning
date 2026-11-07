@@ -19,6 +19,9 @@ POR_PAGINA = 20
 ESTADOS_BUSCAVEIS = frozenset({EstadoBanco.ATIVO, EstadoBanco.DESATUALIZADO})
 CAMPOS_DE_CONTATO = frozenset({"email", "telefone", "whatsapp"})
 
+PERFIL_POR_ID = "SELECT dados FROM perfis WHERE empresa_id = ? AND candidato_id = ?"
+PERFIL_POR_EMAIL = "SELECT dados FROM perfis WHERE empresa_id = ? AND email = ?"
+
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS perfis (
     empresa_id TEXT NOT NULL,
@@ -59,6 +62,17 @@ def _email(candidato: Candidato) -> str | None:
 def _resumos(empresa_id: str, candidato_id: str, email: str | None) -> list[str]:
     valores = [f"id:{candidato_id}"] + ([f"email:{email}"] if email else [])
     return [hashlib.sha256(f"{empresa_id}:{v}".encode()).hexdigest() for v in valores]
+
+
+def _identidade_segura(
+    por_id: Candidato | None, por_email: Candidato | None, email: str | None
+) -> bool:
+    """Falso quando o id e o e-mail do registro apontam para pessoas que podem ser diferentes."""
+    if por_id is None or email is None:
+        return True
+    if por_email is not None:
+        return por_email.id == por_id.id
+    return _email(por_id) is None
 
 
 def _termos(texto: str) -> set[str]:
@@ -108,13 +122,10 @@ class BancoTalentos:
 
     def _obter(self, empresa_id: str, candidato_id: str) -> Candidato:
         with self._trava:
-            linha = self._conexao.execute(
-                "SELECT dados FROM perfis WHERE empresa_id = ? AND candidato_id = ?",
-                (_exigir_empresa(empresa_id), candidato_id),
-            ).fetchone()
-        if linha is None:
+            perfil = self._perfil(PERFIL_POR_ID, _exigir_empresa(empresa_id), candidato_id)
+        if perfil is None:
             raise KeyError(candidato_id)
-        return Candidato.model_validate_json(linha[0])
+        return perfil
 
     def _salvar(self, candidato: Candidato) -> Candidato:
         valido = Candidato.model_validate(candidato.model_dump())
@@ -177,38 +188,42 @@ class BancoTalentos:
             }
         )
 
-    def _importar_um(self, candidato: Candidato) -> Candidato | None:
-        empresa_id, email = candidato.empresa_id, _email(candidato)
-        for resumo in _resumos(empresa_id, candidato.id, email):
-            bloqueado = self._conexao.execute(
+    def _bloqueado(self, empresa_id: str, candidato_id: str, email: str | None) -> bool:
+        return any(
+            self._conexao.execute(
                 "SELECT 1 FROM bloqueios WHERE empresa_id = ? AND resumo = ?",
                 (empresa_id, resumo),
             ).fetchone()
-            if bloqueado:
-                return None
+            for resumo in _resumos(empresa_id, candidato_id, email)
+        )
 
-        linha = self._conexao.execute(
-            """
-            SELECT dados FROM perfis
-            WHERE empresa_id = ? AND (candidato_id = ? OR (email IS NOT NULL AND email = ?))
-            ORDER BY candidato_id LIMIT 1
-            """,
-            (empresa_id, candidato.id, email),
-        ).fetchone()
-        if linha is None:
+    def _perfil(self, consulta: str, empresa_id: str, valor: str | None) -> Candidato | None:
+        linha = self._conexao.execute(consulta, (empresa_id, valor)).fetchone()
+        return Candidato.model_validate_json(linha[0]) if linha else None
+
+    def _importar_um(self, candidato: Candidato) -> Candidato | None:
+        empresa_id, email = candidato.empresa_id, _email(candidato)
+        if self._bloqueado(empresa_id, candidato.id, email):
+            return None
+
+        por_id = self._perfil(PERFIL_POR_ID, empresa_id, candidato.id)
+        por_email = self._perfil(PERFIL_POR_EMAIL, empresa_id, email)
+        if candidato.opt_out and not _identidade_segura(por_id, por_email, email):
+            raise ValueError(f"opt-out não aplicado: identidade em conflito em {candidato.id}")
+
+        atual = por_id or por_email
+        if atual is None:
             atual = candidato
             self._conexao.execute(
                 "INSERT INTO perfis (empresa_id, candidato_id, email, dados) VALUES (?, ?, ?, ?)",
                 (empresa_id, candidato.id, email, candidato.model_dump_json()),
             )
-        else:
-            atual = Candidato.model_validate_json(linha[0])
-            if candidato.opt_out and not atual.opt_out:
-                atual = atual.model_copy(update={"opt_out": True})
-                self._conexao.execute(
-                    "UPDATE perfis SET dados = ? WHERE empresa_id = ? AND candidato_id = ?",
-                    (atual.model_dump_json(), empresa_id, atual.id),
-                )
+        elif candidato.opt_out and not atual.opt_out:
+            atual = atual.model_copy(update={"opt_out": True})
+            self._conexao.execute(
+                "UPDATE perfis SET dados = ? WHERE empresa_id = ? AND candidato_id = ?",
+                (atual.model_dump_json(), empresa_id, atual.id),
+            )
         self._conexao.execute(
             """
             INSERT INTO origens (empresa_id, candidato_id, origem) VALUES (?, ?, ?)
@@ -250,6 +265,10 @@ class BancoTalentos:
 
     def atualizar(self, empresa_id: str, candidato_id: str, dados: dict[str, str]) -> Candidato:
         atual = self._obter(empresa_id, candidato_id)
+        novo_email = _email(atual.model_copy(update={"atributos": dados}))
+        with self._trava:
+            if novo_email and self._bloqueado(atual.empresa_id, atual.id, novo_email):
+                raise ValueError("e-mail bloqueado por uma remoção anterior")
         estado = EstadoBanco.ATIVO if atual.estado == EstadoBanco.DESATUALIZADO else atual.estado
         return self._salvar(
             atual.model_copy(

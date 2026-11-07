@@ -336,3 +336,92 @@ def test_autorizacao_nao_ressuscita_removido():
 
     assert banco._obter("empresa-1", "pessoa-1").estado == EstadoBanco.REMOVIDO
     assert banco.buscar("empresa-1", "") == []
+
+
+def _base_com_dois_emails(banco):
+    banco.importar(
+        "empresa-1",
+        [
+            registro("a", atributos={"email": "a@e.invalid"}),
+            registro("b", atributos={"email": "b@e.invalid"}),
+        ],
+    )
+
+
+def test_opt_out_com_id_e_email_de_pessoas_diferentes_e_recusado_sem_marcar_ninguem(banco):
+    _base_com_dois_emails(banco)
+
+    with pytest.raises(ValueError):
+        banco.importar(
+            "empresa-1", [registro("b", atributos={"email": "a@e.invalid"}, opt_out=True)]
+        )
+
+    assert banco._obter("empresa-1", "a").opt_out is False
+    assert banco._obter("empresa-1", "b").opt_out is False
+
+
+def test_opt_out_com_email_diferente_do_id_e_recusado(banco):
+    _base_com_dois_emails(banco)
+
+    with pytest.raises(ValueError):
+        banco.importar(
+            "empresa-1", [registro("b", atributos={"email": "novo@e.invalid"}, opt_out=True)]
+        )
+
+    assert banco._obter("empresa-1", "b").opt_out is False
+
+
+def test_conflito_de_opt_out_nao_grava_o_lote(banco):
+    _base_com_dois_emails(banco)
+
+    with pytest.raises(ValueError):
+        banco.importar(
+            "empresa-1",
+            [
+                registro("c", atributos={"email": "c@e.invalid"}),
+                registro("b", atributos={"email": "a@e.invalid"}, opt_out=True),
+            ],
+        )
+
+    with pytest.raises(KeyError):
+        banco._obter("empresa-1", "c")
+
+
+@pytest.mark.parametrize(
+    ("identificador", "email"),
+    [("a", "A@e.invalid "), ("a", None), ("outro", "a@e.invalid")],
+)
+def test_opt_out_com_identidade_segura_vale_para_a_pessoa(banco, identificador, email):
+    _base_com_dois_emails(banco)
+    atributos = {"email": email} if email else {}
+
+    [resultado] = banco.importar(
+        "empresa-1", [registro(identificador, atributos=atributos, opt_out=True)]
+    )
+
+    assert resultado.id == "a"
+    assert resultado.opt_out is True
+    assert banco._obter("empresa-1", "b").opt_out is False
+
+
+def test_duplicata_sem_opt_out_com_conflito_fica_com_o_id_informado(banco):
+    _base_com_dois_emails(banco)
+
+    [resultado] = banco.importar(
+        "empresa-1", [registro("b", atributos={"email": "a@e.invalid"}, origem="ats")]
+    )
+
+    assert resultado.id == "b"
+    assert banco.origens("empresa-1", "a") == ["simulacao"]
+    assert banco.origens("empresa-1", "b") == ["simulacao", "ats"]
+
+
+def test_atualizar_nao_devolve_email_bloqueado_por_remocao(banco):
+    _base_com_dois_emails(banco)
+    banco.remover("empresa-1", "a")
+
+    with pytest.raises(ValueError):
+        banco.atualizar("empresa-1", "b", {"email": " A@e.invalid"})
+
+    assert banco._obter("empresa-1", "b").atributos["email"] == "b@e.invalid"
+    assert banco.atualizar("empresa-1", "b", {"cloud": "sim"}).atributos["cloud"] == "sim"
