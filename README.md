@@ -1,2 +1,5 @@
 # macaxeira_learning
-Repo do nosso projeto de sourcing para RH
+
+Digital worker de sourcing para RH, criado para o Converge Challenge powered by Tako.
+
+Comece por [docs/PADRAO-DO-PROJETO.md](docs/PADRAO-DO-PROJETO.md). Depois, siga as [tarefas](specs/001-agente-recrutador/tasks.md).
