@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
+from itertools import count
 
 from pydantic import AwareDatetime, Field
 
@@ -159,6 +160,8 @@ def _transitar(
 
 CANAL_CONVITE = "email"
 ETAPA_RESERVA = "reserva"
+CONSULTA_TODO_O_BANCO = ""
+"""Consulta vazia devolve todos os perfis aptos da empresa: ver `BancoTalentos.buscar`."""
 LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
@@ -1185,17 +1188,27 @@ class FluxoVaga:
         self._evento("ampliacao", f"ampliação {progresso.ampliacoes} da busca, mesmos requisitos")
 
     def _buscar(self, progresso: ProgressoFluxo) -> list[Candidato]:
-        """Procura no banco e depois nas fontes externas, sem repetir quem já passou pela vaga.
+        """Lê todo o banco autorizado da empresa e depois procura nas fontes externas.
 
-        Cada par de fonte e consulta guarda a sua página: fonte fora do ar não perde a dela.
+        O banco não depende das palavras da consulta: quem decide é o funil, por regras e com os
+        cortes registrados, e assim cargo incomum e perfil com outras palavras chegam até ele.
+        As consultas só valem para fontes externas, onde cada par de fonte e consulta guarda a sua
+        página: fonte fora do ar não perde a dela. Sem fonte externa, não há consulta a pagar.
         Uma fonte fora do ar reduz a cobertura e fica registrada. Todas fora pausam a vaga.
         """
         vistos = {c.id for c in (*progresso.candidatos, *progresso.cortados)}
-        fontes = (self._banco, *self._fontes)
-        consultas = self._consultas_da_rodada(progresso)
         achados: list[Candidato] = []
         fora: list[str] = []
-        for indice, fonte in enumerate(fontes):
+        try:
+            do_banco = self._filtrar_achados(self._ler_banco(), vistos)
+        except ERROS_TEMPORARIOS as erro:
+            fora.append(type(self._banco).__name__)
+            self._evento("fonte", f"{type(self._banco).__name__}: {type(erro).__name__}")
+        else:
+            achados.extend(do_banco)
+            progresso.do_banco.extend(c.id for c in do_banco if c.id not in progresso.do_banco)
+        consultas = self._consultas_da_rodada(progresso) if self._fontes else []
+        for indice, fonte in enumerate(self._fontes, start=1):
             nome = f"{indice}:{type(fonte).__name__}"
             try:
                 for consulta in consultas:
@@ -1207,26 +1220,42 @@ class FluxoVaga:
                         etapa="busca_fonte",
                     )
                     progresso.paginas_por_fonte[chave] = pagina
-                    filtrados = self._filtrar_achados(resultado, vistos)
-                    achados.extend(filtrados)
-                    if fonte is self._banco:
-                        progresso.do_banco.extend(
-                            c.id for c in filtrados if c.id not in progresso.do_banco
-                        )
+                    achados.extend(self._filtrar_achados(resultado, vistos))
             except ERROS_TEMPORARIOS as erro:
                 fora.append(type(fonte).__name__)
                 self._evento("fonte", f"{type(fonte).__name__}: {type(erro).__name__}")
         progresso.fontes_fora = fora
-        if len(fora) == len(fontes):
+        total = 1 + len(self._fontes)
+        if len(fora) == total:
             raise _PausaNecessaria(MotivoPausa.FONTES_INDISPONIVEIS)
         if fora:
-            responderam = len(fontes) - len(fora)
             self._evento(
                 "cobertura",
-                f"cobertura parcial: {responderam} de {len(fontes)} fontes; "
+                f"cobertura parcial: {total - len(fora)} de {total} fontes; "
                 f"fora do ar: {', '.join(fora)}",
             )
         return self._passar_pelo_funil(progresso, achados)
+
+    def _ler_banco(self) -> list[Candidato]:
+        """Todas as páginas do banco. Para quando uma página nada acrescenta: nunca fica presa."""
+        lidos: dict[str, Candidato] = {}
+        for pagina in count(1):
+            resultado = self._resiliencia.chamar(
+                f"0:{type(self._banco).__name__}",
+                partial(
+                    _buscar_na_fonte,
+                    self._banco,
+                    self.vaga.empresa_id,
+                    CONSULTA_TODO_O_BANCO,
+                    pagina,
+                ),
+                etapa="busca_fonte",
+            )
+            novos = {c.id: c for c in resultado if c.id not in lidos}
+            if not novos:
+                break
+            lidos.update(novos)
+        return list(lidos.values())
 
     def _consultas_da_rodada(self, progresso: ProgressoFluxo) -> list[str]:
         """Pede as consultas uma vez por rodada: retomar não paga pelo modelo de novo."""

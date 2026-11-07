@@ -22,6 +22,10 @@ class FonteCandidatos(Protocol):
 
 @runtime_checkable
 class BancoTalentos(FonteCandidatos, Protocol):
+    def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+        """Perfis aptos da empresa, por página. Consulta vazia devolve todos eles."""
+        ...
+
     def obter(self, empresa_id: str, candidato_id: str) -> Candidato | None:
         """O estado atual da pessoa. `None` para quem não está no banco ou foi removido."""
         ...

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from itertools import product
 from pathlib import Path
 
@@ -2797,6 +2797,194 @@ def test_reserva_nao_vira_decisao_nem_analise_e_fica_registrada_no_evento(tmp_pa
     assert "c2" not in {c.id for c, _, _ in fluxo.situacao_candidatos()}
     reservas = [e for e in fluxo.eventos if e.etapa == "reserva" and e.candidato_id == "c2"]
     assert len(reservas) == 1
+
+
+def _banco_com(*candidatos: Candidato) -> BancoTalentosSimulado:
+    banco = BancoTalentosSimulado(AGORA.date())
+    for candidato in candidatos:
+        banco.importar(candidato.empresa_id, [candidato.model_dump(mode="json")])
+        banco.registrar_autorizacao(candidato.empresa_id, candidato.id, date(2027, 1, 1))
+    return banco
+
+
+def _sem_nenhum_termo_da_consulta(candidato_id: str, **campos) -> Candidato:
+    return candidato_exemplo(candidato_id, **campos)
+
+
+def test_o_banco_inteiro_chega_ao_funil_sem_depender_da_consulta(tmp_path: Path) -> None:
+    recebidos: list[str] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        recebidos.extend(c.id for c in candidatos)
+        return candidatos
+
+    banco = _banco_com(_sem_nenhum_termo_da_consulta("incomum"))
+    m = Montagem(
+        tmp_path,
+        [],
+        banco=banco,
+        fontes=[],
+        priorizador=priorizador,
+        consultas=lambda vaga, rodada, anteriores: ["termo que ninguem usa"],
+    )
+
+    _assinar_fluxo(m.fluxo())
+
+    assert recebidos == ["incomum"]
+
+
+def test_o_funil_recebe_todas_as_paginas_do_banco(tmp_path: Path) -> None:
+    recebidos: set[str] = set()
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        recebidos.update(c.id for c in candidatos)
+        return []
+
+    pessoas = [_sem_nenhum_termo_da_consulta(f"p{i:02d}") for i in range(45)]
+    m = Montagem(tmp_path, [], banco=_banco_com(*pessoas), fontes=[], priorizador=priorizador)
+
+    _assinar_fluxo(m.fluxo())
+
+    assert recebidos == {f"p{i:02d}" for i in range(45)}
+
+
+def test_banco_que_ignora_a_pagina_nao_prende_a_busca(tmp_path: Path) -> None:
+    class BancoSemPagina(BancoTalentosSimulado):
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            return super().buscar(empresa_id, consulta, 1)
+
+    banco = BancoSemPagina(AGORA.date())
+    pessoa = _sem_nenhum_termo_da_consulta("a")
+    banco.importar(pessoa.empresa_id, [pessoa.model_dump(mode="json")])
+    banco.registrar_autorizacao(pessoa.empresa_id, pessoa.id, date(2027, 1, 1))
+    m = Montagem(tmp_path, [], banco=banco, fontes=[])
+
+    _assinar_fluxo(m.fluxo())
+
+    assert list(_decisoes(m)) == ["a"]
+
+
+def test_o_funil_nao_recebe_pessoa_de_outra_empresa_do_banco(tmp_path: Path) -> None:
+    recebidos: list[str] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        recebidos.extend(c.id for c in candidatos)
+        return candidatos
+
+    banco = _banco_com(
+        _sem_nenhum_termo_da_consulta("minha"),
+        _sem_nenhum_termo_da_consulta("alheia", empresa_id="empresa-b"),
+    )
+    m = Montagem(tmp_path, [], banco=banco, fontes=[], priorizador=priorizador)
+
+    _assinar_fluxo(m.fluxo())
+
+    assert recebidos == ["minha"]
+
+
+def test_o_banco_nao_traz_quem_tem_autorizacao_vencida(tmp_path: Path) -> None:
+    recebidos: list[str] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        recebidos.extend(c.id for c in candidatos)
+        return candidatos
+
+    banco = _banco_com(_sem_nenhum_termo_da_consulta("valida"))
+    vencida = _sem_nenhum_termo_da_consulta("vencida")
+    banco.importar(vencida.empresa_id, [vencida.model_dump(mode="json")])
+    banco.registrar_autorizacao(vencida.empresa_id, vencida.id, AGORA.date())
+    banco.hoje = AGORA.date() + timedelta(days=1)
+    m = Montagem(tmp_path, [], banco=banco, fontes=[], priorizador=priorizador)
+    m.relogio.avancar(days=1)
+
+    _assinar_fluxo(m.fluxo())
+
+    assert recebidos == ["valida"]
+
+
+def test_sem_fonte_externa_nao_paga_por_consultas(tmp_path: Path) -> None:
+    pedidos: list[int] = []
+
+    def consultas(vaga, rodada, anteriores):
+        pedidos.append(rodada)
+        return ["python"]
+
+    banco = _banco_com(_sem_nenhum_termo_da_consulta("a"))
+    m = Montagem(tmp_path, [], banco=banco, fontes=[], consultas=consultas)
+
+    _assinar_fluxo(m.fluxo())
+
+    assert pedidos == []
+
+
+def test_fonte_externa_continua_recebendo_as_consultas_e_nao_o_banco_vazio(tmp_path: Path) -> None:
+    pedidos: list[str] = []
+
+    class FonteRegistrada(FonteSimulada):
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            pedidos.append(consulta)
+            return super().buscar(empresa_id, consulta, pagina)
+
+    m = Montagem(
+        tmp_path,
+        [],
+        fontes=[FonteRegistrada([])],
+        consultas=lambda vaga, rodada, anteriores: ["python"],
+    )
+
+    _assinar_fluxo(m.fluxo())
+
+    assert pedidos == ["python"]
+
+
+def test_cargo_incomum_chega_a_analise_com_o_banco_real_e_o_funil_real(tmp_path: Path) -> None:
+    from backend.agente.montagem import priorizador_do_funil
+    from backend.fontes.banco_talentos import BancoTalentos
+
+    atributos = {r.campo: r.valor_esperado for r in vaga_exemplo().requisitos}
+    incomum = candidato_exemplo("incomum", perfil_texto=f"Artífice de oficina. {PERFIL_EXEMPLO}")
+    outra = candidato_exemplo("outra", perfil_texto="Vendas e atendimento.", atributos={})
+    alheia = candidato_exemplo("alheia", empresa_id="empresa-b")
+    banco = BancoTalentos(hoje=AGORA.date(), confiar_autorizacao_sintetica=True)
+    banco.importar(
+        "empresa-a",
+        [
+            incomum.model_copy(update={"atributos": atributos}).model_dump(mode="json"),
+            outra.model_dump(mode="json"),
+        ],
+    )
+    banco.importar("empresa-b", [alheia.model_dump(mode="json")])
+    vaga = vaga_exemplo(meta_candidatos=1)
+    m = Montagem(
+        tmp_path, [], vaga=vaga, banco=banco, fontes=[], priorizador=priorizador_do_funil()
+    )
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert list(_decisoes(m)) == ["incomum"]
+    assert [e.candidato_id for e in fluxo.eventos if e.etapa == "reserva"] == ["outra"]
+
+
+def test_quem_ficou_na_reserva_volta_na_ampliacao(tmp_path: Path) -> None:
+    rodadas: list[list[str]] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        rodadas.append(sorted({c.id for c in candidatos}))
+        if len(rodadas) == 1:
+            registrar_corte(_corte("c2", "reserva"))
+            return [c for c in candidatos if c.id == "c1"]
+        return [c for c in candidatos if c.id == "c2"]
+
+    banco = _banco_com(
+        _sem_nenhum_termo_da_consulta("c1"), _sem_nenhum_termo_da_consulta("c2")
+    )
+    m = Montagem(tmp_path, [], banco=banco, fontes=[], priorizador=priorizador)
+
+    _assinar_fluxo(m.fluxo(), max_ampliacoes=1, max_indicacoes=1)
+
+    assert rodadas[:2] == [["c1", "c2"], ["c2"]]
+    assert sorted(_decisoes(m)) == ["c1", "c2"]
 
 
 def test_fora_do_limite_vai_para_a_fila_sem_descarte_nem_analise(tmp_path: Path) -> None:

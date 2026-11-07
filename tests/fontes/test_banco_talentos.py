@@ -544,3 +544,15 @@ def test_obter_nao_devolve_quem_foi_removido(banco):
     banco.remover("empresa-1", "pessoa-1")
 
     assert banco.obter("empresa-1", "pessoa-1") is None
+
+
+def test_consulta_vazia_devolve_todos_os_aptos_da_empresa_por_pagina(banco):
+    registros = [registro(f"p{i:02d}", perfil_texto="Sem termo algum.") for i in range(25)]
+    banco.importar("empresa-1", registros)
+    banco.importar("empresa-2", [registro("alheia", empresa="empresa-2")])
+    banco.registrar_opt_out("empresa-1", "p00")
+
+    ids = [c.id for pagina in (1, 2) for c in banco.buscar("empresa-1", "", pagina)]
+
+    assert ids == [f"p{i:02d}" for i in range(1, 25)]
+    assert banco.buscar("empresa-1", "", 3) == []
