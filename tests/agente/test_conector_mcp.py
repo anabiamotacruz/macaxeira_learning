@@ -616,3 +616,93 @@ def test_conector_funciona_dentro_de_um_laco_assincrono() -> None:
 
     with servidor_mcp(_ferramentas(sintetico)) as url:
         assert asyncio.run(entregar_no_laco(ConectorMCP(_destino(url)))) is True
+
+
+class _PaginaQueGuardaCabecalhos(_PaginaQueNaoEMCP):
+    recebidos: list[tuple[str, str | None]] = []
+
+    def do_POST(self) -> None:
+        self.recebidos.append((self.path, self.headers.get("Authorization")))
+        super().do_POST()
+
+    do_GET = do_POST
+    do_DELETE = do_POST
+
+
+def test_credencial_vem_da_variavel_e_vai_no_cabecalho(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CHAVE_DESTINO_SINTETICA", "chave-sintetica")
+    _PaginaQueGuardaCabecalhos.recebidos = []
+    servidor = HTTPServer(("127.0.0.1", 0), _PaginaQueGuardaCabecalhos)
+    thread = threading.Thread(target=servidor.serve_forever, daemon=True)
+    thread.start()
+    try:
+        destino = _destino(
+            url_da_porta(servidor.server_address[1]),
+            tempo_limite_s=2,
+            variavel_credencial="CHAVE_DESTINO_SINTETICA",
+        )
+        with pytest.raises(ErroContrato) as erro:
+            ConectorMCP(destino).entregar(_pacote())
+    finally:
+        servidor.shutdown()
+        servidor.server_close()
+        thread.join(timeout=5)
+
+    assert _PaginaQueGuardaCabecalhos.recebidos
+    for caminho, cabecalho in _PaginaQueGuardaCabecalhos.recebidos:
+        assert cabecalho == "Bearer chave-sintetica"
+        assert "chave-sintetica" not in caminho
+    assert "chave-sintetica" not in str(erro.value)
+    assert "chave-sintetica" not in repr(destino)
+
+
+def test_credencial_ausente_nao_faz_chamada_e_nao_conta_como_entrega(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHAVE_DESTINO_SINTETICA", raising=False)
+    sintetico = DestinoSintetico()
+    with servidor_mcp(_ferramentas(sintetico)) as url:
+        destino = _destino(url, variavel_credencial="CHAVE_DESTINO_SINTETICA")
+        with pytest.raises(DestinoIndisponivel, match="credencial"):
+            ConectorMCP(destino).entregar(_pacote())
+
+    assert sintetico.chamadas == []
+
+
+def test_destino_com_credencial_funciona_de_ponta_a_ponta(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CHAVE_DESTINO_SINTETICA", "chave-sintetica")
+    sintetico = DestinoSintetico()
+    with servidor_mcp(_ferramentas(sintetico)) as url:
+        destino = _destino(url, variavel_credencial="CHAVE_DESTINO_SINTETICA")
+        assert ConectorMCP(destino).entregar(_pacote()) is True
+
+    assert _nomes_chamados(sintetico) == ["entregar"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://destino.example.invalid/mcp", "http://10.0.0.5/mcp", "http://destino.local/mcp"],
+)
+def test_simulacao_tambem_nao_manda_pacote_sem_criptografia_para_fora(url: str) -> None:
+    with pytest.raises(ValidationError):
+        _destino(url, simulado=True)
+
+
+@pytest.mark.parametrize(
+    "url", ["http://127.0.0.1:9/mcp", "http://localhost:9/mcp", "http://[::1]:9/mcp"]
+)
+def test_simulacao_em_endereco_local_nao_exige_https(url: str) -> None:
+    assert _destino(url, simulado=True).simulado is True
+
+
+def test_https_vale_para_destino_real_e_simulado() -> None:
+    assert _destino("https://destino.example.invalid/mcp", simulado=False).simulado is False
+    assert _destino("https://destino.example.invalid/mcp", simulado=True).simulado is True
+
+
+@pytest.mark.parametrize("valor", ["sk-chave-colada-aqui", "chave com espaco", "minha_variavel"])
+def test_campo_da_credencial_recusa_o_que_nao_e_nome_de_variavel(valor: str) -> None:
+    with pytest.raises(ValidationError) as erro:
+        _destino(variavel_credencial=valor)
+
+    assert valor not in str(erro.value)

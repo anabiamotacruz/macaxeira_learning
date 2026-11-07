@@ -15,7 +15,9 @@ validado, e o texto do servidor não vai para modelo, log, rastro ou mensagem de
 """
 
 import asyncio
+import ipaddress
 import logging
+import os
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +25,7 @@ from typing import Annotated, Any, NoReturn, Self
 from urllib.parse import urlsplit
 
 from mcp import Client
+from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
 from mcp.shared.exceptions import MCPError
 from mcp.types import REQUEST_TIMEOUT, CallToolResult
 from pydantic import (
@@ -44,6 +47,7 @@ logger = logging.getLogger(__name__)
 TEMPO_LIMITE_PADRAO_S = 10.0
 _TAMANHO_MAXIMO_LINK = 2048
 _ESPACO_OU_CONTROLE = re.compile(r"[\s\x00-\x1f\x7f]")
+_NOME_DE_VARIAVEL = re.compile(r"[A-Z][A-Z0-9_]*")
 
 
 class ErroDestinoMCP(ErroContrato):
@@ -70,7 +74,9 @@ class DestinoMCP(Contrato):
     """Servidor MCP de um agente recrutador, sempre ligado a uma única empresa.
 
     Sem `ferramenta_agenda` ou `ferramenta_resultados`, o destino não oferece o recurso. Destino
-    real precisa de `simulado=False` explícito, e a chave de acesso nunca entra na URL.
+    real precisa de `simulado=False` explícito. A chave de acesso nunca entra na URL nem aqui:
+    `variavel_credencial` guarda só o nome da variável de ambiente, lida a cada chamada e enviada
+    no cabeçalho `Authorization`.
     """
 
     model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
@@ -83,14 +89,28 @@ class DestinoMCP(Contrato):
     ferramenta_resultados: Texto | None = None
     tempo_limite_s: Annotated[float, Field(gt=0, allow_inf_nan=False)] = TEMPO_LIMITE_PADRAO_S
     simulado: bool = True
+    variavel_credencial: Texto | None = None
 
     @model_validator(mode="after")
     def _url_segura(self) -> Self:
         if self.url.username or self.url.password:
             raise ValueError("a URL do destino não pode conter credenciais")
-        if not self.simulado and self.url.scheme != "https":
-            raise ValueError("destino real exige https")
+        if self.url.scheme != "https" and not (self.simulado and _endereco_local(self.url.host)):
+            raise ValueError("destino exige https; só simulação em endereço local dispensa")
+        if self.variavel_credencial and not _NOME_DE_VARIAVEL.fullmatch(self.variavel_credencial):
+            raise ValueError("variavel_credencial é o nome da variável, não a chave")
         return self
+
+
+def _endereco_local(host: str | None) -> bool:
+    """O pacote leva dados de candidatos: fora desta máquina, ele não trafega sem criptografia."""
+    nome = (host or "").strip("[]").casefold().rstrip(".")
+    if nome == "localhost" or nome.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(nome).is_loopback
+    except ValueError:
+        return False
 
 
 def _link_seguro(valor: str) -> str:
@@ -254,9 +274,10 @@ class ConectorMCP:
             ferramenta, f"sem resposta em {self._destino.tempo_limite_s:g} s (tempo limite)"
         )
         fora_do_ar = self._mensagem(ferramenta, "servidor indisponível")
+        cabecalhos = self._cabecalhos(ferramenta)
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
-                chamada = self._chamar_servidor(ferramenta, argumentos)
+                chamada = self._chamar_servidor(ferramenta, argumentos, cabecalhos)
                 return executor.submit(asyncio.run, chamada).result()
         except TimeoutError:
             raise TempoLimiteDestino(tempo_limite) from None
@@ -274,8 +295,25 @@ class ConectorMCP:
             logger.warning("%s: %s", fora_do_ar, type(erro).__name__)
             raise DestinoIndisponivel(fora_do_ar) from None
 
-    async def _chamar_servidor(self, ferramenta: str, argumentos: dict[str, Any]) -> CallToolResult:
+    def _cabecalhos(self, ferramenta: str) -> dict[str, str] | None:
+        """Sem a variável, nada sai: o destino recusaria, e a entrega fica pendente."""
+        variavel = self._destino.variavel_credencial
+        if variavel is None:
+            return None
+        credencial = os.environ.get(variavel, "").strip()
+        if not credencial:
+            raise DestinoIndisponivel(self._mensagem(ferramenta, "credencial não configurada"))
+        return {"Authorization": f"Bearer {credencial}"}
+
+    async def _chamar_servidor(
+        self, ferramenta: str, argumentos: dict[str, Any], cabecalhos: dict[str, str] | None = None
+    ) -> CallToolResult:
         """O tempo limite cobre conexão, negociação e chamada."""
+        url = str(self._destino.url)
         async with asyncio.timeout(self._destino.tempo_limite_s):
-            async with Client(str(self._destino.url)) as cliente:
-                return await cliente.call_tool(ferramenta, argumentos)
+            if cabecalhos is None:
+                async with Client(url) as cliente:
+                    return await cliente.call_tool(ferramenta, argumentos)
+            async with create_mcp_http_client(headers=cabecalhos) as http:
+                async with Client(streamable_http_client(url, http_client=http)) as cliente:
+                    return await cliente.call_tool(ferramenta, argumentos)
