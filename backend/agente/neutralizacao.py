@@ -6,6 +6,7 @@ enviado ao modelo: os dois lados precisam dar o mesmo resultado.
 
 import re
 import unicodedata
+from bisect import bisect_left
 from typing import NamedTuple
 
 from backend.contratos.criterios import sem_genero
@@ -18,6 +19,12 @@ MAXIMO_DE_MARCADORES_NO_TRECHO = 12
 
 MAXIMO_DE_CARACTERES_POR_MARCADOR = 160
 """Um marcador vale por um valor retirado, não por um parágrafo."""
+
+MAXIMO_DE_CARACTERES_NO_TRECHO = 5_000
+"""Uma citação, não um documento. Limita o custo de procurar cada pedaço no original."""
+
+MAXIMO_DE_CARACTERES_DO_PERFIL = 200_000
+"""O que se lê de um perfil. Passou disso, o resto não vai ao modelo nem pode ser citado."""
 
 _FLEXOES = {
     "advogada": "advogado",
@@ -179,16 +186,68 @@ def _comparavel(texto: str) -> str:
     return " ".join(dobrar(neutralizar_genero(texto)).split())
 
 
+def _ocorrencias(parte: str, texto: str) -> list[int]:
+    """Onde a parte começa no texto, inclusive em posições que se sobrepõem."""
+    posicoes = []
+    posicao = texto.find(parte)
+    while posicao != -1:
+        posicoes.append(posicao)
+        posicao = texto.find(parte, posicao + 1)
+    return posicoes
+
+
+def _ha_entre(ordenadas: list[int], menor: int, maior: int) -> bool:
+    indice = bisect_left(ordenadas, menor)
+    return indice < len(ordenadas) and ordenadas[indice] <= maior
+
+
+def _espaco_de(marcadores: int) -> tuple[int, int]:
+    """O menor e o maior pedaço do original que esta quantidade de marcadores pode cobrir."""
+    return marcadores, marcadores * (MAXIMO_DE_CARACTERES_POR_MARCADOR + 2)
+
+
+def _partes_em_ordem(partes: list[str], texto: str) -> bool:
+    """As partes aparecem em ordem, com um marcador valendo por um pedaço curto entre elas.
+
+    Compara por posições, sem regex com curinga: o custo cresce com o texto, nunca com o número de
+    combinações. `partes` vem de separar o trecho nos marcadores, e parte vazia é marcador seguido.
+    """
+    literais = [(indice, parte) for indice, parte in enumerate(partes) if parte]
+    inicios_de_palavra = [m.start() for m in re.finditer(r"(?<!\w)", texto)]
+    fins_de_palavra = [m.start() for m in re.finditer(r"(?!\w)", texto)]
+
+    primeiro, parte = literais[0]
+    menor, maior = _espaco_de(primeiro)
+    alcancados = [
+        posicao + len(parte)
+        for posicao in _ocorrencias(parte, texto)
+        if _ha_entre(inicios_de_palavra, posicao - maior, posicao - menor)
+    ]
+    anterior = primeiro
+    for indice, parte in literais[1:]:
+        menor, maior = _espaco_de(indice - anterior)
+        alcancados = [
+            posicao + len(parte)
+            for posicao in _ocorrencias(parte, texto)
+            if _ha_entre(alcancados, posicao - maior, posicao - menor)
+        ]
+        if not alcancados:
+            return False
+        anterior = indice
+    menor, maior = _espaco_de(len(partes) - 1 - anterior)
+    return any(_ha_entre(fins_de_palavra, fim + menor, fim + maior) for fim in alcancados)
+
+
 def corresponde_ao_original(trecho: str, original: str) -> bool:
     """Confere o trecho palavra a palavra. Cada marcador vale por um pedaço curto do original.
 
     Trecho só com marcadores não confere: ele não mostra nada sobre o que a pessoa fez.
     """
+    if len(trecho) > MAXIMO_DE_CARACTERES_NO_TRECHO:
+        return False
     partes = [_comparavel(parte) for parte in MARCADOR.split(trecho)]
     if not any(_PALAVRA.search(parte) or any(c.isdigit() for c in parte) for parte in partes):
         return False
     if len(partes) - 1 > MAXIMO_DE_MARCADORES_NO_TRECHO:
         return False
-    coringa = f".{{1,{MAXIMO_DE_CARACTERES_POR_MARCADOR}}}?"
-    padrao = rf"\s?{coringa}\s?".join(re.escape(parte) for parte in partes)
-    return re.search(rf"(?<!\w){padrao}(?!\w)", _comparavel(original)) is not None
+    return _partes_em_ordem(partes, _comparavel(original[:MAXIMO_DE_CARACTERES_DO_PERFIL]))
