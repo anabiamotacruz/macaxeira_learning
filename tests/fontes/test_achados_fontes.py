@@ -10,10 +10,18 @@ import pytest
 
 from backend.agente.neutralizacao import MARCADOR, MAXIMO_DE_CARACTERES_DO_PERFIL
 from backend.agente.prompts import como_dado
-from backend.contratos.modelos import Candidato
-from backend.fontes.analisador import preparar_perfil
-from backend.fontes.anonimizador import Pseudonimizador
-from tests.agente.apoio import AGORA
+from backend.contratos.modelos import (
+    Candidato,
+    Competencia,
+    Decisao,
+    PacoteContexto,
+    Requisito,
+    TipoDecisao,
+)
+from backend.fontes.analisador import AnalisadorPorModelo, preparar_perfil
+from backend.fontes.anonimizador import Pseudonimizador, reidentificar_pacote
+from backend.fontes.revisor import RevisorIndependente
+from tests.agente.apoio import AGORA, vaga_exemplo
 
 EMP = "empresa-a"
 HOJE = AGORA.date()
@@ -54,6 +62,16 @@ def _rodar_com_limite(codigo: str, limite: int) -> tuple[float, int | None, str,
     except subprocess.TimeoutExpired:
         return float("inf"), None, "", ""
     return time.time() - inicio, saida.returncode, saida.stdout[-400:], saida.stderr[-300:]
+
+
+def vaga_kube():
+    return vaga_exemplo(
+        titulo="Python",
+        requisitos=[
+            Requisito(id="r1", descricao="Sabe Python", campo="python", valor_esperado="sim")
+        ],
+        competencias=[Competencia(nome="Kubernetes", peso=1.0)],
+    )
 
 
 # ---------- A-1: identificadores comuns até o modelo ----------
@@ -398,3 +416,62 @@ def test_H5_conferencia_de_trecho_com_marcadores_nao_explode():
     tempo, retorno, saida, erro = _rodar_com_limite(codigo, 25)
     assert tempo < 20, f"tempo={tempo} saida={saida} erro={erro}"
     assert retorno == 0, erro
+
+
+# ---------- M-2 ----------
+def test_Q3_pseudonimizador_e_obrigatorio_nos_construtores():
+    with pytest.raises(TypeError):
+        AnalisadorPorModelo(object())
+    with pytest.raises(TypeError):
+        RevisorIndependente(object())
+
+
+def test_Q3_mesmo_cofre_nao_troca_um_empregador_por_outro():
+    pseudonimizador = Pseudonimizador()
+    vaga = vaga_kube()
+    candidato = cand(
+        "Tenho filhos e trabalhei na Empresa Alfa Sistemas. "
+        "Trabalhei na Empresa Beta Dados com Kubernetes."
+    )
+    preparado = preparar_perfil(candidato, pseudonimizador=pseudonimizador)
+    assert "Alfa" not in preparado.texto
+    assert "[EMPREGADOR_1]" in preparado.texto
+    pacote = PacoteContexto(
+        empresa_id=EMP,
+        vaga_id=vaga.id,
+        candidato_id="c1",
+        motivo_por_criterio={},
+        historico=[],
+        evidencias=[],
+        lacunas=["Perguntar sobre [EMPREGADOR_1]"],
+        pontos_a_aprofundar=[],
+        ressalvas_revisor=[],
+        autorizacao="x",
+        fonte="f",
+        rastro_id="r",
+        chave_idempotencia="k",
+        simulado=True,
+    )
+    decisao = Decisao(
+        empresa_id=EMP,
+        vaga_id=vaga.id,
+        candidato_id="c1",
+        tipo=TipoDecisao.INDICAR,
+        regra="r",
+        motivo="m",
+        responsavel="agente:x",
+        rastro_id="r",
+        entrada={"a": "b"},
+        evidencias=[],
+        momento=AGORA,
+    )
+    saida = reidentificar_pacote(
+        pacote,
+        candidato,
+        vaga,
+        decisao,
+        pseudonimizador=pseudonimizador,
+        registrar=lambda _e: None,
+        momento=AGORA,
+    )
+    assert "Beta" in saida.lacunas[0], saida.lacunas[0]

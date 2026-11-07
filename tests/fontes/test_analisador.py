@@ -15,6 +15,7 @@ from backend.fontes.analisador import (
     ETAPA_ANALISE,
     AnalisadorPorModelo,
 )
+from backend.fontes.anonimizador import Pseudonimizador
 from backend.fontes.prompts import VERSAO_PROMPT_ANALISE
 
 COMPETENCIA_A = "sistemas distribuídos"
@@ -80,7 +81,7 @@ def _resposta(**campos) -> dict:
 
 def _analisador(**campos) -> tuple[AnalisadorPorModelo, ClienteModeloSimulado]:
     cliente = ClienteModeloSimulado({ETAPA_ANALISE: _resposta(**campos)})
-    return AnalisadorPorModelo(cliente), cliente
+    return AnalisadorPorModelo(cliente, Pseudonimizador()), cliente
 
 
 def test_implementa_o_contrato():
@@ -219,7 +220,9 @@ def test_fonte_da_evidencia_e_a_do_candidato(fonte, tipo):
     resposta["evidencias"] = [
         {"criterio": COMPETENCIA_A, "trecho": TRECHO_A, "fonte": "github"},
     ]
-    analisador = AnalisadorPorModelo(ClienteModeloSimulado({ETAPA_ANALISE: resposta}))
+    analisador = AnalisadorPorModelo(
+        ClienteModeloSimulado({ETAPA_ANALISE: resposta}), Pseudonimizador()
+    )
     candidato = _candidato(fonte=fonte)
 
     analise = analisador.analisar(_vaga(), candidato)
@@ -332,7 +335,7 @@ def test_detector_pega_instrucao_real_sozinho(frase):
 )
 def test_opiniao_do_modelo_sem_confirmacao_no_texto_nao_vira_alerta(frase):
     cliente = _ClienteEmSequencia([_resposta(instrucoes_detectadas=[frase]), _resposta()])
-    analisador = AnalisadorPorModelo(cliente)
+    analisador = AnalisadorPorModelo(cliente, Pseudonimizador())
 
     analise = analisador.analisar(_vaga(), _candidato(perfil_texto=f"{PERFIL} {frase}"))
 
@@ -360,7 +363,7 @@ def test_opiniao_do_modelo_sem_confirmacao_no_texto_nao_vira_alerta(frase):
 )
 def test_instrucao_disfarcada_que_o_modelo_aponta_e_conferida_e_vira_alerta(frase):
     cliente = _ClienteEmSequencia([_resposta(instrucoes_detectadas=[frase]), _resposta()])
-    analisador = AnalisadorPorModelo(cliente)
+    analisador = AnalisadorPorModelo(cliente, Pseudonimizador())
 
     analise = analisador.analisar(_vaga(), _candidato(perfil_texto=f"{PERFIL} {frase}"))
 
@@ -377,7 +380,9 @@ def test_trecho_apontado_que_junta_frase_limpa_e_instrucao_so_tira_a_instrucao()
         [_resposta(instrucoes_detectadas=[f"{limpa} {instrucao}"]), _resposta()]
     )
 
-    analise = AnalisadorPorModelo(cliente).analisar(_vaga(), _candidato(perfil_texto=perfil))
+    analise = AnalisadorPorModelo(cliente, Pseudonimizador()).analisar(
+        _vaga(), _candidato(perfil_texto=perfil)
+    )
 
     assert analise.alertas == [ALERTA_INSTRUCAO]
     assert limpa in cliente.chamadas[1]["usuario"]
@@ -389,7 +394,9 @@ def test_apontamento_sem_confirmacao_fica_no_log_sem_o_texto_do_perfil(caplog):
     cliente = _ClienteEmSequencia([_resposta(instrucoes_detectadas=[frase])])
 
     with caplog.at_level("INFO", logger="backend.fontes.analisador"):
-        AnalisadorPorModelo(cliente).analisar(_vaga(), _candidato(perfil_texto=f"{PERFIL} {frase}"))
+        AnalisadorPorModelo(cliente, Pseudonimizador()).analisar(
+            _vaga(), _candidato(perfil_texto=f"{PERFIL} {frase}")
+        )
 
     assert "apontamento" in caplog.text
     assert "Aurora" not in caplog.text
@@ -416,7 +423,7 @@ def test_instrucao_que_so_o_modelo_percebe_e_retirada_e_a_analise_refeita():
         instrucoes_detectadas=[disfarce],
     )
     cliente = _ClienteEmSequencia([influenciada, _resposta()])
-    analisador = AnalisadorPorModelo(cliente)
+    analisador = AnalisadorPorModelo(cliente, Pseudonimizador())
 
     analise = analisador.analisar(_vaga(), _candidato(perfil_texto=f"{PERFIL} {disfarce}"))
 
@@ -680,14 +687,16 @@ def test_vaga_e_candidato_de_empresas_diferentes_nao_chegam_ao_modelo():
 
 
 def test_resposta_invalida_segue_para_o_fluxo():
-    analisador = AnalisadorPorModelo(ClienteModeloSimulado({ETAPA_ANALISE: {"notas": "alta"}}))
+    analisador = AnalisadorPorModelo(
+        ClienteModeloSimulado({ETAPA_ANALISE: {"notas": "alta"}}), Pseudonimizador()
+    )
 
     with pytest.raises(RespostaInvalida):
         analisador.analisar(_vaga(), _candidato())
 
 
 def test_resposta_vazia_e_resposta_invalida():
-    analisador = AnalisadorPorModelo(ClienteModeloSimulado({ETAPA_ANALISE: {}}))
+    analisador = AnalisadorPorModelo(ClienteModeloSimulado({ETAPA_ANALISE: {}}), Pseudonimizador())
 
     with pytest.raises(RespostaInvalida):
         analisador.analisar(_vaga(), _candidato())
@@ -707,4 +716,4 @@ def test_falha_do_modelo_e_limite_de_gasto_seguem_para_o_fluxo(erro):
             raise erro("falha")
 
     with pytest.raises(erro):
-        AnalisadorPorModelo(ClienteQueFalha()).analisar(_vaga(), _candidato())
+        AnalisadorPorModelo(ClienteQueFalha(), Pseudonimizador()).analisar(_vaga(), _candidato())

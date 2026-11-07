@@ -242,11 +242,10 @@ def _sem_repetir(textos: Iterable[str]) -> list[str]:
 class AnalisadorPorModelo:
     """Implementa `Analisador`. Falhas do cliente seguem para o fluxo, que sabe tratá-las."""
 
-    def __init__(
-        self, cliente: ClienteModelo, pseudonimizador: Pseudonimizador | None = None
-    ) -> None:
+    def __init__(self, cliente: ClienteModelo, pseudonimizador: Pseudonimizador) -> None:
+        """O cofre precisa ser o mesmo da reidentificação: cofres separados trocam os valores."""
         self._cliente = cliente
-        self._pseudonimizador = pseudonimizador or Pseudonimizador()
+        self._pseudonimizador = pseudonimizador
 
     def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
         requisitos_ok = verificar_requisitos(vaga, candidato)

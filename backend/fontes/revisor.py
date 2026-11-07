@@ -47,11 +47,10 @@ class RespostaRevisao(BaseModel):
 class RevisorIndependente:
     """Implementa `Revisor`. Falhas do cliente seguem para o fluxo, que sabe tratá-las."""
 
-    def __init__(
-        self, cliente: ClienteModelo, pseudonimizador: Pseudonimizador | None = None
-    ) -> None:
+    def __init__(self, cliente: ClienteModelo, pseudonimizador: Pseudonimizador) -> None:
+        """O cofre precisa ser o mesmo da reidentificação: cofres separados trocam os valores."""
         self._cliente = cliente
-        self._pseudonimizador = pseudonimizador or Pseudonimizador()
+        self._pseudonimizador = pseudonimizador
 
     def revisar(self, vaga: Vaga, candidato: Candidato, analise: Analise) -> Analise:
         self._exigir_mesma_execucao(vaga, candidato, analise)

@@ -17,6 +17,7 @@ from backend.contratos.modelos import (
     Vaga,
 )
 from backend.contratos.simulacoes import ClienteModeloSimulado, candidato_simulado
+from backend.fontes.anonimizador import Pseudonimizador
 from backend.fontes.prompts import VERSAO_PROMPT_REVISAO
 from backend.fontes.revisor import (
     ETAPA_REVISAO,
@@ -81,7 +82,7 @@ def _analise(**campos) -> Analise:
 
 def _revisor(*ressalvas: dict) -> tuple[RevisorIndependente, ClienteModeloSimulado]:
     cliente = ClienteModeloSimulado({ETAPA_REVISAO: {"ressalvas": list(ressalvas)}})
-    return RevisorIndependente(cliente), cliente
+    return RevisorIndependente(cliente, Pseudonimizador()), cliente
 
 
 def _exagero(**campos) -> dict:
@@ -281,7 +282,7 @@ def test_resposta_invalida_pede_humano(tmp_path: Path):
     """O fluxo recebe o erro, marca a ressalva e conta as inválidas seguidas para pausar."""
     auditoria.configurar_destino_externo(None)
     cliente = ClienteModeloSimulado({ETAPA_REVISAO: {"ressalvas": "tudo certo"}})
-    revisor = RevisorIndependente(cliente)
+    revisor = RevisorIndependente(cliente, Pseudonimizador())
     m = Montagem(
         tmp_path,
         [candidato_exemplo("c1")],
@@ -300,7 +301,7 @@ def test_resposta_invalida_pede_humano(tmp_path: Path):
 
 
 def test_resposta_sem_o_campo_de_ressalvas_nao_conta_como_aprovacao():
-    revisor = RevisorIndependente(ClienteModeloSimulado({ETAPA_REVISAO: {}}))
+    revisor = RevisorIndependente(ClienteModeloSimulado({ETAPA_REVISAO: {}}), Pseudonimizador())
 
     with pytest.raises(RespostaInvalida):
         revisor.revisar(_vaga(), _candidato(), _analise())
@@ -315,7 +316,7 @@ def test_ressalva_sem_trecho_passa_pelo_fluxo_como_pedido_de_humano(tmp_path: Pa
         tmp_path,
         [candidato_exemplo("c1")],
         analisador=AnalisadorComEvidencias(),
-        revisor=RevisorIndependente(cliente),
+        revisor=RevisorIndependente(cliente, Pseudonimizador()),
     )
 
     _assinar_fluxo(m.fluxo())
@@ -330,4 +331,6 @@ def test_falha_do_modelo_e_limite_de_gasto_seguem_para_o_fluxo(erro):
             raise erro("falha")
 
     with pytest.raises(erro):
-        RevisorIndependente(ClienteQueFalha()).revisar(_vaga(), _candidato(), _analise())
+        RevisorIndependente(ClienteQueFalha(), Pseudonimizador()).revisar(
+            _vaga(), _candidato(), _analise()
+        )

@@ -606,7 +606,7 @@ def test_instrucao_maliciosa_com_dados_pessoais_nao_vaza(rastro):
     )
     cliente = _cliente()
 
-    analise = AnalisadorPorModelo(cliente).analisar(_vaga(), candidato)
+    analise = AnalisadorPorModelo(cliente, Pseudonimizador()).analisar(_vaga(), candidato)
 
     enviado = _enviado(cliente).casefold()
     registros = "\n".join(r.model_dump_json() for r in rastro.registros).casefold()
@@ -651,15 +651,15 @@ def test_trocar_nome_e_genero_nao_muda_o_texto_enviado():
     )
     cliente_f, cliente_m = _cliente(evidencias=[]), _cliente(evidencias=[])
 
-    AnalisadorPorModelo(cliente_f).analisar(_vaga(), feminino)
-    AnalisadorPorModelo(cliente_m).analisar(_vaga(), masculino)
+    AnalisadorPorModelo(cliente_f, Pseudonimizador()).analisar(_vaga(), feminino)
+    AnalisadorPorModelo(cliente_m, Pseudonimizador()).analisar(_vaga(), masculino)
 
     assert cliente_f.chamadas[0]["usuario"] == cliente_m.chamadas[0]["usuario"]
 
 
 def test_analisador_guarda_a_evidencia_pseudonimizada_e_ela_e_conferida():
     candidato = _candidato()
-    analise = AnalisadorPorModelo(_cliente()).analisar(_vaga(), candidato)
+    analise = AnalisadorPorModelo(_cliente(), Pseudonimizador()).analisar(_vaga(), candidato)
 
     assert [e.trecho for e in analise.evidencias] == ["Criei o projeto [PROJETO_1] com Python"]
     assert classificar_evidencia(analise.evidencias[0], candidato) is not TipoEvidencia.INFERIDA
@@ -673,7 +673,7 @@ def test_analisador_recusa_trecho_que_cita_o_original_retirado():
         evidencias=[{"criterio": "Kubernetes", "trecho": "Criei o projeto Orquidea com Python"}],
     )
 
-    analise = AnalisadorPorModelo(cliente).analisar(_vaga(), candidato)
+    analise = AnalisadorPorModelo(cliente, Pseudonimizador()).analisar(_vaga(), candidato)
 
     assert analise.evidencias == []
     assert analise.notas == {}
@@ -682,9 +682,9 @@ def test_analisador_recusa_trecho_que_cita_o_original_retirado():
 def test_revisor_recebe_evidencia_com_marcadores_iguais_aos_do_analisador():
     cliente = _cliente()
     candidato, vaga = _candidato(), _vaga()
-    analise = AnalisadorPorModelo(cliente).analisar(vaga, candidato)
+    analise = AnalisadorPorModelo(cliente, Pseudonimizador()).analisar(vaga, candidato)
 
-    RevisorIndependente(cliente).revisar(vaga, candidato, analise)
+    RevisorIndependente(cliente, Pseudonimizador()).revisar(vaga, candidato, analise)
 
     assert "Criei o projeto [PROJETO_1] com Python" in cliente.chamadas[-1]["usuario"]
 
@@ -692,7 +692,7 @@ def test_revisor_recebe_evidencia_com_marcadores_iguais_aos_do_analisador():
 def test_revisor_nao_repassa_evidencia_com_texto_original():
     cliente = _cliente()
     candidato, vaga = _candidato(), _vaga()
-    analise = AnalisadorPorModelo(cliente).analisar(vaga, candidato)
+    analise = AnalisadorPorModelo(cliente, Pseudonimizador()).analisar(vaga, candidato)
     com_original = analise.model_copy(
         update={
             "evidencias": [
@@ -705,7 +705,7 @@ def test_revisor_nao_repassa_evidencia_com_texto_original():
         }
     )
 
-    RevisorIndependente(cliente).revisar(vaga, candidato, com_original)
+    RevisorIndependente(cliente, Pseudonimizador()).revisar(vaga, candidato, com_original)
 
     assert "Acme" not in cliente.chamadas[-1]["usuario"]
 
