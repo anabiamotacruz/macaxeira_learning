@@ -6,18 +6,24 @@ entra no perfil, instrução vira alerta e o modelo só vê o texto pseudonimiza
 """
 
 import io
+import json
+import logging
+import os
 import re
 import shutil
+import signal
+import subprocess
+import sys
 import warnings
+from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-import pypdfium2
 import pytesseract
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
-from pypdf import PdfReader
 
 from backend.agente.auditoria import rastreado
 from backend.agente.prompts import como_dado
@@ -31,7 +37,7 @@ from backend.contratos.modelos import (
     TipoContato,
     TipoFato,
 )
-from backend.fontes.analisador import normalizar, preparar_texto
+from backend.fontes.analisador import normalizar, preparar_texto, tem_instrucao
 from backend.fontes.anonimizador import (
     TERMOS_TECNICOS,
     Categoria,
@@ -44,6 +50,8 @@ from backend.fontes.anonimizador import (
 from backend.fontes.perfis import candidato_de_perfil, combina_com_consulta
 from backend.fontes.prompts import SISTEMA_EXTRAIR_PERFIL, USUARIO_EXTRAIR_PERFIL
 
+logger = logging.getLogger(__name__)
+
 ETAPA_LER_DOCUMENTO = "ler_documento"
 ETAPA_EXTRAIR_PERFIL = "extrair_perfil"
 FONTE_DOCUMENTO = "documento_enviado"
@@ -53,11 +61,19 @@ MAX_PAGINAS_PDF = 30
 MAX_PAGINAS_OCR = 10
 MAX_PIXELS_IMAGEM = 40_000_000
 TEMPO_MAXIMO_OCR_S = 30
+TEMPO_MAXIMO_PDF_S = 20
+"""Extração de texto do arquivo inteiro. O processo é morto ao fim do prazo."""
+TEMPO_MAXIMO_OCR_DO_PDF_S = 120
+MEMORIA_MAXIMA_PDF_BYTES = 1024 * 1024 * 1024
+MIN_PALAVRAS_ESCONDIDAS_PARA_ALERTA = 3
 RESOLUCAO_OCR_DPI = 200
 IDIOMAS_OCR = ("por", "eng")
 
 ALERTA_INSTRUCAO_DOCUMENTO = (
     "instrucao_no_documento: o documento traz texto dirigido ao avaliador; ele foi ignorado."
+)
+ALERTA_TEXTO_ESCONDIDO_DOCUMENTO = (
+    "texto_escondido_no_documento: o PDF traz texto que ninguém enxerga; ele foi retirado."
 )
 
 _ASSINATURAS: dict[str, Callable[[bytes], bool]] = {
@@ -71,6 +87,7 @@ _ASSINATURAS: dict[str, Callable[[bytes], bool]] = {
 }
 EXTENSOES_PERMITIDAS = frozenset(_ASSINATURAS)
 _CABECALHO_DE_NOME = re.compile(r"^[^\W\d_]+(?:[ \t]+[^\W\d_]+){1,5}$")
+_LEITOR_PDF = Path(__file__).with_name("leitor_pdf.py")
 
 
 class DocumentoInvalido(ErroContrato):
@@ -130,43 +147,102 @@ def _ler_imagem(conteudo: bytes, extensao: str) -> str:
     return _ocr(imagem)
 
 
-def _texto_do_pdf(conteudo: bytes) -> str:
+@dataclass(frozen=True)
+class DocumentoLido:
+    """O texto visível do arquivo e o que foi visto de suspeito nele."""
+
+    texto: str = field(repr=False)
+    alertas: tuple[str, ...] = ()
+
+
+def _erro_de_leitura(codigo: str) -> ErroContrato:
+    if codigo == "senha":
+        return DocumentoIlegivel("O PDF está protegido por senha; peça um arquivo sem senha.")
+    if codigo == "paginas":
+        return DocumentoInvalido(f"O PDF passa do limite de {MAX_PAGINAS_PDF} páginas.")
+    if codigo == "caracteres":
+        return DocumentoInvalido("O documento passa do limite de caracteres.")
+    if codigo == "pagina_grande":
+        return DocumentoInvalido("Uma página do PDF passa do limite de tamanho.")
+    if codigo == "memoria":
+        return DocumentoInvalido("O PDF exige memória demais para ser lido; peça outro arquivo.")
+    if codigo == "tempo":
+        return DocumentoInvalido("O PDF demora demais para ser lido; peça outro arquivo.")
+    if codigo == "sem_tesseract":
+        return OcrIndisponivel("O tesseract não está disponível para ler este arquivo.")
+    return DocumentoIlegivel("Não foi possível ler o PDF; peça um novo envio.")
+
+
+def _ler_pdf_em_processo_proprio(
+    conteudo: bytes, modo: str, tempo_limite: float, *extras: str
+) -> dict[str, str]:
+    """Um PDF de poucos KB pode pedir gigabytes: a leitura não acontece no processo da API."""
+    comando = [
+        sys.executable,
+        "-I",
+        str(_LEITOR_PDF),
+        modo,
+        f"--memoria={MEMORIA_MAXIMA_PDF_BYTES}",
+        f"--maximo-de-paginas={MAX_PAGINAS_PDF}",
+        f"--maximo-de-caracteres={MAX_CARACTERES_DOCUMENTO}",
+        *extras,
+    ]
+    processo = subprocess.Popen(
+        comando,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
     try:
-        leitor = PdfReader(io.BytesIO(conteudo))
-        if leitor.is_encrypted:
-            raise DocumentoIlegivel("O PDF está protegido por senha; peça um arquivo sem senha.")
-        if len(leitor.pages) > MAX_PAGINAS_PDF:
-            raise DocumentoInvalido(f"O PDF passa do limite de {MAX_PAGINAS_PDF} páginas.")
-        partes = [(pagina.extract_text() or "").strip() for pagina in leitor.pages]
-    except ErroContrato:
-        raise
-    except Exception as erro:  # arquivo não confiável: qualquer falha do leitor é arquivo ilegível
-        raise DocumentoIlegivel("Não foi possível ler o PDF; peça um novo envio.") from erro
-    return "\n".join(parte for parte in partes if parte)
-
-
-def _ocr_do_pdf(conteudo: bytes) -> str:
-    _exigir_tesseract()
-    escala = RESOLUCAO_OCR_DPI / 72
-    partes = []
+        saida, _ = processo.communicate(conteudo, timeout=tempo_limite)
+    except subprocess.TimeoutExpired:
+        logger.warning("leitura de PDF passou do tempo limite de %s s", tempo_limite)
+        _matar_grupo(processo)
+        raise _erro_de_leitura("tempo") from None
     try:
-        documento = pypdfium2.PdfDocument(conteudo)
-    except pypdfium2.PdfiumError as erro:
-        raise DocumentoIlegivel("Não foi possível ler o PDF; peça um novo envio.") from erro
+        resposta = json.loads(saida)
+    except ValueError:
+        resposta = {}
+    if "visivel" in resposta:
+        return resposta
+    logger.warning("leitura de PDF recusada: %s", resposta.get("erro", processo.returncode))
+    raise _erro_de_leitura(str(resposta.get("erro", "")))
+
+
+def _matar_grupo(processo: subprocess.Popen) -> None:
+    """Leva junto o `tesseract`, que roda como filho do leitor."""
     try:
-        for indice in range(min(len(documento), MAX_PAGINAS_OCR)):
-            pagina = documento[indice]
-            largura, altura = pagina.get_size()
-            if largura * altura * escala * escala > MAX_PIXELS_IMAGEM:
-                raise DocumentoInvalido("Uma página do PDF passa do limite de tamanho.")
-            partes.append(_ocr(pagina.render(scale=escala).to_pil()))
-    finally:
-        documento.close()
-    return "\n".join(partes)
+        os.killpg(processo.pid, signal.SIGKILL)
+    except OSError:
+        processo.kill()
+    processo.wait()
 
 
-def _ler_pdf(conteudo: bytes) -> str:
-    return _texto_do_pdf(conteudo) or _ocr_do_pdf(conteudo)
+def _ler_pdf(conteudo: bytes) -> DocumentoLido:
+    """Sem texto visível, o escondido é a camada de um PDF escaneado: vale o OCR, sem alerta."""
+    lido = _ler_pdf_em_processo_proprio(conteudo, "texto", TEMPO_MAXIMO_PDF_S)
+    visivel = lido["visivel"].strip()
+    if not visivel:
+        _exigir_tesseract()
+        por_ocr = _ler_pdf_em_processo_proprio(
+            conteudo,
+            "ocr",
+            TEMPO_MAXIMO_OCR_DO_PDF_S,
+            f"--paginas-ocr={MAX_PAGINAS_OCR}",
+            f"--dpi={RESOLUCAO_OCR_DPI}",
+            f"--maior-imagem={MAX_PIXELS_IMAGEM}",
+            f"--idiomas={'+'.join(IDIOMAS_OCR)}",
+            f"--tempo-ocr={TEMPO_MAXIMO_OCR_S}",
+        )
+        return DocumentoLido(por_ocr["visivel"])
+    escondido = lido["escondido"]
+    alertas = []
+    if tem_instrucao(escondido):
+        alertas.append(ALERTA_INSTRUCAO_DOCUMENTO)
+    if len(escondido.split()) >= MIN_PALAVRAS_ESCONDIDAS_PARA_ALERTA:
+        alertas.append(ALERTA_TEXTO_ESCONDIDO_DOCUMENTO)
+    return DocumentoLido(visivel, tuple(alertas))
 
 
 def _ler_texto(conteudo: bytes) -> str:
@@ -176,9 +252,14 @@ def _ler_texto(conteudo: bytes) -> str:
         return conteudo.decode("latin-1")
 
 
-@rastreado(ETAPA_LER_DOCUMENTO)
 def ler_documento(nome: str, conteudo: bytes) -> str:
     """Lê texto, PDF ou imagem recebidos como bytes e devolve o texto, dentro dos limites."""
+    return ler_documento_com_alertas(nome, conteudo).texto
+
+
+@rastreado(ETAPA_LER_DOCUMENTO)
+def ler_documento_com_alertas(nome: str, conteudo: bytes) -> DocumentoLido:
+    """O texto visível do arquivo e o que foi visto de suspeito ao lê-lo."""
     if len(conteudo) > MAX_BYTES_DOCUMENTO:
         raise DocumentoInvalido("O arquivo excede o limite de 5 MB.")
     extensao = Path(nome or "").suffix.casefold()
@@ -188,18 +269,18 @@ def ler_documento(nome: str, conteudo: bytes) -> str:
         raise DocumentoInvalido("O conteúdo do arquivo não combina com a extensão.")
 
     if extensao in (".txt", ".md"):
-        texto = _ler_texto(conteudo)
+        lido = DocumentoLido(_ler_texto(conteudo))
     elif extensao == ".pdf":
-        texto = _ler_pdf(conteudo)
+        lido = _ler_pdf(conteudo)
     else:
-        texto = _ler_imagem(conteudo, extensao)
+        lido = DocumentoLido(_ler_imagem(conteudo, extensao))
 
-    limpo = texto.strip()
+    limpo = lido.texto.strip()
     if not limpo:
         raise DocumentoIlegivel("O documento não tem texto legível; peça um novo envio.")
     if len(limpo) > MAX_CARACTERES_DOCUMENTO:
         raise DocumentoInvalido("O documento passa do limite de caracteres.")
-    return limpo
+    return DocumentoLido(limpo, lido.alertas)
 
 
 def extrair_links_e_contatos(texto: str) -> dict[str, str]:
@@ -317,7 +398,8 @@ def perfil_de_documento(
     """Perfil em JSON a partir do arquivo. Tudo é declarado: a pessoa escreveu o documento."""
     if enviado_pela_pessoa is not True:
         raise DocumentoInvalido("Só entra documento enviado pela própria pessoa.")
-    texto = ler_documento(nome_arquivo, conteudo)
+    lido = ler_documento_com_alertas(nome_arquivo, conteudo)
+    texto = lido.texto
     extraido = extrair_perfil(
         texto,
         cliente_modelo,
@@ -331,14 +413,19 @@ def perfil_de_documento(
         FatoColetado(**origem, texto=frase, trecho=frase, tipo=TipoFato.DECLARADO)
         for frase in _fatos_de(extraido)
     ]
+    achados = list(dict.fromkeys(encontrar_contatos(texto)))
+    por_categoria = Counter(categoria for categoria, _ in achados)
     contatos = [
         ContatoColetado(
             **origem,
             tipo=_TIPO_POR_CATEGORIA[categoria],
             valor=valor,
-            publicado_pela_pessoa=True,
+            # Dois e-mails diferentes: um pode ser de quem a pessoa citou. Na dúvida, não vale.
+            publicado_pela_pessoa=(
+                categoria not in _CATEGORIAS_DE_UM_SO or por_categoria[categoria] == 1
+            ),
         )
-        for categoria, valor in encontrar_contatos(texto)
+        for categoria, valor in achados
     ]
     return PerfilColetado(
         empresa_id=empresa_id,
@@ -348,10 +435,13 @@ def perfil_de_documento(
         nome=nome,
         fatos=fatos,
         contatos=contatos,
-        alertas=[extraido["alerta"]] if "alerta" in extraido else [],
+        alertas=list(
+            dict.fromkeys([*lido.alertas, *([extraido["alerta"]] if "alerta" in extraido else [])])
+        ),
     )
 
 
+_CATEGORIAS_DE_UM_SO = (Categoria.EMAIL, Categoria.TELEFONE)
 _TIPO_POR_CATEGORIA = {
     Categoria.EMAIL: TipoContato.EMAIL,
     Categoria.TELEFONE: TipoContato.TELEFONE,
@@ -378,7 +468,7 @@ def candidato_de_documento(
     perfil = perfil_de_documento(**dados)
     atributos = {}
     if perfil.alertas:
-        atributos["alerta_documento"] = perfil.alertas[0]
+        atributos["alerta_documento"] = " | ".join(perfil.alertas)
     return candidato_de_perfil(
         perfil,
         origem=dados["nome_arquivo"],
