@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -72,7 +72,7 @@ def test_mandato_exige_assinante_limite_e_hash_da_vaga():
     assert mandato.assinado_em == AGORA
     assert mandato.versao == 1
     assert mandato.id
-    assert mandato_valido(mandato, vaga)
+    assert mandato_valido(mandato, vaga, AGORA)
 
 
 @pytest.mark.parametrize("assinante", ["", "   "])
@@ -143,14 +143,14 @@ def test_recusa_momento_sem_fuso():
 def test_vaga_alterada_invalida_mandato(alteracao):
     mandato = _assinar()
 
-    assert not mandato_valido(mandato, _vaga(**alteracao))
+    assert not mandato_valido(mandato, _vaga(**alteracao), AGORA)
 
 
 def test_marcar_vaga_como_aprovada_nao_invalida_mandato():
     vaga = _vaga()
     mandato = _assinar(vaga)
 
-    assert mandato_valido(mandato, vaga.model_copy(update={"aprovada": True}))
+    assert mandato_valido(mandato, vaga.model_copy(update={"aprovada": True}), AGORA)
 
 
 def test_assinar_nao_altera_a_vaga():
@@ -166,14 +166,14 @@ def test_assinar_nao_altera_a_vaga():
 def test_mandato_nao_vale_para_outra_empresa_ou_vaga(alteracao):
     mandato = _assinar()
 
-    assert not mandato_valido(mandato, _vaga(**alteracao))
+    assert not mandato_valido(mandato, _vaga(**alteracao), AGORA)
 
 
 def test_mandato_com_ids_trocados_nao_vale_mesmo_com_hash_igual():
     vaga = _vaga()
     mandato = _assinar(vaga).model_copy(update={"empresa_id": "empresa-b"})
 
-    assert not mandato_valido(mandato, vaga)
+    assert not mandato_valido(mandato, vaga, AGORA)
 
 
 def test_hash_nao_depende_da_instancia():
@@ -197,7 +197,7 @@ def test_mandato_salvo_e_recarregado_continua_valido():
     recarregado = Mandato.model_validate_json(mandato.model_dump_json())
 
     assert recarregado == mandato
-    assert mandato_valido(recarregado, vaga)
+    assert mandato_valido(recarregado, vaga, AGORA)
 
 
 def test_id_e_versao_identificam_o_mandato_de_forma_reprodutivel():
@@ -235,3 +235,39 @@ def test_politica_aceita_limiar_nao_definido():
 def test_politica_incoerente_e_recusada(alteracao):
     with pytest.raises(ValidationError):
         _politica(**alteracao)
+
+
+def test_assinaturas_diferentes_tem_identificadores_diferentes():
+    vaga = _vaga()
+    primeira = assinar(vaga, "Ana", 10.0, _politica(), AGORA, validar_criterios=_sem_problemas)
+    segunda = assinar(vaga, "Bia", 10.0, _politica(), AGORA, validar_criterios=_sem_problemas)
+    assert primeira.id != segunda.id
+
+
+def test_mandato_vencido_nao_vale():
+    vaga = _vaga()
+    mandato = assinar(
+        vaga,
+        "Ana",
+        10.0,
+        _politica(),
+        AGORA,
+        validar_criterios=_sem_problemas,
+        valido_ate=AGORA + timedelta(days=1),
+    )
+    assert mandato_valido(mandato, vaga, AGORA)
+    assert not mandato_valido(mandato, vaga, AGORA + timedelta(days=2))
+
+
+def test_mandato_e_contrato_compartilhado():
+    from backend.contratos.modelos import Mandato as MandatoContrato
+    from backend.contratos.modelos import Politica as PoliticaContrato
+
+    assert Mandato is MandatoContrato
+    assert Politica is PoliticaContrato
+    assert (
+        PoliticaContrato(
+            limiar_verde=None, piso_nota=0.2, max_indicacoes=1, max_ampliacoes=0
+        ).aceitar_declarada
+        is False
+    )

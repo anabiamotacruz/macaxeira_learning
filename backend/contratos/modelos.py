@@ -6,9 +6,9 @@ Campos seguem `specs/001-agente-recrutador/plan.md`.
 
 from datetime import date
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
 class Contrato(BaseModel):
@@ -193,3 +193,44 @@ class EventoFluxo(Contrato):
     candidato_id: str | None = None
     custo_usd: float = 0
     momento: AwareDatetime
+
+
+class ModoEntrega(StrEnum):
+    APOS_ACEITE = "apos_aceite"
+    NA_DECISAO = "na_decisao"
+
+
+class Politica(Contrato):
+    """Limites dentro dos quais o agente decide sozinho."""
+
+    model_config = ConfigDict(frozen=True)
+
+    limiar_verde: Annotated[float, Field(ge=0, le=1)] | None
+    piso_nota: Annotated[float, Field(ge=0, le=1)]
+    max_indicacoes: Annotated[int, Field(ge=1)]
+    max_ampliacoes: Annotated[int, Field(ge=0)]
+    modo_entrega: ModoEntrega = ModoEntrega.APOS_ACEITE
+    aceitar_declarada: bool = False
+
+    @model_validator(mode="after")
+    def _piso_nao_passa_do_limiar(self) -> Self:
+        if self.limiar_verde is not None and self.piso_nota > self.limiar_verde:
+            raise ValueError("piso_nota não pode ser maior que limiar_verde")
+        return self
+
+
+class Mandato(Contrato):
+    """Critérios, limite de gasto e política assinados por uma pessoa responsável."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: Texto
+    versao: Annotated[int, Field(ge=1)]
+    empresa_id: Texto
+    vaga_id: Texto
+    hash_vaga: Texto
+    assinante: Texto
+    limite_gasto_usd: Annotated[float, Field(gt=0, allow_inf_nan=False, strict=True)]
+    politica: Politica
+    assinado_em: AwareDatetime
+    valido_ate: AwareDatetime | None = None
