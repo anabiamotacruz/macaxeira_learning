@@ -8,6 +8,7 @@ Digital worker de sourcing para RH: constrói e mantém o banco de talentos de c
 2. `.specify/memory/constitution.md`: princípios inegociáveis.
 3. `specs/001-agente-recrutador/`: `spec.md`, `plan.md` e `tasks.md`.
 4. `docs/superpowers/specs/2026-11-07-agente-recrutador-design.md`: decisões e motivos.
+5. `docs/convencoes/`: convenções de código, API, prompts, testes, Git e segurança.
 
 ## Regras que nunca mudam
 

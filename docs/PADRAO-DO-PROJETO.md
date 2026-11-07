@@ -19,6 +19,7 @@ Um digital worker constrói e mantém o banco de talentos de cada empresa. Quand
 | `specs/001-agente-recrutador/spec.md` | O que o produto precisa fazer |
 | `specs/001-agente-recrutador/plan.md` | Arquitetura e contratos |
 | `specs/001-agente-recrutador/tasks.md` | Tarefas por frente |
+| `docs/convencoes/` | Convenções de código, API, prompts, testes, Git e segurança |
 
 Faltou uma decisão? Não invente: registre a dúvida no PR e avise o grupo. Se for pequena e reversível, escolha a opção mais simples e escreva o motivo no PR.
 
@@ -66,7 +67,7 @@ Cole no início de cada sessão, trocando os campos entre colchetes:
 ```text
 Você vai trabalhar no repositório macaxeira_learning, na frente [1 Agente | 2 Fontes e dados | 3 Contato e Nara | 4 Produto e qualidade].
 
-Antes de agir, leia AGENTS.md, docs/PADRAO-DO-PROJETO.md, .specify/memory/constitution.md, specs/001-agente-recrutador/plan.md e a tarefa [ID] em specs/001-agente-recrutador/tasks.md.
+Antes de agir, leia AGENTS.md, docs/PADRAO-DO-PROJETO.md, .specify/memory/constitution.md, as convenções aplicáveis em docs/convencoes/, specs/001-agente-recrutador/plan.md e a tarefa [ID] em specs/001-agente-recrutador/tasks.md.
 
 Faça somente essa tarefa, na pasta da sua frente e na branch da frente. Escreva primeiro o teste que falha, depois o código mínimo, e rode os comandos de verificação. Se precisar mudar um contrato ou uma decisão de produto, pare e me pergunte.
 
