@@ -74,8 +74,20 @@ def _combina(candidato: Candidato, consulta: str) -> bool:
 class BancoTalentos:
     """Implementação de `backend.contratos.interfaces.BancoTalentos`."""
 
-    def __init__(self, caminho: str | Path = ":memory:", *, hoje: date) -> None:
+    def __init__(
+        self,
+        caminho: str | Path = ":memory:",
+        *,
+        hoje: date,
+        confiar_autorizacao_sintetica: bool = False,
+    ) -> None:
+        """`confiar_autorizacao_sintetica` serve só a cargas sintéticas de confiança.
+
+        Sem ele, a autorização declarada no registro é ignorada: a pessoa entra como pendente
+        e só autoriza por `registrar_autorizacao`.
+        """
         self.hoje = hoje
+        self._confiar_autorizacao_sintetica = confiar_autorizacao_sintetica
         self._trava = RLock()
         self._conexao = sqlite3.connect(caminho, check_same_thread=False)
         with self._trava, self._conexao:
@@ -142,7 +154,7 @@ class BancoTalentos:
             candidato = Candidato.model_validate({"empresa_id": empresa_id, **registro})
             if candidato.empresa_id != empresa_id:
                 raise ValueError("registro pertence a outra empresa")
-            candidatos.append(candidato)
+            candidatos.append(self._sem_autorizacao_declarada(candidato))
 
         importados: dict[str, Candidato] = {}
         with self._trava, self._conexao:
@@ -151,6 +163,19 @@ class BancoTalentos:
                 if atual is not None:
                     importados.setdefault(atual.id, atual)
         return list(importados.values())
+
+    def _sem_autorizacao_declarada(self, candidato: Candidato) -> Candidato:
+        """Autorização de arquivo não tem consentimento registrado. Remoção e opt-out valem."""
+        if self._confiar_autorizacao_sintetica and candidato.simulado:
+            return candidato
+        removido = candidato.estado == EstadoBanco.REMOVIDO
+        return candidato.model_copy(
+            update={
+                "autorizou_contato": False,
+                "autorizacao_valida_ate": None,
+                "estado": EstadoBanco.REMOVIDO if removido else EstadoBanco.PENDENTE,
+            }
+        )
 
     def _importar_um(self, candidato: Candidato) -> Candidato | None:
         empresa_id, email = candidato.empresa_id, _email(candidato)
@@ -207,10 +232,12 @@ class BancoTalentos:
     def registrar_autorizacao(
         self, empresa_id: str, candidato_id: str, valida_ate: date
     ) -> Candidato:
-        """Registra a autorização. Um opt-out anterior continua valendo."""
+        """Registra a autorização. Um opt-out anterior continua valendo, e removido não volta."""
         if valida_ate < self.hoje:
             raise ValueError("a validade da autorização já passou")
         atual = self._obter(empresa_id, candidato_id)
+        if atual.estado == EstadoBanco.REMOVIDO:
+            raise ValueError("pessoa removida não pode voltar por autorização")
         return self._salvar(
             atual.model_copy(
                 update={

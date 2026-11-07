@@ -16,8 +16,9 @@ HOJE = date(2026, 11, 7)
 
 @pytest.fixture
 def banco():
+    """Carga sintética de confiança: os testes de busca partem de registros já autorizados."""
     classe = import_module("backend.fontes.banco_talentos").BancoTalentos
-    return classe(hoje=HOJE)
+    return classe(hoje=HOJE, confiar_autorizacao_sintetica=True)
 
 
 def registro(identificador="pessoa-1", empresa="empresa-1", **campos):
@@ -162,7 +163,9 @@ def test_remover_nao_guarda_dados_em_texto_e_bloqueia_mesmo_email(tmp_path):
 
 def test_dados_sobrevivem_a_reinicio(tmp_path):
     arquivo = tmp_path / "banco.sqlite"
-    BancoTalentosReal(arquivo, hoje=HOJE).importar("empresa-1", [registro(perfil_texto="Python")])
+    BancoTalentosReal(arquivo, hoje=HOJE, confiar_autorizacao_sintetica=True).importar(
+        "empresa-1", [registro(perfil_texto="Python")]
+    )
 
     novo = BancoTalentosReal(arquivo, hoje=HOJE)
 
@@ -282,3 +285,54 @@ def test_atualizar_com_email_de_outra_pessoa_e_recusado(banco):
         banco.atualizar("empresa-1", "b", {"email": "A@e.invalid"})
 
     assert banco._obter("empresa-1", "b").atributos["email"] == "b@e.invalid"
+
+
+def test_importar_nao_concede_autorizacao_por_padrao():
+    banco = BancoTalentosReal(hoje=HOJE)
+
+    [importado] = banco.importar("empresa-1", [registro(estado=EstadoBanco.ATIVO)])
+
+    assert importado.autorizou_contato is False
+    assert importado.autorizacao_valida_ate is None
+    assert importado.estado == EstadoBanco.PENDENTE
+    assert banco.buscar("empresa-1", "") == []
+    assert banco.vencendo("empresa-1", date(2030, 1, 1)) == []
+
+
+def test_autorizacao_registrada_depois_da_importacao_coloca_na_busca():
+    banco = BancoTalentosReal(hoje=HOJE)
+    banco.importar("empresa-1", [registro()])
+
+    banco.registrar_autorizacao("empresa-1", "pessoa-1", date(2027, 1, 1))
+
+    assert [c.id for c in banco.buscar("empresa-1", "")] == ["pessoa-1"]
+
+
+def test_importar_por_padrao_preserva_opt_out_e_remocao_do_registro():
+    banco = BancoTalentosReal(hoje=HOJE)
+
+    [saiu, removido] = banco.importar(
+        "empresa-1", [registro("a", opt_out=True), registro("b", estado=EstadoBanco.REMOVIDO)]
+    )
+
+    assert saiu.opt_out is True
+    assert removido.estado == EstadoBanco.REMOVIDO
+
+
+def test_carga_de_confianca_nao_vale_para_registro_que_nao_e_sintetico():
+    banco = BancoTalentosReal(hoje=HOJE, confiar_autorizacao_sintetica=True)
+
+    banco.importar("empresa-1", [registro(simulado=False)])
+
+    assert banco.buscar("empresa-1", "") == []
+
+
+def test_autorizacao_nao_ressuscita_removido():
+    banco = BancoTalentosReal(hoje=HOJE)
+    banco.importar("empresa-1", [registro(estado=EstadoBanco.REMOVIDO)])
+
+    with pytest.raises(ValueError):
+        banco.registrar_autorizacao("empresa-1", "pessoa-1", date(2027, 1, 1))
+
+    assert banco._obter("empresa-1", "pessoa-1").estado == EstadoBanco.REMOVIDO
+    assert banco.buscar("empresa-1", "") == []
