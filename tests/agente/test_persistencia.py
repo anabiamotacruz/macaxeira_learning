@@ -265,6 +265,8 @@ OPERACOES_COM_EMPRESA = {
     "listar_decisoes": lambda repo, e: repo.listar_decisoes(e, "vaga-1"),
     "salvar_mandato": lambda repo, e: repo.salvar_mandato(e, "vaga-1", "{}"),
     "carregar_mandato": lambda repo, e: repo.carregar_mandato(e, "vaga-1"),
+    "salvar_progresso": lambda repo, e: repo.salvar_progresso(e, "vaga-1", "{}"),
+    "carregar_progresso": lambda repo, e: repo.carregar_progresso(e, "vaga-1"),
 }
 
 
@@ -346,3 +348,25 @@ def test_mandato_exige_vaga(repo: Repositorio, vaga_id: str) -> None:
         repo.salvar_mandato("empresa-a", vaga_id, "{}")
     with pytest.raises(ValueError):
         repo.carregar_mandato("empresa-a", vaga_id)
+
+
+def test_progresso_sobrevive_a_reinicio_e_substitui_o_anterior(
+    repo: Repositorio, caminho: Path
+) -> None:
+    assert repo.carregar_progresso("empresa-a", "vaga-1") is None
+
+    repo.salvar_progresso("empresa-a", "vaga-1", '{"rodada": 0}')
+    repo.salvar_progresso("empresa-a", "vaga-1", '{"rodada": 1}')
+
+    assert Repositorio(caminho).carregar_progresso("empresa-a", "vaga-1") == '{"rodada": 1}'
+
+
+def test_progresso_de_outra_empresa_nao_aparece(repo: Repositorio) -> None:
+    repo.salvar_progresso("empresa-a", "vaga-1", '{"rodada": 1}')
+
+    assert repo.carregar_progresso("empresa-b", "vaga-1") is None
+
+
+def test_progresso_invalido_e_recusado(repo: Repositorio) -> None:
+    with pytest.raises(ValueError):
+        repo.salvar_progresso("empresa-a", "vaga-1", "isto não é json")

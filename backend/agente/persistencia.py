@@ -54,6 +54,13 @@ CREATE TABLE IF NOT EXISTS mandatos (
     dados TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mandatos_por_vaga ON mandatos (empresa_id, vaga_id, id);
+
+CREATE TABLE IF NOT EXISTS progressos (
+    empresa_id TEXT NOT NULL,
+    vaga_id TEXT NOT NULL,
+    dados TEXT NOT NULL,
+    PRIMARY KEY (empresa_id, vaga_id)
+);
 """
 
 
@@ -235,6 +242,28 @@ class Repositorio:
                 SELECT dados FROM mandatos WHERE empresa_id = ? AND vaga_id = ?
                 ORDER BY id DESC LIMIT 1
                 """,
+                (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(vaga_id, "vaga_id")),
+            ).fetchone()
+        return linha[0] if linha is not None else None
+
+    def salvar_progresso(self, empresa_id: str, vaga_id: str, progresso_json: str) -> None:
+        """Guarda o trabalho da execução como JSON opaco, substituindo o anterior."""
+        empresa_id = _exigir_texto(empresa_id, "empresa_id")
+        vaga_id = _exigir_texto(vaga_id, "vaga_id")
+        json.loads(progresso_json)
+        with self._transacao() as conexao:
+            conexao.execute(
+                """
+                INSERT INTO progressos (empresa_id, vaga_id, dados) VALUES (?, ?, ?)
+                ON CONFLICT (empresa_id, vaga_id) DO UPDATE SET dados = excluded.dados
+                """,
+                (empresa_id, vaga_id, progresso_json),
+            )
+
+    def carregar_progresso(self, empresa_id: str, vaga_id: str) -> str | None:
+        with self._transacao() as conexao:
+            linha = conexao.execute(
+                "SELECT dados FROM progressos WHERE empresa_id = ? AND vaga_id = ?",
                 (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(vaga_id, "vaga_id")),
             ).fetchone()
         return linha[0] if linha is not None else None
