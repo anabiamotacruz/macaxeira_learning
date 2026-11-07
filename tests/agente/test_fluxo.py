@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import product
 from pathlib import Path
@@ -861,7 +862,7 @@ def test_banco_vem_antes_das_fontes_externas(tmp_path: Path) -> None:
 def test_consultas_sao_injetadas(tmp_path: Path) -> None:
     pedidas: list[tuple[str, int]] = []
 
-    def consultas(vaga: Vaga, rodada: int) -> list[str]:
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
         pedidas.append((vaga.id, rodada))
         return ["python"]
 
@@ -958,8 +959,32 @@ def test_retomar_do_limite_de_gasto_exige_aditivo(tmp_path: Path) -> None:
     assert fluxo.estado is E.PAUSADA
 
 
+def test_medidor_de_gasto_pausa_antes_de_pedir_as_consultas(tmp_path: Path) -> None:
+    pedidas: list[int] = []
+
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
+        pedidas.append(rodada)
+        return ["python"]
+
+    m = Montagem(tmp_path, _dois_candidatos(), consultas=consultas, medidor_gasto=lambda: 5.0)
+
+    _assinar_fluxo(m.fluxo())
+
+    assert _execucao(m).motivo == MotivoPausa.LIMITE_GASTO
+    assert pedidas == []
+
+
+def test_candidato_desconhecido_e_erro_claro(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError, match="sem decisão"):
+        fluxo.registrar_destino("nao-existe", DestinoPessoa.BANCO, "Pessoa Recrutadora")
+
+
 def test_medidor_de_gasto_pausa_antes_de_chamar_o_modelo(tmp_path: Path) -> None:
-    gastos = iter([0.0, 1.0, 5.0])
+    gastos = iter([0.0, 0.0, 1.0, 5.0])
     m = Montagem(tmp_path, _tres_candidatos(), medidor_gasto=lambda: next(gastos))
     fluxo = m.fluxo()
 
@@ -1562,7 +1587,7 @@ def test_ampliacao_busca_a_proxima_pagina_ate_a_meta(tmp_path: Path) -> None:
     fonte = FonteContada(_tres_candidatos(), por_pagina=1)
     rodadas: list[int] = []
 
-    def consultas(vaga: Vaga, rodada: int) -> list[str]:
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
         rodadas.append(rodada)
         return ["python"]
 
@@ -2662,3 +2687,295 @@ def test_recusa_do_destino_nao_conta_como_falha_temporaria(tmp_path: Path) -> No
 
     assert m.destino.chamadas == 1
     assert _execucao(m).motivo == MotivoPausa.DESTINO_INDISPONIVEL
+
+
+# Ligação com consultas e funil
+
+
+@dataclass(frozen=True)
+class CorteDeTeste:
+    empresa_id: str
+    vaga_id: str
+    candidato_id: str
+    fonte: str
+    origem: str
+    regra: str
+    motivo: str
+
+
+def _corte(candidato_id: str, regra: str, motivo: str = "motivo", **campos) -> CorteDeTeste:
+    dados = {"empresa_id": "empresa-a", "vaga_id": "v1", "fonte": "rede_simulada"}
+    dados |= {"origem": "simulacao", **campos}
+    return CorteDeTeste(candidato_id=candidato_id, regra=regra, motivo=motivo, **dados)
+
+
+def _funil_que_corta(*cortes: CorteDeTeste):
+    """Funil de teste: registra os cortes e deixa passar uma vez cada pessoa não cortada."""
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        for corte in cortes:
+            registrar_corte(corte)
+        saem = {c.candidato_id for c in cortes if c.regra != "duplicata"}
+        selecionados = {}
+        for candidato in candidatos:
+            if candidato.id not in saem:
+                selecionados.setdefault(candidato.id, candidato)
+        return list(selecionados.values())
+
+    return priorizador
+
+
+def test_cada_corte_vira_decisao_registrada_com_regra_e_evidencia(tmp_path: Path) -> None:
+    corte = _corte("c2", "opt_out", "a pessoa pediu para não ser contatada")
+    m = Montagem(tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(corte))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    decisao = _decisoes(m)["c2"]
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == "funil:opt_out"
+    assert decisao.motivo == "a pessoa pediu para não ser contatada"
+    assert decisao.evidencias[0].criterio == "funil:opt_out"
+    assert decisao.rastro_id.endswith(":v1:c2")
+    assert decisao.entrada["origem"] == "simulacao"
+    assert ":v1:assinante:" in decisao.responsavel
+    assert m.analisador.analisados == ["c1"]
+
+
+def test_quem_saiu_no_funil_nao_e_analisado_nem_convidado(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(_corte("c2", "sem_autorizacao"))
+    )
+
+    _assinar_fluxo(m.fluxo())
+
+    assert "c2" not in m.analisador.analisados
+    assert "c2" not in m.revisor.revisados
+    assert "c2" not in {c.candidato_id for c in m.mensageiro.enviados.values()}
+
+
+def test_duplicata_registra_o_corte_e_nao_tira_a_pessoa_do_fluxo(tmp_path: Path) -> None:
+    corte = _corte("c1", "duplicata", "outro registro da mesma pessoa foi mantido", origem="csv")
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], priorizador=_funil_que_corta(corte))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    regras = [d.regra for d in m.repo.listar_decisoes("empresa-a", "v1")]
+    assert regras == ["funil:duplicata", "faixa_verde_v1"]
+    assert fluxo.resumo().contagens["verde"] == 1
+    assert m.analisador.analisados == ["c1"]
+
+
+def test_duas_duplicatas_da_mesma_pessoa_viram_duas_decisoes(tmp_path: Path) -> None:
+    cortes = [_corte("c1", "duplicata", origem=origem) for origem in ("csv", "indicacao")]
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], priorizador=_funil_que_corta(*cortes))
+
+    _assinar_fluxo(m.fluxo())
+
+    duplicatas = [
+        d for d in m.repo.listar_decisoes("empresa-a", "v1") if d.regra == "funil:duplicata"
+    ]
+    assert [d.entrada["origem"] for d in duplicatas] == ["csv", "indicacao"]
+
+
+def test_fora_do_limite_vai_para_a_fila_sem_descarte_nem_analise(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(_corte("c2", "fora_do_limite"))
+    )
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert _decisoes(m)["c2"].tipo is TipoDecisao.PEDIR_HUMANO
+    assert fluxo.resumo().fila_humana == ["c2"]
+    with pytest.raises(ValueError, match="análise"):
+        fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Quero ver", "Pessoa Recrutadora")
+    decisao = fluxo.resolver_fila("c2", TipoDecisao.DESCARTAR, "Fora do perfil", "Pessoa")
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+
+
+def test_regra_de_corte_desconhecida_fica_com_uma_pessoa(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(_corte("c2", "regra_nova"))
+    )
+
+    _assinar_fluxo(m.fluxo())
+
+    assert _decisoes(m)["c2"].tipo is TipoDecisao.PEDIR_HUMANO
+
+
+@pytest.mark.parametrize(
+    "regra", ["opt_out", "estado_bloqueado", "sem_autorizacao", "autorizacao_vencida"]
+)
+def test_quem_saiu_por_autorizacao_nao_fica_com_o_perfil_guardado(tmp_path, regra) -> None:
+    sigiloso = candidato_exemplo("c2", nome="Nome Sigiloso", perfil_texto="Python: perfil sigiloso")
+    m = Montagem(
+        tmp_path,
+        [candidato_exemplo("c1"), sigiloso],
+        priorizador=_funil_que_corta(_corte("c2", regra)),
+    )
+
+    _assinar_fluxo(m.fluxo())
+
+    salvo = m.repo.carregar_progresso("empresa-a", "v1")
+    assert "Nome Sigiloso" not in salvo
+    assert "perfil sigiloso" not in salvo
+
+
+def test_quem_saiu_no_funil_nao_volta_na_rodada_seguinte(tmp_path: Path) -> None:
+    corte = _corte("c2", "requisito_nao_atendido", "requisitos não atendidos: r1")
+    rodadas: list[list[str]] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        rodadas.append([c.id for c in candidatos])
+        if "c2" in rodadas[-1]:
+            registrar_corte(corte)
+        return [c for c in candidatos if c.id != "c2"]
+
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
+        return [f"sintetico{rodada}"]
+
+    class FonteRepetida(FonteSimulada):
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            return _dois_candidatos()
+
+    m = Montagem(
+        tmp_path, [], fontes=[FonteRepetida([])], priorizador=priorizador, consultas=consultas
+    )
+
+    _assinar_fluxo(m.fluxo(), max_ampliacoes=1)
+
+    assert rodadas[0] == ["c1", "c2"]
+    assert all(rodada == [] for rodada in rodadas[1:])
+    regras = [d.regra for d in m.repo.listar_decisoes("empresa-a", "v1") if d.candidato_id == "c2"]
+    assert regras == ["funil:requisito_nao_atendido"]
+
+
+def test_barreira_da_auditoria_segura_o_corte_e_a_retomada_nao_duplica(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(_corte("c2", "opt_out"))
+    )
+    espia = AuditoriaEspia(m.repo, recusar=DecisoesAutomaticasPausadas("barreira"))
+    fluxo = m.fluxo(auditoria=espia)
+
+    _assinar_fluxo(fluxo)
+    assert _execucao(m).motivo == MotivoPausa.AUDITORIA_REPROVADA
+    assert _execucao(m).estado_anterior == E.BUSCANDO
+
+    fluxo.retomar()
+
+    regras = [d.regra for d in m.repo.listar_decisoes("empresa-a", "v1") if d.candidato_id == "c2"]
+    assert regras == ["funil:opt_out"]
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_consulta_nova_comeca_na_primeira_pagina(tmp_path: Path) -> None:
+    pedidos: list[tuple[str, int]] = []
+
+    class FonteRegistrada(FonteSimulada):
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            pedidos.append((consulta, pagina))
+            return []
+
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
+        return ["python"] if rodada == 0 else ["ampla", *anteriores]
+
+    m = Montagem(tmp_path, [], fontes=[FonteRegistrada([])], consultas=consultas)
+
+    _assinar_fluxo(m.fluxo(), max_ampliacoes=2)
+
+    assert pedidos == [("python", 1), ("ampla", 1), ("python", 2), ("ampla", 2), ("python", 3)]
+
+
+class BancoSempreFora(BancoTalentosSimulado):
+    falhar = True
+
+    def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+        if self.falhar:
+            raise FonteIndisponivel("banco fora do ar")
+        return super().buscar(empresa_id, consulta, pagina)
+
+
+def test_consultas_recebem_as_anteriores_e_nao_sao_refeitas_na_retomada(tmp_path: Path) -> None:
+    pedidas: list[tuple[int, list[str]]] = []
+
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
+        pedidas.append((rodada, list(anteriores)))
+        return [f"consulta{rodada}"]
+
+    fonte = FonteInstavel([], erros=[FonteIndisponivel("fora")] * 3)
+    banco = BancoSempreFora()
+    m = Montagem(tmp_path, [], banco=banco, fontes=[fonte], consultas=consultas)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, max_ampliacoes=1)
+    assert _execucao(m).motivo == MotivoPausa.FONTES_INDISPONIVEIS
+    banco.falhar = False
+    fluxo.retomar()
+
+    assert pedidas == [(0, []), (1, ["consulta0"])]
+
+
+def test_limite_de_gasto_ao_gerar_consultas_pausa_com_estado_salvo(tmp_path: Path) -> None:
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
+        raise LimiteGastoAtingido("limite")
+
+    m = Montagem(tmp_path, _dois_candidatos(), consultas=consultas)
+    _assinar_fluxo(m.fluxo())
+
+    assert _execucao(m).motivo == MotivoPausa.LIMITE_GASTO
+    assert _execucao(m).estado_anterior == E.BUSCANDO
+
+
+def test_candidato_de_outra_empresa_nao_chega_ao_funil(tmp_path: Path) -> None:
+    recebidos: list[str] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        recebidos.extend(c.empresa_id for c in candidatos)
+        return candidatos
+
+    class FonteMisturada(FonteSimulada):
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            return [candidato_exemplo("c1"), candidato_exemplo("x", empresa_id="empresa-b")]
+
+    m = Montagem(tmp_path, [], fontes=[FonteMisturada([])], priorizador=priorizador)
+    _assinar_fluxo(m.fluxo())
+
+    assert set(recebidos) == {"empresa-a"}
+
+
+def test_mesmo_registro_achado_por_duas_consultas_nao_vira_duplicata(tmp_path: Path) -> None:
+    recebidos: list[str] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        recebidos.extend(c.id for c in candidatos)
+        return candidatos
+
+    def consultas(vaga: Vaga, rodada: int, anteriores: list[str]) -> list[str]:
+        return ["python", "sintético"]
+
+    candidato = candidato_exemplo("c1", perfil_texto=f"{PERFIL_EXEMPLO} python sintético")
+    m = Montagem(tmp_path, [candidato], consultas=consultas, priorizador=priorizador)
+
+    _assinar_fluxo(m.fluxo())
+
+    assert recebidos == ["c1"]
+
+
+def test_o_mesmo_id_em_duas_fontes_chega_ao_funil_com_os_dois_registros(tmp_path: Path) -> None:
+    recebidos: list[tuple[str, str]] = []
+
+    def priorizador(vaga, candidatos, hoje, registrar_corte):
+        recebidos.extend((c.id, c.fonte) for c in candidatos)
+        return candidatos[:1]
+
+    fontes = [
+        FonteSimulada([candidato_exemplo("c1", fonte="rede_simulada")]),
+        FonteSimulada([candidato_exemplo("c1", fonte="github")]),
+    ]
+    m = Montagem(tmp_path, [], fontes=fontes, priorizador=priorizador)
+    _assinar_fluxo(m.fluxo())
+
+    assert recebidos == [("c1", "rede_simulada"), ("c1", "github")]

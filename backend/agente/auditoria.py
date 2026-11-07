@@ -46,6 +46,8 @@ ETAPA_AUDITORIA = "auditoria_amostra"
 ETAPA_LIBERACAO = "auditoria_liberada"
 MOTIVO_AUDITORIA_REPROVADA = "AUDITORIA_REPROVADA"
 TIPOS_AUTOMATICOS = frozenset({TipoDecisao.INDICAR, TipoDecisao.DESCARTAR})
+REGRA_DUPLICATA = "funil:duplicata"
+"""Corte de um registro repetido: a pessoa segue no fluxo pelo registro que ficou."""
 NAO_MEDIDO: Literal["não medido"] = "não medido"
 _RESPONSAVEL_AGENTE = re.compile(
     r"agente:mandato:(?P<id>[^:]+):v(?P<versao>[1-9]\d*):assinante:(?P<assinante>\S.*)"
@@ -361,7 +363,20 @@ def _campos_faltando(decisao: Decisao) -> list[str]:
 
 def decisao_automatica(decisao: Decisao) -> bool:
     """Indicação ou descarte que o agente fez sozinho, sem revisão prévia."""
-    return decisao.responsavel.startswith(PREFIXO_AGENTE) and decisao.tipo in TIPOS_AUTOMATICOS
+    return (
+        decisao.responsavel.startswith(PREFIXO_AGENTE)
+        and decisao.tipo in TIPOS_AUTOMATICOS
+        and decisao.regra != REGRA_DUPLICATA
+    )
+
+
+def decisoes_vigentes(decisoes: Iterable[Decisao]) -> dict[str, Decisao]:
+    """A última decisão sobre cada pessoa, na ordem em que apareceram."""
+    vigentes: dict[str, Decisao] = {}
+    for decisao in decisoes:
+        if decisao.regra != REGRA_DUPLICATA:
+            vigentes[decisao.candidato_id] = decisao
+    return vigentes
 
 
 def chave_decisao(decisao: Decisao) -> str:
@@ -436,7 +451,8 @@ def _sem_revisao_por_candidato(decisoes: list[Decisao]) -> tuple[int, int]:
     """Conta candidatos por vaga e quantos tiveram a primeira decisão tomada pelo agente."""
     primeiras: dict[tuple[str, str], Decisao] = {}
     for decisao in sorted(decisoes, key=lambda item: item.momento):
-        primeiras.setdefault((decisao.vaga_id, decisao.candidato_id), decisao)
+        if decisao.regra != REGRA_DUPLICATA:
+            primeiras.setdefault((decisao.vaga_id, decisao.candidato_id), decisao)
     return len(primeiras), sum(map(decisao_automatica, primeiras.values()))
 
 

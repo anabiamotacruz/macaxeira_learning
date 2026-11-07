@@ -7,6 +7,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Protocol
 
 from backend.agente.auditoria import responsavel_do_mandato
 from backend.agente.mandato import Mandato, MandatoInvalido, mandato_valido
@@ -45,6 +46,26 @@ FONTES_VERIFICAVEIS = frozenset({"github", "rede_simulada"})
 
 FONTE_REGRA = "regra_deterministica"
 """Fonte da evidência criada por código, quando a decisão não tem trecho do perfil para citar."""
+
+
+PREFIXO_REGRA_FUNIL = "funil:"
+CORTES_POR_AUTORIZACAO = frozenset(
+    {"autorizacao_vencida", "estado_bloqueado", "opt_out", "sem_autorizacao"}
+)
+"""Quem sai por estes cortes não autorizou o uso do perfil nesta vaga."""
+
+CORTES_QUE_DESCARTAM = CORTES_POR_AUTORIZACAO | {"duplicata", "requisito_nao_atendido"}
+"""Fora do limite não descarta: a pessoa é elegível e só não coube nas análises da rodada."""
+
+
+class CorteFunil(Protocol):
+    """Saída do funil, sem dados do perfil. A frente de fontes define os valores de `regra`."""
+
+    candidato_id: str
+    fonte: str
+    origem: str
+    regra: str
+    motivo: str
 
 
 class StatusRequisito(StrEnum):
@@ -393,6 +414,36 @@ def decisao_sem_analise(
             "hash_vaga": mandato.hash_vaga,
         },
         evidencias=[evidencia_da_regra(regra, motivo)],
+        momento=agora,
+    )
+
+
+def decisao_de_corte(
+    corte: CorteFunil, mandato: Mandato, agora: datetime, rastro_id: str
+) -> Decisao:
+    """Transforma a saída do funil em decisão. Regra desconhecida fica com uma pessoa."""
+    regra = f"{PREFIXO_REGRA_FUNIL}{corte.regra}"
+    descarta = str(corte.regra) in CORTES_QUE_DESCARTAM
+    return Decisao(
+        empresa_id=mandato.empresa_id,
+        vaga_id=mandato.vaga_id,
+        candidato_id=corte.candidato_id,
+        tipo=TipoDecisao.DESCARTAR if descarta else TipoDecisao.PEDIR_HUMANO,
+        regra=regra,
+        motivo=corte.motivo,
+        responsavel=responsavel_do_mandato(mandato),
+        rastro_id=rastro_id,
+        entrada={
+            "vaga_id": mandato.vaga_id,
+            "candidato_id": corte.candidato_id,
+            "mandato_id": mandato.id,
+            "mandato_versao": str(mandato.versao),
+            "hash_vaga": mandato.hash_vaga,
+            "hoje": agora.date().isoformat(),
+            "fonte": corte.fonte or "nao_informada",
+            "origem": corte.origem or "nao_informada",
+        },
+        evidencias=[evidencia_da_regra(regra, corte.motivo)],
         momento=agora,
     )
 

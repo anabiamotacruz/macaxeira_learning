@@ -14,6 +14,7 @@ from backend.agente.auditoria import (
     MOTIVO_AUDITORIA_REPROVADA,
     NAO_MEDIDO,
     RASTRO_LOCAL,
+    REGRA_DUPLICATA,
     Auditoria,
     AuditoriaInvalida,
     DecisaoIncompleta,
@@ -24,6 +25,8 @@ from backend.agente.auditoria import (
     RegistroRastro,
     configurar_destino_externo,
     contexto_rastro,
+    decisao_automatica,
+    decisoes_vigentes,
     destino_do_ambiente,
     metricas_autonomia,
     rastreado,
@@ -976,3 +979,14 @@ def test_metricas_nao_misturam_empresas(auditoria):
             [_decisao(empresa_id="empresa-b")],
             [resultado],
         )
+
+
+def test_registro_duplicado_nao_conta_como_decisao_sobre_a_pessoa():
+    duplicata = _decisao(tipo=TipoDecisao.DESCARTAR, regra=REGRA_DUPLICATA)
+    verde = _decisao(momento=MOMENTO + timedelta(minutes=1))
+
+    assert decisao_automatica(duplicata) is False
+    assert selecionar_amostra([duplicata], 1, semente="m") == []
+    assert decisoes_vigentes([verde, duplicata])["cand-1"] == verde
+    metricas = metricas_autonomia([duplicata, verde], [])
+    assert (metricas.candidatos, metricas.sem_revisao) == (1, 1)

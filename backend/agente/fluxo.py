@@ -9,7 +9,7 @@ import hashlib
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
 
@@ -17,11 +17,13 @@ from pydantic import AwareDatetime, Field
 
 from backend.agente.auditoria import (
     MOTIVO_AUDITORIA_REPROVADA,
+    REGRA_DUPLICATA,
     Auditoria,
     ContextoRastro,
     DecisaoIncompleta,
     DecisoesAutomaticasPausadas,
     contexto_rastro,
+    decisoes_vigentes,
     rastreado,
 )
 from backend.agente.mandato import (
@@ -36,11 +38,14 @@ from backend.agente.mandato import (
 from backend.agente.maquina import ESTADOS_ATIVOS, TRANSICOES
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import (
+    CORTES_POR_AUTORIZACAO,
+    CorteFunil,
     TipoEvidencia,
     autorizacao_ativa,
     classificar_evidencia,
     criterios_sem_evidencia,
     decidir,
+    decisao_de_corte,
     decisao_sem_analise,
     nao_priorizada,
     pode_contatar,
@@ -78,6 +83,13 @@ from backend.contratos.modelos import (
     Vaga,
 )
 from backend.modelos.resiliencia import ERROS_TEMPORARIOS, Resiliencia
+
+ProvedorConsultas = Callable[[Vaga, int, Sequence[str]], list[str]]
+"""Recebe a vaga, a rodada e as consultas já usadas. Devolve as consultas desta rodada."""
+
+RegistrarCorte = Callable[[CorteFunil], None]
+Priorizador = Callable[[Vaga, list[Candidato], date, RegistrarCorte], list[Candidato]]
+"""Reduz os achados antes das análises e informa quem saiu, por `RegistrarCorte`."""
 
 
 class TransicaoInvalida(ErroContrato):
@@ -201,6 +213,9 @@ class ProgressoFluxo(Contrato):
     fontes_fora: list[str] = []
     taxa_aceita: bool = False
     candidatos: list[Candidato] = []
+    cortados: list[Candidato] = []
+    consultas_por_rodada: dict[int, list[str]] = {}
+    paginas_por_consulta: dict[str, int] = {}
     analises: dict[str, Analise] = {}
     invalidas_seguidas: int = 0
     versao_mandato_na_pausa: int | None = None
@@ -209,7 +224,10 @@ class ProgressoFluxo(Contrato):
     destinos: dict[str, DestinoPessoa] = {}
 
     def candidato(self, candidato_id: str) -> Candidato:
-        return next(c for c in self.candidatos if c.id == candidato_id)
+        for candidato in (*self.candidatos, *self.cortados):
+            if candidato.id == candidato_id:
+                return candidato
+        raise ValueError(f"candidato desconhecido nesta vaga: {candidato_id!r}")
 
 
 def _exigir_humano(responsavel: str) -> str:
@@ -230,8 +248,15 @@ def _resumo_da_decisao(decisao: Decisao) -> str:
     return hashlib.sha256(decisao.model_dump_json().encode("utf-8")).hexdigest()[:16]
 
 
-def _consulta_pelo_titulo(vaga: Vaga, rodada: int) -> list[str]:
+def consulta_pelo_titulo(vaga: Vaga, rodada: int, anteriores: Sequence[str]) -> list[str]:
     return [vaga.titulo]
+
+
+def _sem_dados_do_perfil(candidato: Candidato) -> Candidato:
+    """Quem saiu por falta de autorização não deixa nome, perfil nem histórico na vaga."""
+    return candidato.model_copy(
+        update={"nome": "", "perfil_texto": "", "atributos": {}, "historico": []}
+    )
 
 
 def _ordem_de_decisao(decisao: Decisao) -> tuple[float, str]:
@@ -242,8 +267,10 @@ def _ordem_de_decisao(decisao: Decisao) -> tuple[float, str]:
 
 
 @rastreado("consultas")
-def _pedir_consultas(consultas: Callable[[Vaga, int], list[str]], vaga: Vaga, rodada: int):
-    return consultas(vaga, rodada)
+def _pedir_consultas(
+    consultas: ProvedorConsultas, vaga: Vaga, rodada: int, anteriores: Sequence[str]
+) -> list[str]:
+    return consultas(vaga, rodada, anteriores)
 
 
 @rastreado("busca_fonte")
@@ -296,7 +323,8 @@ class FluxoVaga:
         mensageiro: Mensageiro,
         destino: AgenteRecrutador,
         relogio: Callable[[], datetime],
-        consultas: Callable[[Vaga, int], list[str]] = _consulta_pelo_titulo,
+        consultas: ProvedorConsultas = consulta_pelo_titulo,
+        priorizador: Priorizador | None = None,
         medidor_gasto: Callable[[], float] | None = None,
         auditoria: Auditoria | None = None,
         resiliencia: Resiliencia | None = None,
@@ -312,6 +340,7 @@ class FluxoVaga:
         self._destino = destino
         self._relogio = relogio
         self._consultas = consultas
+        self._priorizador = priorizador
         self._medidor_gasto = medidor_gasto
         self.vaga = vaga
         if self.mandato is not None:
@@ -520,7 +549,8 @@ class FluxoVaga:
             ampliacoes=0 if progresso is None else progresso.ampliacoes,
             fontes_fora=[] if progresso is None else progresso.fontes_fora,
             destinos={} if progresso is None else progresso.destinos,
-            simulado=progresso is not None and any(c.simulado for c in progresso.candidatos),
+            simulado=progresso is not None
+            and any(c.simulado for c in (*progresso.candidatos, *progresso.cortados)),
         )
 
     def registrar_destino(
@@ -820,26 +850,32 @@ class FluxoVaga:
         self._evento("ampliacao", f"ampliação {progresso.ampliacoes} da busca, mesmos requisitos")
 
     def _buscar(self, progresso: ProgressoFluxo) -> list[Candidato]:
-        """Procura no banco e depois nas fontes externas, sem repetir pessoas.
+        """Procura no banco e depois nas fontes externas, sem repetir quem já passou pela vaga.
 
         Uma fonte fora do ar reduz a cobertura e fica registrada. Todas fora pausam a vaga.
         """
-        vistos = {c.id for c in progresso.candidatos}
+        vistos = {c.id for c in (*progresso.candidatos, *progresso.cortados)}
         fontes = (self._banco, *self._fontes)
-        consultas = _pedir_consultas(self._consultas, self.vaga, progresso.ampliacoes)
-        novos: list[Candidato] = []
+        consultas = self._consultas_da_rodada(progresso)
+        paginas = {c: progresso.paginas_por_consulta.get(c, 0) + 1 for c in consultas}
+        achados: list[Candidato] = []
         fora: list[str] = []
         for indice, fonte in enumerate(fontes):
             nome = f"{indice}:{type(fonte).__name__}"
-            pagina = progresso.ampliacoes + 1
             try:
                 for consulta in consultas:
-                    achados = self._resiliencia.chamar(
+                    resultado = self._resiliencia.chamar(
                         nome,
-                        partial(_buscar_na_fonte, fonte, self.vaga.empresa_id, consulta, pagina),
+                        partial(
+                            _buscar_na_fonte,
+                            fonte,
+                            self.vaga.empresa_id,
+                            consulta,
+                            paginas[consulta],
+                        ),
                         etapa="busca_fonte",
                     )
-                    novos.extend(self._filtrar_achados(achados, vistos))
+                    achados.extend(self._filtrar_achados(resultado, vistos))
             except ERROS_TEMPORARIOS as erro:
                 fora.append(type(fonte).__name__)
                 self._evento("fonte", f"{type(fonte).__name__}: {type(erro).__name__}")
@@ -853,7 +889,25 @@ class FluxoVaga:
                 f"cobertura parcial: {responderam} de {len(fontes)} fontes; "
                 f"fora do ar: {', '.join(fora)}",
             )
-        return novos
+        progresso.paginas_por_consulta.update(paginas)
+        return self._passar_pelo_funil(progresso, achados)
+
+    def _consultas_da_rodada(self, progresso: ProgressoFluxo) -> list[str]:
+        """Pede as consultas uma vez por rodada: retomar não paga pelo modelo de novo."""
+        rodada = progresso.ampliacoes
+        if rodada not in progresso.consultas_por_rodada:
+            self._conferir_gasto()
+            anteriores = list(
+                dict.fromkeys(
+                    consulta
+                    for chave in sorted(progresso.consultas_por_rodada)
+                    for consulta in progresso.consultas_por_rodada[chave]
+                )
+            )
+            geradas = _pedir_consultas(self._consultas, self.vaga, rodada, anteriores)
+            progresso.consultas_por_rodada[rodada] = list(dict.fromkeys(geradas))
+            self._salvar_progresso(progresso)
+        return progresso.consultas_por_rodada[rodada]
 
     def _filtrar_achados(self, achados: list[Candidato], vistos: set[str]) -> list[Candidato]:
         novos = []
@@ -861,9 +915,64 @@ class FluxoVaga:
             if candidato.empresa_id != self.vaga.empresa_id:
                 self._evento("busca", "candidato de outra empresa ignorado")
             elif candidato.id not in vistos:
-                vistos.add(candidato.id)
                 novos.append(candidato)
         return novos
+
+    def _passar_pelo_funil(
+        self, progresso: ProgressoFluxo, achados: list[Candidato]
+    ) -> list[Candidato]:
+        """Reduz os achados. Sem funil injetado, só tira as repetições de cada pessoa.
+
+        O funil recebe todos os registros de cada pessoa: um opt-out em qualquer fonte vale
+        para ela. Só o mesmo registro, achado por outra consulta, sai antes.
+        """
+        if self._priorizador is None:
+            por_pessoa: dict[str, Candidato] = {}
+            for candidato in achados:
+                por_pessoa.setdefault(candidato.id, candidato)
+            return list(por_pessoa.values())
+        registros: dict[tuple[str, str, str], Candidato] = {}
+        for candidato in achados:
+            registros.setdefault((candidato.id, candidato.fonte, candidato.origem), candidato)
+        cortes: list[CorteFunil] = []
+        selecionados = self._priorizador(
+            self.vaga, list(registros.values()), self._relogio().date(), cortes.append
+        )
+        self._registrar_cortes(progresso, cortes, registros)
+        return selecionados
+
+    def _registrar_cortes(
+        self,
+        progresso: ProgressoFluxo,
+        cortes: list[CorteFunil],
+        registros: dict[tuple[str, str, str], Candidato],
+    ) -> None:
+        """Cada corte vira uma decisão. Refazer a busca depois de uma pausa não a repete."""
+        mandato = self.mandato
+        agora = self._relogio()
+        ja_registradas = {
+            (d.candidato_id, d.regra, d.entrada.get("fonte"), d.entrada.get("origem"))
+            for d in self._repo.listar_decisoes(self.vaga.empresa_id, self.vaga.id)
+        }
+        for corte in cortes:
+            decisao = decisao_de_corte(
+                corte, mandato, agora, self._rastro_id(progresso, corte.candidato_id)
+            )
+            chave = (
+                decisao.candidato_id,
+                decisao.regra,
+                decisao.entrada["fonte"],
+                decisao.entrada["origem"],
+            )
+            if chave not in ja_registradas:
+                self._registrar_decisao(decisao)
+                ja_registradas.add(chave)
+            if decisao.regra != REGRA_DUPLICATA:
+                candidato = registros[(corte.candidato_id, corte.fonte, corte.origem)]
+                if str(corte.regra) in CORTES_POR_AUTORIZACAO:
+                    candidato = _sem_dados_do_perfil(candidato)
+                if candidato.id not in {c.id for c in progresso.cortados}:
+                    progresso.cortados.append(candidato)
 
     def _passo_analisar(self) -> bool:
         progresso = self._progresso()
@@ -1007,10 +1116,7 @@ class FluxoVaga:
 
     def _ultimas_decisoes(self) -> dict[str, Decisao]:
         """A decisão vigente de cada candidato, na ordem em que apareceram."""
-        ultimas: dict[str, Decisao] = {}
-        for decisao in self._repo.listar_decisoes(self.vaga.empresa_id, self.vaga.id):
-            ultimas[decisao.candidato_id] = decisao
-        return ultimas
+        return decisoes_vigentes(self._repo.listar_decisoes(self.vaga.empresa_id, self.vaga.id))
 
     def _indicados(self) -> list[str]:
         return [
