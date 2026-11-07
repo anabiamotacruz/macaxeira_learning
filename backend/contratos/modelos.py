@@ -515,3 +515,60 @@ class RelatorioMedicao(Contrato):
     conjunto: ResumoConjunto
     aberturas_do_conjunto: Annotated[int, Field(ge=1)] | None = None
     limites: Annotated[list[str], Field(min_length=1)]
+
+
+class TipoFato(StrEnum):
+    COMPROVADO = "comprovado"
+    DECLARADO = "declarado"
+    INFERIDO = "inferido"
+
+
+class TipoContato(StrEnum):
+    EMAIL = "email"
+    TELEFONE = "telefone"
+    PERFIL = "perfil"
+    LINK = "link"
+
+
+class _ComOrigem(Contrato):
+    """Toda informação coletada diz de onde veio: uma URL ou um documento, nunca os dois."""
+
+    fonte: Texto
+    url: str | None = None
+    documento: Texto | None = None
+    coletado_em: date
+
+    @model_validator(mode="after")
+    def _uma_origem_conferivel(self) -> Self:
+        if (self.url is None) == (self.documento is None):
+            raise ValueError("informe a URL ou o documento de origem, e só um deles")
+        if self.url is not None and not self.url.startswith(("http://", "https://")):
+            raise ValueError("a URL de origem precisa ser http ou https")
+        return self
+
+
+class FatoColetado(_ComOrigem):
+    texto: Texto
+    trecho: Texto
+    tipo: TipoFato
+
+
+class ContatoColetado(_ComOrigem):
+    """Contato sem publicação pela própria pessoa não serve para contato frio."""
+
+    tipo: TipoContato
+    valor: Texto
+    publicado_pela_pessoa: bool
+
+
+class PerfilColetado(Contrato):
+    """Perfil estruturado em JSON, antes de virar `Candidato`. Continua sendo dado pessoal."""
+
+    empresa_id: Texto
+    candidato_id: Texto
+    simulado: bool
+    coletado_em: date
+    nome: str = ""
+    fatos: list[FatoColetado] = []
+    contatos: list[ContatoColetado] = []
+    alertas: list[str] = []
