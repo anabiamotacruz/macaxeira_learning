@@ -13,7 +13,6 @@ Depois de mudar este arquivo, gere o contrato com:
 import logging
 import re
 from collections.abc import Sequence
-from enum import StrEnum
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, FastAPI, Query, Request
@@ -33,6 +32,7 @@ from backend.contratos.modelos import (
     Contrato,
     Decisao,
     DestinoPessoa,
+    EstadoVaga,
     EventoFluxo,
     Mandato,
     Politica,
@@ -72,22 +72,6 @@ Os recursos de exemplo pertencem a `empresa-exemplo`; para outra empresa, eles n
 
 **Gerar este arquivo.** `uv run python -m backend.agente.gerar_openapi`
 """
-
-
-class EstadoVaga(StrEnum):
-    """Estados da vaga expostos ao painel. Proposta: espelha o `EstadoFluxo` de hoje."""
-
-    RASCUNHO = "rascunho"
-    AGUARDANDO_MANDATO = "aguardando_mandato"
-    BUSCANDO = "buscando"
-    ANALISANDO = "analisando"
-    REVISANDO = "revisando"
-    DECIDINDO = "decidindo"
-    META_EM_RISCO = "meta_em_risco"
-    CONVIDANDO = "convidando"
-    ENTREGANDO = "entregando"
-    PAUSADA = "pausada"
-    CONCLUIDA = "concluida"
 
 
 class Erro(Contrato):

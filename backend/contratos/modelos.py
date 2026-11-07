@@ -236,6 +236,26 @@ class Mandato(Contrato):
     valido_ate: AwareDatetime | None = None
 
 
+class EstadoVaga(StrEnum):
+    """Estados da vaga, usados pela máquina de estados e expostos ao painel."""
+
+    RASCUNHO = "rascunho"
+    AGUARDANDO_MANDATO = "aguardando_mandato"
+    BUSCANDO = "buscando"
+    ANALISANDO = "analisando"
+    REVISANDO = "revisando"
+    DECIDINDO = "decidindo"
+    META_EM_RISCO = "meta_em_risco"
+    CONVIDANDO = "convidando"
+    ENTREGANDO = "entregando"
+    PAUSADA = "pausada"
+    CONCLUIDA = "concluida"
+
+
+EstadoFluxo = EstadoVaga
+"""Nome usado pela máquina de estados. É o mesmo enum, com o nome publicado no OpenAPI."""
+
+
 class DestinoPessoa(StrEnum):
     """Destino da pessoa depois da vaga, sempre decidido pelo RH, nunca pelo agente."""
 

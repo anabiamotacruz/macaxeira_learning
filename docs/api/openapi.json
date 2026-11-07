@@ -2297,7 +2297,7 @@
           "concluida"
         ],
         "title": "EstadoVaga",
-        "description": "Estados da vaga expostos ao painel. Proposta: espelha o `EstadoFluxo` de hoje."
+        "description": "Estados da vaga, usados pela máquina de estados e expostos ao painel."
       },
       "EventoFluxo": {
         "properties": {

@@ -357,3 +357,32 @@ def test_saida_nao_mistura_pacote_de_outra_vaga():
 def test_saida_com_pacote_simulado_precisa_estar_identificada():
     with pytest.raises(ValidationError):
         SaidaPersonalizada(**_saida(simulado=False))
+
+
+def test_estado_e_destino_tem_uma_so_definicao():
+    from backend.agente import api, fluxo
+    from backend.contratos import modelos
+
+    assert fluxo.EstadoFluxo is modelos.EstadoVaga
+    assert modelos.EstadoFluxo is modelos.EstadoVaga
+    assert api.EstadoVaga is modelos.EstadoVaga
+    assert fluxo.DestinoPessoa is modelos.DestinoPessoa
+    assert api.DestinoPessoa is modelos.DestinoPessoa
+
+
+def test_estados_da_vaga_seguem_os_valores_publicados():
+    from backend.contratos.modelos import EstadoVaga
+
+    assert {estado.value for estado in EstadoVaga} == {
+        "rascunho",
+        "aguardando_mandato",
+        "buscando",
+        "analisando",
+        "revisando",
+        "decidindo",
+        "meta_em_risco",
+        "convidando",
+        "entregando",
+        "pausada",
+        "concluida",
+    }

@@ -56,6 +56,8 @@ from backend.contratos.modelos import (
     Contrato,
     Convite,
     Decisao,
+    DestinoPessoa,
+    EstadoFluxo,
     EventoFluxo,
     Evidencia,
     PacoteContexto,
@@ -69,20 +71,6 @@ from backend.contratos.modelos import (
 
 class TransicaoInvalida(ErroContrato):
     """Transição fora da tabela ou sem a guarda exigida."""
-
-
-class EstadoFluxo(StrEnum):
-    RASCUNHO = "rascunho"
-    AGUARDANDO_MANDATO = "aguardando_mandato"
-    BUSCANDO = "buscando"
-    ANALISANDO = "analisando"
-    REVISANDO = "revisando"
-    DECIDINDO = "decidindo"
-    META_EM_RISCO = "meta_em_risco"
-    CONVIDANDO = "convidando"
-    ENTREGANDO = "entregando"
-    PAUSADA = "pausada"
-    CONCLUIDA = "concluida"
 
 
 ESTADOS_ATIVOS = frozenset(
@@ -208,14 +196,6 @@ class EstadoConvite(StrEnum):
     ACEITO = "aceito"
     ENCERRADO = "encerrado"
     CANCELADO = "cancelado"
-
-
-class DestinoPessoa(StrEnum):
-    """Para onde a pessoa vai depois da vaga. É sempre decisão humana."""
-
-    BANCO = "banco"
-    TALENT_GARDEN = "talent_garden"
-    CONTRATADA = "contratada"
 
 
 class ResumoVaga(Contrato):
