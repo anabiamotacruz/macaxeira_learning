@@ -1,0 +1,230 @@
+[
+  {
+    "id": "empresa-demo-1-software",
+    "empresa_id": "empresa-demo-1",
+    "titulo": "Software Engineer",
+    "descricao": "Vaga sintética de demonstração inspirada em https://jobs.ashbyhq.com/tako/cfedb281-76ee-47a2-8425-30b8eac9b5d1. Presencial em São Paulo. Faixa salarial não informada. Subconjunto de critérios para testes, sujeito à aprovação humana; não é reprodução integral nem vaga real da empresa fictícia.",
+    "requisitos": [
+      {
+        "id": "producao",
+        "descricao": "Experiência em desenvolvimento de software em produção",
+        "campo": "producao",
+        "valor_esperado": "sim"
+      },
+      {
+        "id": "presencial_sp",
+        "descricao": "Disponibilidade para trabalho presencial em São Paulo",
+        "campo": "presencial_sp",
+        "valor_esperado": "sim"
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "sistemas distribuídos",
+        "peso": 1.0
+      },
+      {
+        "nome": "cloud (AWS preferencial)",
+        "peso": 1.0
+      },
+      {
+        "nome": "testes e code review",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-demo-1-deployment",
+    "empresa_id": "empresa-demo-1",
+    "titulo": "AI Deployment",
+    "descricao": "Vaga sintética de demonstração inspirada em https://jobs.ashbyhq.com/tako/cc400aff-2126-4650-bca3-f6eb68a05b23. Presencial em São Paulo. Faixa salarial não informada. Subconjunto de critérios para testes, sujeito à aprovação humana; não é reprodução integral nem vaga real da empresa fictícia.",
+    "requisitos": [
+      {
+        "id": "negocio_3_anos",
+        "descricao": "Pelo menos três anos resolvendo problemas de negócio",
+        "campo": "negocio_3_anos",
+        "valor_esperado": "sim"
+      },
+      {
+        "id": "presencial_sp",
+        "descricao": "Disponibilidade para trabalho presencial em São Paulo",
+        "campo": "presencial_sp",
+        "valor_esperado": "sim"
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "transformação de processos",
+        "peso": 1.0
+      },
+      {
+        "nome": "comunicação com clientes",
+        "peso": 1.0
+      },
+      {
+        "nome": "capacidade analítica",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-demo-1-staff",
+    "empresa_id": "empresa-demo-1",
+    "titulo": "Staff Software Engineer",
+    "descricao": "Vaga sintética de demonstração inspirada em https://jobs.ashbyhq.com/tako/c3d20b0e-660e-472f-b6ef-22e00ac48ee9. Presencial em São Paulo. Faixa salarial não informada. Subconjunto de critérios para testes, sujeito à aprovação humana; não é reprodução integral nem vaga real da empresa fictícia. O anúncio de referência é afirmativo para mulheres. Essa condição é preservada como contexto; a elegibilidade é tratada pelo RH, sem seleção automática por gênero. Este cenário exercita somente requisitos profissionais.",
+    "requisitos": [
+      {
+        "id": "lideranca_tecnica",
+        "descricao": "Experiência liderando projetos e decisões de arquitetura",
+        "campo": "lideranca_tecnica",
+        "valor_esperado": "sim"
+      },
+      {
+        "id": "presencial_sp",
+        "descricao": "Disponibilidade para trabalho presencial em São Paulo",
+        "campo": "presencial_sp",
+        "valor_esperado": "sim"
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "arquitetura distribuída",
+        "peso": 1.0
+      },
+      {
+        "nome": "liderança técnica",
+        "peso": 1.0
+      },
+      {
+        "nome": "cloud (AWS preferencial)",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-demo-2-software",
+    "empresa_id": "empresa-demo-2",
+    "titulo": "Software Engineer",
+    "descricao": "Vaga sintética de demonstração inspirada em https://jobs.ashbyhq.com/tako/cfedb281-76ee-47a2-8425-30b8eac9b5d1. Presencial em São Paulo. Faixa salarial não informada. Subconjunto de critérios para testes, sujeito à aprovação humana; não é reprodução integral nem vaga real da empresa fictícia.",
+    "requisitos": [
+      {
+        "id": "producao",
+        "descricao": "Experiência em desenvolvimento de software em produção",
+        "campo": "producao",
+        "valor_esperado": "sim"
+      },
+      {
+        "id": "presencial_sp",
+        "descricao": "Disponibilidade para trabalho presencial em São Paulo",
+        "campo": "presencial_sp",
+        "valor_esperado": "sim"
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "sistemas distribuídos",
+        "peso": 1.0
+      },
+      {
+        "nome": "cloud (AWS preferencial)",
+        "peso": 1.0
+      },
+      {
+        "nome": "testes e code review",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-demo-2-deployment",
+    "empresa_id": "empresa-demo-2",
+    "titulo": "AI Deployment",
+    "descricao": "Vaga sintética de demonstração inspirada em https://jobs.ashbyhq.com/tako/cc400aff-2126-4650-bca3-f6eb68a05b23. Presencial em São Paulo. Faixa salarial não informada. Subconjunto de critérios para testes, sujeito à aprovação humana; não é reprodução integral nem vaga real da empresa fictícia.",
+    "requisitos": [
+      {
+        "id": "negocio_3_anos",
+        "descricao": "Pelo menos três anos resolvendo problemas de negócio",
+        "campo": "negocio_3_anos",
+        "valor_esperado": "sim"
+      },
+      {
+        "id": "presencial_sp",
+        "descricao": "Disponibilidade para trabalho presencial em São Paulo",
+        "campo": "presencial_sp",
+        "valor_esperado": "sim"
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "transformação de processos",
+        "peso": 1.0
+      },
+      {
+        "nome": "comunicação com clientes",
+        "peso": 1.0
+      },
+      {
+        "nome": "capacidade analítica",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-demo-2-staff",
+    "empresa_id": "empresa-demo-2",
+    "titulo": "Staff Software Engineer",
+    "descricao": "Vaga sintética de demonstração inspirada em https://jobs.ashbyhq.com/tako/c3d20b0e-660e-472f-b6ef-22e00ac48ee9. Presencial em São Paulo. Faixa salarial não informada. Subconjunto de critérios para testes, sujeito à aprovação humana; não é reprodução integral nem vaga real da empresa fictícia. O anúncio de referência é afirmativo para mulheres. Essa condição é preservada como contexto; a elegibilidade é tratada pelo RH, sem seleção automática por gênero. Este cenário exercita somente requisitos profissionais.",
+    "requisitos": [
+      {
+        "id": "lideranca_tecnica",
+        "descricao": "Experiência liderando projetos e decisões de arquitetura",
+        "campo": "lideranca_tecnica",
+        "valor_esperado": "sim"
+      },
+      {
+        "id": "presencial_sp",
+        "descricao": "Disponibilidade para trabalho presencial em São Paulo",
+        "campo": "presencial_sp",
+        "valor_esperado": "sim"
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "arquitetura distribuída",
+        "peso": 1.0
+      },
+      {
+        "nome": "liderança técnica",
+        "peso": 1.0
+      },
+      {
+        "nome": "cloud (AWS preferencial)",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  }
+]
