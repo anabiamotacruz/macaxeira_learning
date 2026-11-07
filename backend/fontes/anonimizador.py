@@ -17,6 +17,7 @@ previsto passam. Isso reduz a exposição, sem eliminar o risco, e não substitu
 """
 
 import hashlib
+import logging
 import os
 import re
 import sqlite3
@@ -27,12 +28,18 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from functools import lru_cache
 from pathlib import Path
 from threading import RLock
 from typing import Literal, NamedTuple
 
 from backend.agente.auditoria import rastreado
-from backend.agente.neutralizacao import MARCADOR, dobrar, trocas_de_genero
+from backend.agente.neutralizacao import (
+    MARCADOR,
+    MAXIMO_DE_CARACTERES_DO_PERFIL,
+    dobrar,
+    trocas_de_genero,
+)
 from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import (
     Candidato,
@@ -42,6 +49,8 @@ from backend.contratos.modelos import (
     TipoDecisao,
     Vaga,
 )
+
+logger = logging.getLogger(__name__)
 
 ETAPA_REIDENTIFICACAO = "reidentificacao"
 FINALIDADE_PACOTE = "pacote_entrega"
@@ -264,9 +273,17 @@ TERMOS_TECNICOS = frozenset(
     service services sistema sistemas site software solidity spark spring sql sqlite sre staff
     stack summary swift tech tecnologia tecnologias tensorflow terraform testes times trabalho
     typescript ubuntu unit vue web windows workspace
+    active airflow anthropic argo atividades babel bitbucket celery certificacoes circleci
+    competencias complementares confluence contato crm cursos cypress datadog dbt directory
+    educacional erp etl figma functions gunicorn helm hibernate hive istio jest junit keras
+    kibana lambda langchain llm logstash looker matplotlib native nestjs nlp notion numpy nuxt
+    openai pessoais pipeline pipelines postman premios prisma profissionais prometheus
+    publicacoes pydantic pytest referencias remix salesforce sap scipy selenium sequelize
+    slack snowflake streaming studio svelte tableau tailwind tecnicas tecnicos teams trino
+    uvicorn visual vite webpack architect certified master solutions
     """.split()
 )
-"""Palavras que não identificam ninguém. Sequência com alguma delas não vira `[NOME_n]`."""
+"""Palavras que não identificam ninguém: numa sequência, não contam como parte de um nome."""
 
 _DOMINIOS_TECNICOS = frozenset({"ado.net", "asp.net", "dot.net", "socket.io", "vb.net"})
 _REDES_DE_PERFIL = (
@@ -284,31 +301,72 @@ _REDES_DE_PERFIL = (
     "x.com",
 )
 _PARTICULAS = frozenset({"da", "das", "de", "del", "di", "do", "dos", "e", "van", "von"})
+_PALAVRAS_COMUNS = frozenset(
+    "ao aos as com em na nas no nos os ou para por que um uma "
+    "and at by for in of on the to with".split()
+)
+"""Em texto todo em maiúsculas, estas palavras separam: não fazem parte de um nome."""
 _MENOR_PARTE_DE_NOME = 3
 _MENOR_VALOR_CONHECIDO = 4
+_MAIOR_NOME_EM_PALAVRAS = 6
+_MENOR_PALAVRA_EM_CAIXA_ALTA = 4
 
 _FIM_DE_URL = r"[^\s<>\"'()\[\]{}]*"
-_TLD = (
-    r"(?:ai|app|br|co|com|dev|edu|gg|info|invalid|io|me|net|org|pt|sh|site|tech|xyz)"
-    r"(?:\.[a-z]{2})?"
+_SUFIXOS_COMUNS = "ai|app|br|co|com|dev|edu|gg|info|invalid|io|me|net|org|pt|sh|site|tech|xyz"
+_TLD = rf"(?:{_SUFIXOS_COMUNS})(?:\.[a-z]{{2}})?"
+_ROTULOS = r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*"
+_URL_COM_ESQUEMA = rf"(?:https?://|ftp://|www\.){_FIM_DE_URL}"
+_URL_DE_CONTATO = re.compile(
+    rf"{_URL_COM_ESQUEMA}|(?<![\w@.-]){_ROTULOS}\.{_TLD}(?![\w-])(?:/{_FIM_DE_URL})?"
 )
+"""O que vira contato registrado: só sufixo comum, para não registrar `os.path` como site."""
 _URL = re.compile(
-    rf"(?:https?://|ftp://|www\.){_FIM_DE_URL}"
-    rf"|(?<![\w@.-])[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.{_TLD}(?![\w-])(?:/{_FIM_DE_URL})?"
+    rf"{_URL_COM_ESQUEMA}|(?<![\w@.-]){_ROTULOS}\.(?P<sufixo>[a-z]{{2,24}})(?![\w-])"
+    rf"(?:/{_FIM_DE_URL})?"
 )
+"""O que sai do texto: qualquer sufixo, porque uma lista de domínios deixaria `.ninja` passar."""
+_SUFIXOS_RECONHECIDOS = frozenset(_SUFIXOS_COMUNS.split("|"))
+_SUFIXOS_DE_CODIGO = frozenset(
+    """
+    args bat c cfg class conf cpp cs css csv data doc docx dll env exe get gif go gz h html ini
+    items jar java join jpeg jpg js json jsx keys kt len lock log main md name npy open path pdf
+    php png ppt pptx py rb read rs run self set size so split sql svg tar text this toml ts tsx
+    txt type value war write xls xlsx xml yaml yml zip
+    """.split()
+)
+"""Arquivo e atributo de código, e não site: `README.md`, `Node.js` e `os.path` ficam no texto."""
 _EMAIL = re.compile(
     r"(?<![a-z0-9._%+-])[a-z0-9._%+-]+"
     r"(?:@|\s*[(\[](?:at|arroba)[)\]]\s*|\s+(?:at|arroba)\s+)"
     r"[a-z0-9-]+"
     r"(?:(?:\.|\s*[(\[](?:dot|ponto)[)\]]\s*|\s+(?:dot|ponto)\s+)[a-z0-9-]+)+"
 )
+_EMAIL_COM_ESPACOS = re.compile(
+    r"(?<![a-z0-9._%+-])[a-z0-9._%+-]+\s*@\s*[a-z0-9-]+"
+    r"(?:(?:\.|\s+\.\s+)[a-z0-9-]+)*"
+    rf"(?:\.|\s+\.\s+)(?:{_SUFIXOS_COMUNS})(?![\w-])"
+)
+"""Só sai do texto, e nunca vira contato: `Dev @ Stone.com` não é um endereço da pessoa."""
 _APELIDO = re.compile(r"(?<![\w.@/])@[a-z0-9_][a-z0-9_.-]{1,38}(?![\w/])")
+_REDES = "github|gitlab|linkedin|twitter|instagram"
+_USUARIO = r"@?([a-z0-9_][a-z0-9_.-]{1,38})"
 _USUARIO_DECLARADO = re.compile(
-    r"\b(?:github|gitlab|linkedin|twitter|instagram|usuario|username|user|handle)\s*[:=]\s*"
-    r"([a-z0-9_][a-z0-9_.-]{1,38})"
+    rf"\b(?:{_REDES}|usuario|username|user|handle)\s*[:=]\s*([a-z0-9_][a-z0-9_.-]{{1,38}})"
+)
+_USUARIO_DITO_NA_FRASE = re.compile(
+    rf"\b(?:meu|minha|my)\s+(?:{_REDES}|usuario|username|user|handle)\s+(?:e|eh|is)\s+{_USUARIO}"
+)
+_USUARIO_APOS_A_REDE = re.compile(
+    rf"\b(?:{_REDES})\s+(?:(?:e|eh|is)\s+)?@?"
+    r"((?=[a-z0-9_.-]*[a-z])(?=[a-z0-9_.-]*[\d_-])[a-z0-9_][a-z0-9_.-]{3,38})"
+)
+"""Sem `meu`, só o que tem forma de usuário: `github actions` continua sendo uma ferramenta."""
+_NAO_E_USUARIO = frozenset(
+    "aberto ativo atualizado completo privado publico active open private public".split()
 )
 _DOCUMENTO = re.compile(
     r"\b\d{3}[.\s]\d{3}[.\s]\d{3}[-.\s]\d{2}\b"
+    r"|\b\d{1,2}\.\d{3}\.\d{3}-[\dx]\b"
     r"|\b\d{2}\.?\d{3}\.?\d{3}/\d{4}-?\d{2}\b"
     r"|\b(?:cpf|cnpj|rg|cnh|pis|pasep|ctps|passaporte|passport|ssn|titulo de eleitor)\b"
     r"\s*(?:n[o.]*\s*)?[:=]?\s*[a-z0-9][a-z0-9./-]{3,}"
@@ -316,13 +374,20 @@ _DOCUMENTO = re.compile(
 _TELEFONE = re.compile(
     r"(?<![\d/.-])(?:\+\d{1,3}[\s.-]?\(?\d{1,4}\)?(?:[\s.-]?\d{2,5}){1,3}"
     r"|\(?\d{2,3}\)?[\s.-]?(?:9[\s.]?)?\d{4}[\s.-]?\d{4}"
+    r"|\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}"
+    r"|\d(?:[\s.-]\d){9,12}"
     r"|\d{10,13})(?![\d])"
 )
 _TELEFONE_LOCAL = re.compile(
     r"\b(?:tel|telefone|fone|celular|cel|whats|whatsapp|contato)\b\s*[:=.]?\s*(\d{4}[\s.-]?\d{4})\b"
 )
+_TITULO_DE_RUA = r"\b(?:dr|dra|prof|profa|sr|sra|gen|cel|cap|pe|sto|sta)\."
+_NOME_DE_RUA = rf"(?:[^\n,;.]|{_TITULO_DE_RUA}){{2,60}}"
 _ENDERECO = re.compile(
-    r"\b(?:rua|avenida|av\.|alameda|travessa|rodovia)\s+[^\n,;.]{2,60}(?:,\s*(?:n[o.]*\s*)?\d+[a-z]?)?"
+    rf"\b(?:rua|avenida|av\.|alameda|al\.|travessa|trav\.|rodovia|rod\.|estrada|praca)\s+{_NOME_DE_RUA}"
+    r"(?:,\s*(?:n[o.]*\s*)?\d+[a-z]?)?"
+    rf"|\br\.\s+(?:(?:das?|dos?|de)\s+{_NOME_DE_RUA}(?:,\s*(?:n[o.]*\s*)?\d+[a-z]?)?"
+    rf"|{_NOME_DE_RUA},\s*(?:n[o.]*\s*)?\d+[a-z]?)"
     r"|\b\d{1,5}\s+\w+(?:\s+\w+)?\s+(?:street|st\.|avenue|ave\.|road|rd\.|boulevard)"
     r"|\bcep\s*[:=]?\s*\d{5}-?\d{3}\b"
     r"|\b\d{5}-\d{3}\b"
@@ -358,6 +423,8 @@ _EMPREGADOR = re.compile(
     rf"|(?P<e>{_PALAVRA_PROPRIA}(?:\s+{_PALAVRA_PROPRIA}){{0,5}}\s+"
     r"(?:Ltda|S\.?A\.?|Inc|LLC|Corp|GmbH|Eireli)\b\.?)"
     rf"|(?<=\s)(?:na|no|pela|pelo)\s+(?:empresa\s+)?(?P<f>{_SEQUENCIA})"
+    rf"|(?P<g>{_SEQUENCIA})\s*[(\[|,-]\s*(?:19|20)\d{{2}}\s*(?:[-–—]|\ba\b|\bate\b|\bto\b)\s*"
+    r"(?:(?:19|20)\d{2}|[Aa]tual|[Hh]oje|[Pp]resente|[Pp]resent|[Cc]urrent)\b"
 )
 _INSTITUICAO = re.compile(
     r"\b(?:Universidade|Faculdade|Instituto|Escola|Col[eé]gio|Centro Universit[aá]rio"
@@ -375,12 +442,17 @@ _NOME_DECLARADO = re.compile(
     r"(?:\b[Mm]eu nome [eé]|\b[Mm]e chamo|\b[Nn]ome\s*:|\b[Mm]y name is|\b[Nn]ame\s*:)\s+"
     rf"(?P<nome>{_SEQUENCIA})"
 )
+_PALAVRA_DE_NOME = r"[A-ZÀ-Ý](?:[a-zà-ÿ]+|[A-ZÀ-Ý]+)"
 _SEQUENCIA_DE_NOMES = re.compile(
-    r"(?<![\w.-])[A-ZÀ-Ý][a-zà-ÿ]+(?:\s+(?:(?:de|do|da|dos|das)\s+)?[A-ZÀ-Ý][a-zà-ÿ]+)+(?![\w-])"
+    rf"(?<![\w.-]){_PALAVRA_DE_NOME}"
+    rf"(?:\s+(?:(?:de|do|da|dos|das|DE|DO|DA|DOS|DAS)\s+)?{_PALAVRA_DE_NOME})+(?![\w-])"
 )
+_LETRAS_ESPACADAS = re.compile(r"(?<![\w.-])[A-ZÀ-Ý](?:[ \t][A-Za-zÀ-ÿ]){2,}(?![\w-])")
 _FIM_DE_VERBO = ("ei", "ou")
 _ENTRE_PARTES_DE_NOME = re.compile(r"\s*(?:(?:de|da|do|dos|das|di|del|van|von|[A-ZÀ-Ý]\.?)\s*)*")
 _INICIAIS_ANTES = re.compile(r"(?:\b[A-ZÀ-Ý]\.\s*)+(?:(?:de|da|do|dos|das)\s+)?$")
+_JANELA_DAS_INICIAIS = 40
+"""Só o que vem logo antes do nome: olhar a frase inteira teria custo quadrático."""
 _SEPARADOR_DE_VALORES = re.compile(r"[,;|]")
 
 _CAMPOS_POR_CATEGORIA = {
@@ -402,12 +474,64 @@ _CAMPOS_POR_CATEGORIA = {
     Categoria.INSTITUICAO: {"instituicao", "universidade", "faculdade", "escola", "university"},
     Categoria.PROJETO: {"projeto", "projetos", "repositorio", "repositorios"},
 }
-_INVISIVEIS = re.compile(r"[­͏؜᠎​-‏‪-‮⁠-⁯﻿]")
+_CONTROLE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_SEM_MARCA_VISIVEL = frozenset("\u115f\u1160\u17b4\u17b5\u2800\u3164\uffa0")
+"""Letras em branco: não são caracteres de formato, mas também não aparecem na tela."""
+_ULTIMO_LATIN_1 = 0xFF
+_HOMOGLIFOS = str.maketrans(
+    {
+        **dict(zip("АВЕКМНОРСТХЅІЈԚԜ", "ABEKMHOPCTXSIJQW", strict=True)),
+        **dict(zip("аеорсухѕіјһԁԛԝѵ", "aeopcyxsijhdqwv", strict=True)),
+        **dict(zip("ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "ABEZHIKMNOPTYX", strict=True)),
+        **dict(zip("αιοντ", "aiovt", strict=True)),
+    }
+)
+"""Cirílico e grego iguais a letras latinas na tela. Só `_palavra_sem_homoglifos` os troca."""
+_PALAVRA_QUALQUER = re.compile(r"\w+")
+
+
+@lru_cache(maxsize=4096)
+def _caractere_canonico(caractere: str) -> str:
+    """Vazio se não aparece na tela. Largura total e afins viram ASCII: `［` é `[` para o modelo."""
+    categoria = unicodedata.category(caractere)
+    if categoria == "Cf" or caractere in _SEM_MARCA_VISIVEL:
+        return ""
+    if categoria in ("Mn", "Me"):
+        return caractere
+    if ord(caractere) > _ULTIMO_LATIN_1:
+        compativel = unicodedata.normalize("NFKC", caractere)
+        if compativel.isascii():
+            return compativel
+    return caractere
+
+
+def _palavra_sem_homoglifos(achado: re.Match[str]) -> str:
+    """Troca só o que disfarça: palavra toda em cirílico de verdade fica como está."""
+    palavra = achado.group()
+    trocada = palavra.translate(_HOMOGLIFOS)
+    if trocada == palavra:
+        return palavra
+    so_homoglifos = all(c.isascii() or c in "".join(map(chr, _HOMOGLIFOS)) for c in palavra)
+    return trocada if so_homoglifos or _tem_letra_latina(palavra) else palavra
+
+
+def _tem_letra_latina(palavra: str) -> bool:
+    return any(c.isascii() and c.isalpha() or "À" <= c <= "ÿ" for c in palavra)
 
 
 def forma_canonica(texto: str) -> str:
-    """Tira caractere invisível e compõe acentos: disfarce não pode esconder identificador."""
-    return unicodedata.normalize("NFC", _INVISIVEIS.sub("", texto))
+    """Tira o que não aparece na tela e o que se passa por outra letra.
+
+    Disfarce não pode esconder identificador: caracteres de formato e de tag, seletores de variação,
+    marcas soltas, largura total e homóglifos saem antes de qualquer procura.
+    """
+    sem_controle = _CONTROLE.sub("", texto)
+    if sem_controle.isascii():
+        return sem_controle
+    visivel = "".join(map(_caractere_canonico, sem_controle))
+    composto = unicodedata.normalize("NFC", visivel)
+    sem_marcas = "".join(c for c in composto if unicodedata.category(c) not in ("Mn", "Me"))
+    return _PALAVRA_QUALQUER.sub(_palavra_sem_homoglifos, sem_marcas)
 
 
 @dataclass(frozen=True)
@@ -454,6 +578,51 @@ def _regex_de_valor(valor: str) -> re.Pattern[str]:
     return re.compile(rf"(?<![\w]){r'\s+'.join(partes)}(?![\w])")
 
 
+def _parece_endereco(url: str, sufixo: str | None) -> bool:
+    """Decide por forma, sem lista de domínios, e deixa de fora arquivo e atributo de código."""
+    if sufixo is None or "/" in url:
+        return True
+    if dobrar(url) in _DOMINIOS_TECNICOS:
+        return False
+    if sufixo in _SUFIXOS_RECONHECIDOS:
+        return True
+    # `fim.Depois` é uma frase sem espaço depois do ponto, não um endereço.
+    escrito = url[-len(sufixo) :]
+    return sufixo not in _SUFIXOS_DE_CODIGO and not (escrito[0].isupper() and escrito[1:].islower())
+
+
+def _pedacos_de_endereco(url: str) -> list[str]:
+    """Como a pessoa pode citar o próprio site: sem protocolo, pelo nome e pelo usuário."""
+    sem_protocolo = re.sub(r"^(?:https?://)?(?:www\.)?", "", url.strip(), flags=re.I).rstrip("/")
+    host, _, caminho = sem_protocolo.partition("/")
+    pedacos = [sem_protocolo, host]
+    if dobrar(host) not in _REDES_DE_PERFIL and "." in host:
+        pedacos.append(host.split(".")[0])
+    pedacos += [p for p in caminho.split("/") if any(c.isdigit() for c in p)]
+    return [p for p in pedacos if p]
+
+
+def _o_que_atravessa_frases(texto: str) -> list[tuple[int, int, Categoria]]:
+    """Endereços e e-mails com espaços, procurados no texto inteiro, em ordem e sem sobreposição."""
+    dobrado = dobrar(texto)
+    achados: list[tuple[int, int, Categoria]] = []
+    for padrao, categoria in (
+        (_ENDERECO, Categoria.ENDERECO),
+        (_EMAIL_COM_ESPACOS, Categoria.EMAIL),
+    ):
+        for achado in padrao.finditer(dobrado):
+            fim = achado.end()
+            while fim > achado.start() and dobrado[fim - 1] in " .":
+                fim -= 1
+            achados.append((achado.start(), fim, categoria))
+    achados.sort(key=lambda achado: achado[:2])
+    sem_sobrepor: list[tuple[int, int, Categoria]] = []
+    for achado in achados:
+        if not sem_sobrepor or achado[0] >= sem_sobrepor[-1][1]:
+            sem_sobrepor.append(achado)
+    return sem_sobrepor
+
+
 class ContatoEncontrado(NamedTuple):
     categoria: Categoria
     valor: str
@@ -471,7 +640,7 @@ def encontrar_contatos(texto: str) -> list[ContatoEncontrado]:
         valor = re.sub(r"\s*[(\[](?:at|arroba)[)\]]\s*|\s+(?:at|arroba)\s+", "@", achado.group())
         valor = re.sub(r"\s*[(\[](?:dot|ponto)[)\]]\s*|\s+(?:dot|ponto)\s+", ".", valor)
         achados.append((achado.start(), achado.end(), Categoria.EMAIL, valor))
-    for achado in _URL.finditer(dobrado):
+    for achado in _URL_DE_CONTATO.finditer(dobrado):
         fim = achado.start() + len(achado.group().rstrip(".,;:!?"))
         url = canonico[achado.start() : fim]
         if dobrar(url) in _DOMINIOS_TECNICOS or _sobrepoe(achado.start(), fim, achados):
@@ -606,7 +775,10 @@ class SessaoPseudonimizacao:
         self._politica = politica
         self._empresa_id = empresa_id
         self._candidato_id = candidato_id
-        self.fonte = forma_canonica(texto)
+        if len(texto) > MAXIMO_DE_CARACTERES_DO_PERFIL:
+            logger.warning("perfil cortado no limite de tamanho: %s", candidato_id)
+        self.fonte = forma_canonica(texto[:MAXIMO_DE_CARACTERES_DO_PERFIL])
+        self._atravessam_frases = _o_que_atravessa_frases(self.fonte)
         self._preservar_valores = {" ".join(dobrar(p).split()) for p in preservar}
         self._preservar_palavras = {
             palavra for p in self._preservar_valores for palavra in re.findall(r"\w+", p)
@@ -614,7 +786,9 @@ class SessaoPseudonimizacao:
         self._preservados = 0
         self._nome_principal = next((n.strip() for n in identificadores.nomes if n.strip()), "")
         self._conhecidos = self._preparar(identificadores)
-        self._partes_do_nome, self._partes_curtas = self._preparar_nomes(identificadores)
+        self._partes_do_nome, self._partes_curtas, self._nome_espacado = self._preparar_nomes(
+            identificadores
+        )
 
     @property
     def preservados(self) -> int:
@@ -625,11 +799,11 @@ class SessaoPseudonimizacao:
 
     def _preparar_nomes(
         self, identificadores: Identificadores
-    ) -> tuple[re.Pattern[str] | None, re.Pattern[str] | None]:
+    ) -> tuple[re.Pattern[str] | None, re.Pattern[str] | None, re.Pattern[str] | None]:
         longas: set[str] = set()
         curtas: set[str] = set()
         for nome in (*identificadores.nomes, *self._nomes_no_texto()):
-            for parte in re.findall(r"[^\W\d_]+", nome):
+            for parte in re.findall(r"[^\W\d_]+", forma_canonica(nome)):
                 if dobrar(parte) in _PARTICULAS:
                     continue
                 if len(parte) >= _MENOR_PARTE_DE_NOME:
@@ -643,7 +817,12 @@ class SessaoPseudonimizacao:
             opcoes = "|".join(re.escape(p) for p in sorted(partes, key=len, reverse=True))
             return re.compile(rf"(?<!\w)(?:{opcoes})(?!\w)")
 
-        return regex(longas), regex(curtas)
+        espacadas = "|".join(
+            r"\s+".join(re.escape(letra) for letra in parte)
+            for parte in sorted(longas, key=len, reverse=True)
+        )
+        espacado = re.compile(rf"(?<!\w)(?:{espacadas})(?!\w)") if espacadas else None
+        return regex(longas), regex(curtas), espacado
 
     def _preparar(
         self, identificadores: Identificadores
@@ -653,6 +832,9 @@ class SessaoPseudonimizacao:
         for categoria, valor in identificadores.valores:
             if categoria not in (Categoria.LINK, Categoria.PERFIL):
                 conhecidos.setdefault((categoria, dobrar(valor)), valor)
+            else:
+                for pedaco in _pedacos_de_endereco(valor):
+                    conhecidos.setdefault((categoria, dobrar(pedaco)), pedaco)
             usuario = _usuario_em_url(valor)
             if usuario:
                 conhecidos.setdefault((Categoria.PERFIL, usuario), usuario)
@@ -689,7 +871,7 @@ class SessaoPseudonimizacao:
             p in TERMOS_TECNICOS or p in _PARTICULAS for p in re.findall(r"\w+", dobrar(valor))
         )
 
-    def _achados(self, frase: str) -> list[Achado]:
+    def _achados(self, frase: str, deslocamento: int = 0) -> list[Achado]:
         dobrada = dobrar(frase)
         achados: list[Achado] = []
 
@@ -704,12 +886,13 @@ class SessaoPseudonimizacao:
 
         for achado in MARCADOR.finditer(frase):
             incluir(achado.start(), achado.end(), None, MARCA_FORJADA)
+        self._incluir_o_que_atravessa_frases(deslocamento, len(frase), incluir)
         for achado in _EMAIL.finditer(dobrada):
             incluir(achado.start(), achado.end(), Categoria.EMAIL, None)
         for achado in _URL.finditer(dobrada):
             fim = achado.start() + len(achado.group().rstrip(".,;:!?"))
             url = frase[achado.start() : fim]
-            if dobrar(url) in _DOMINIOS_TECNICOS:
+            if not _parece_endereco(url, achado.group("sufixo")):
                 continue
             categoria = Categoria.PERFIL if _usuario_em_url(url) else Categoria.LINK
             incluir(achado.start(), fim, categoria, None)
@@ -722,15 +905,14 @@ class SessaoPseudonimizacao:
                 incluir(achado.start(), achado.end(), Categoria.TELEFONE, None)
         for achado in _TELEFONE_LOCAL.finditer(dobrada):
             incluir(achado.start(1), achado.end(1), Categoria.TELEFONE, None)
-        for achado in _USUARIO_DECLARADO.finditer(dobrada):
-            incluir(achado.start(1), achado.end(1), Categoria.PERFIL, None)
+        for padrao in (_USUARIO_DECLARADO, _USUARIO_DITO_NA_FRASE, _USUARIO_APOS_A_REDE):
+            for achado in padrao.finditer(dobrada):
+                usuario = achado.group(1).rstrip(".-")
+                if usuario not in TERMOS_TECNICOS and usuario not in _NAO_E_USUARIO:
+                    incluir(achado.start(1), achado.start(1) + len(usuario), Categoria.PERFIL, None)
         for achado in _APELIDO.finditer(dobrada):
             fim = achado.start() + len(achado.group().rstrip(".-"))
             incluir(achado.start(), fim, Categoria.PERFIL, None)
-        for achado in _ENDERECO.finditer(dobrada):
-            incluir(
-                achado.start(), len(frase[: achado.end()].rstrip(" .")), Categoria.ENDERECO, None
-            )
         for achado in _MORADIA.finditer(frase):
             grupo = "lugar" if achado.group("lugar") else "bairro"
             incluir(achado.start(grupo), achado.end(grupo), Categoria.ENDERECO, None)
@@ -756,19 +938,45 @@ class SessaoPseudonimizacao:
                 self._incluir_indireto(
                     achado.start(grupo), achado.end(grupo), frase, categoria, incluir
                 )
+        comeco = len(frase) - len(frase.lstrip())
         for achado in _SEQUENCIA_DE_NOMES.finditer(frase):
-            self._incluir_sequencia(achado, frase, incluir)
+            self._incluir_sequencia(achado, comeco, incluir)
+        for achado in _LETRAS_ESPACADAS.finditer(frase):
+            if self._generalizavel(Categoria.NOME, achado.group()):
+                incluir(achado.start(), achado.end(), Categoria.NOME, None)
         for inicio, fim, novo in trocas_de_genero(frase):
             incluir(inicio, fim, None, novo)
         return achados
 
+    def _incluir_o_que_atravessa_frases(
+        self, deslocamento: int, tamanho: int, incluir: Callable
+    ) -> None:
+        """O ponto de `R. das Flores` e de `gmail . com` corta a frase no meio do identificador."""
+        fim_da_frase = deslocamento + tamanho
+        primeiro = max(0, bisect_left(self._atravessam_frases, (deslocamento,)) - 1)
+        for inicio, fim, categoria in self._atravessam_frases[primeiro:]:
+            if inicio >= fim_da_frase:
+                break
+            if fim > deslocamento:
+                incluir(
+                    max(inicio, deslocamento) - deslocamento,
+                    min(fim, fim_da_frase) - deslocamento,
+                    categoria,
+                    None,
+                )
+
     def _incluir_nomes(self, frase: str, dobrada: str, incluir: Callable) -> None:
-        for padrao, texto in ((self._partes_do_nome, dobrada), (self._partes_curtas, frase)):
+        for padrao, texto in (
+            (self._partes_do_nome, dobrada),
+            (self._partes_curtas, frase),
+            (self._nome_espacado, dobrada),
+        ):
             if padrao is None:
                 continue
             for achado in padrao.finditer(texto):
                 inicio = achado.start()
-                iniciais = _INICIAIS_ANTES.search(frase[:inicio])
+                comeco_da_janela = max(0, inicio - _JANELA_DAS_INICIAIS)
+                iniciais = _INICIAIS_ANTES.search(frase, comeco_da_janela, inicio)
                 incluir(
                     iniciais.start() if iniciais else inicio, achado.end(), Categoria.PESSOA, None
                 )
@@ -792,20 +1000,41 @@ class SessaoPseudonimizacao:
             return
         incluir(inicio, fim, categoria, None)
 
-    def _incluir_sequencia(self, achado: re.Match[str], frase: str, incluir: Callable) -> None:
-        valor = achado.group()
-        inicio = achado.start()
-        palavras = valor.split()
-        # Verbo no início da frase não é nome: `Criei Dashboards` não fala de ninguém.
-        if not frase[:inicio].strip() and dobrar(palavras[0]).endswith(_FIM_DE_VERBO):
-            inicio += len(palavras[0]) + 1
-            valor = " ".join(palavras[1:])
-            palavras = palavras[1:]
-        proprias = [p for p in palavras if dobrar(p) not in _PARTICULAS]
-        if len(proprias) < 2 or any(dobrar(p) in TERMOS_TECNICOS for p in proprias):
-            return
-        if self._generalizavel(Categoria.NOME, valor):
-            incluir(inicio, inicio + len(valor), Categoria.NOME, None)
+    def _incluir_sequencia(self, achado: re.Match[str], comeco: int, incluir: Callable) -> None:
+        """Cada pedaço da sequência sem palavra técnica é um nome: `Gerente Carlos Souza`."""
+        corrida: list[re.Match[str]] = []
+
+        def fechar() -> None:
+            while corrida and dobrar(corrida[-1].group()) in _PARTICULAS:
+                corrida.pop()
+            proprias = [p.group() for p in corrida if dobrar(p.group()) not in _PARTICULAS]
+            todas_em_caixa_alta = all(p.isupper() for p in proprias)
+            curtas_demais = todas_em_caixa_alta and all(
+                len(p) < _MENOR_PALAVRA_EM_CAIXA_ALTA for p in proprias
+            )
+            if len(proprias) >= 2 and not curtas_demais:
+                inicio = achado.start() + corrida[0].start()
+                fim = achado.start() + corrida[-1].end()
+                valor = achado.string[inicio:fim]
+                if self._generalizavel(Categoria.NOME, valor):
+                    incluir(inicio, fim, Categoria.NOME, None)
+            corrida.clear()
+
+        for palavra in re.finditer(r"\S+", achado.group()):
+            dobrada = dobrar(palavra.group())
+            # Verbo no início da frase não é nome: `Criei Dashboards` não fala de ninguém.
+            verbo = (
+                achado.start() == comeco
+                and palavra.start() == 0
+                and dobrada.endswith(_FIM_DE_VERBO)
+            )
+            if verbo or dobrada in TERMOS_TECNICOS or dobrada in _PALAVRAS_COMUNS:
+                fechar()
+            elif corrida or dobrada not in _PARTICULAS:
+                corrida.append(palavra)
+                if len(corrida) >= _MAIOR_NOME_EM_PALAVRAS:
+                    fechar()
+        fechar()
 
     @staticmethod
     def _unir_partes_do_nome(frase: str, achados: list[Achado]) -> list[Achado]:
@@ -833,7 +1062,7 @@ class SessaoPseudonimizacao:
     def frase(self, inicio: int, fim: int) -> FrasePseudonimizada:
         """Troca o que identifica em um pedaço de `fonte`, guardando as posições de origem."""
         trecho = self.fonte[inicio:fim]
-        achados = self._unir_partes_do_nome(trecho, self._achados(trecho))
+        achados = self._unir_partes_do_nome(trecho, self._achados(trecho, inicio))
         saida: list[str] = []
         segmentos: list[Segmento] = []
         marcadores: list[str] = []
