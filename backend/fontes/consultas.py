@@ -29,7 +29,27 @@ _SENSIVEL = re.compile(
     r"muslim|christian|jewish|nascimento|birth|gestante|gravida|pregnant)\b"
 )
 _OPERADOR = re.compile(r"\b(AND|OR|NOT)\b|[\"'<>:{}()\[\]\\]|(?<!\w)-")
-_INSTRUCAO = re.compile(r"\b(ignore|revele|desconsidere|instrucoes|system|prompt)\b")
+_INSTRUCAO = re.compile(r"\b(ignore|revele|desconsidere|instrucoes)\b")
+
+# Apenas palavras de ligação e introduções genéricas; sem stemming ou sinônimos
+# inventados. Preservamos grafia técnica (C++, C#, .NET, versões e acentos).
+_PALAVRAS_DE_LIGACAO = frozenset(
+    "a o as os um uma uns umas de da do das dos em na no nas nos para com e ou "
+    "experiência experiencia conhecimento conhecimentos vivência vivencia "
+    "experience knowledge in on of with and the required obrigatório obrigatória".split()
+)
+
+
+def _palavras_chave(texto: str) -> str:
+    termos = re.findall(r"[\w+#]+(?:[.-][\w+#]+)*|\.NET", texto, flags=re.IGNORECASE)
+    vistos = set()
+    palavras = []
+    for termo in termos:
+        chave = termo.casefold()
+        if chave not in _PALAVRAS_DE_LIGACAO and chave not in vistos:
+            palavras.append(termo)
+            vistos.add(chave)
+    return " ".join(palavras)
 
 
 class SugestoesConsultas(BaseModel):
@@ -94,7 +114,7 @@ def _registrar(vaga: Vaga, etapa: str, regra: str, quantidade: int) -> None:
 
 
 def _gerar(vaga: Vaga, cliente: ClienteModelo, *, ampliar: bool) -> list[str]:
-    titulo, requisitos = _dados_vaga(vaga)
+    titulo, _ = _dados_vaga(vaga)
     etapa = "ampliar_consultas" if ampliar else "gerar_consultas"
     _registrar(vaga, etapa, "solicitar_sinonimos", 0)
     try:
@@ -113,10 +133,22 @@ def _gerar(vaga: Vaga, cliente: ClienteModelo, *, ampliar: bool) -> list[str]:
     except (RespostaInvalida, ModeloIndisponivel, ValidationError, ValueError):
         cargos, regra = [titulo], "consulta_basica"
 
+    termos_requisitos = [
+        requisito.valor_esperado
+        if requisito.valor_esperado.strip()
+        and _normalizar(requisito.valor_esperado) not in {"sim", "true", "yes"}
+        else requisito.descricao
+        for requisito in vaga.requisitos
+    ]
+    palavras = _palavras_chave(" ".join(termos_requisitos))
+    # A primeira consulta não exige o título literal quando há requisitos.
+    # Os demais cargos são alternativas adicionais, não filtros eliminatórios.
+    if palavras:
+        cargos = ["", *cargos] if regra == "sinonimos_validados" else [""]
     consultas = []
     vistos = set()
     for cargo in cargos:
-        consulta = " ".join([cargo, *requisitos])
+        consulta = " ".join(parte for parte in [cargo, palavras] if parte)
         chave = _normalizar(consulta)
         if chave not in vistos:
             consultas.append(consulta)
@@ -126,7 +158,7 @@ def _gerar(vaga: Vaga, cliente: ClienteModelo, *, ampliar: bool) -> list[str]:
 
 
 def gerar_consultas(vaga: Vaga, cliente_modelo: ClienteModelo) -> list[str]:
-    """Gera consulta básica e até seis variações de cargo com os mesmos requisitos."""
+    """Gera palavras-chave dos requisitos e variações adicionais de cargo."""
     return _gerar(vaga, cliente_modelo, ampliar=False)
 
 
