@@ -24,12 +24,13 @@ from typing import Literal, NamedTuple, Protocol
 
 from pydantic import AwareDatetime, ValidationError
 
-from backend.agente.fluxo import TRANSICOES, EstadoFluxo
+from backend.agente.maquina import TRANSICOES
 from backend.agente.persistencia import Repositorio
 from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import (
     Contrato,
     Decisao,
+    EstadoFluxo,
     EventoFluxo,
     Mandato,
     Texto,
@@ -43,7 +44,7 @@ PREFIXO_AGENTE = "agente:"
 SEM_CONTEXTO = "sem-contexto"
 ETAPA_AUDITORIA = "auditoria_amostra"
 ETAPA_LIBERACAO = "auditoria_liberada"
-MOTIVO_AUDITORIA_REPROVADA = "auditoria_reprovada"
+MOTIVO_AUDITORIA_REPROVADA = "AUDITORIA_REPROVADA"
 TIPOS_AUTOMATICOS = frozenset({TipoDecisao.INDICAR, TipoDecisao.DESCARTAR})
 NAO_MEDIDO: Literal["não medido"] = "não medido"
 _RESPONSAVEL_AGENTE = re.compile(

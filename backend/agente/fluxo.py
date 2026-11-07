@@ -6,14 +6,19 @@ no `Repositorio`, e um novo objeto sobre o mesmo arquivo continua de onde o outr
 """
 
 import hashlib
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import StrEnum
-from types import MappingProxyType
 
 from pydantic import AwareDatetime
 
+from backend.agente.auditoria import (
+    MOTIVO_AUDITORIA_REPROVADA,
+    Auditoria,
+    DecisaoIncompleta,
+    DecisoesAutomaticasPausadas,
+)
 from backend.agente.mandato import (
     Mandato,
     MandatoInvalido,
@@ -23,6 +28,7 @@ from backend.agente.mandato import (
     hash_da_vaga,
     mandato_valido,
 )
+from backend.agente.maquina import ESTADOS_ATIVOS, TRANSICOES
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import (
     TipoEvidencia,
@@ -71,49 +77,6 @@ from backend.contratos.modelos import (
 
 class TransicaoInvalida(ErroContrato):
     """Transição fora da tabela ou sem a guarda exigida."""
-
-
-ESTADOS_ATIVOS = frozenset(
-    {
-        EstadoFluxo.BUSCANDO,
-        EstadoFluxo.ANALISANDO,
-        EstadoFluxo.REVISANDO,
-        EstadoFluxo.DECIDINDO,
-        EstadoFluxo.META_EM_RISCO,
-        EstadoFluxo.CONVIDANDO,
-        EstadoFluxo.ENTREGANDO,
-    }
-)
-"""Estados em execução, depois da assinatura: só eles pausam e só eles exigem mandato válido."""
-
-
-def _ou_pausa(*destinos: EstadoFluxo) -> frozenset[EstadoFluxo]:
-    return frozenset({*destinos, EstadoFluxo.PAUSADA})
-
-
-TRANSICOES: Mapping[EstadoFluxo, frozenset[EstadoFluxo]] = MappingProxyType(
-    {
-        EstadoFluxo.RASCUNHO: frozenset({EstadoFluxo.AGUARDANDO_MANDATO}),
-        EstadoFluxo.AGUARDANDO_MANDATO: frozenset({EstadoFluxo.BUSCANDO, EstadoFluxo.RASCUNHO}),
-        EstadoFluxo.BUSCANDO: _ou_pausa(EstadoFluxo.ANALISANDO, EstadoFluxo.META_EM_RISCO),
-        EstadoFluxo.ANALISANDO: _ou_pausa(EstadoFluxo.REVISANDO),
-        EstadoFluxo.REVISANDO: _ou_pausa(EstadoFluxo.DECIDINDO),
-        EstadoFluxo.DECIDINDO: _ou_pausa(
-            EstadoFluxo.BUSCANDO,
-            EstadoFluxo.META_EM_RISCO,
-            EstadoFluxo.CONVIDANDO,
-            EstadoFluxo.ENTREGANDO,
-        ),
-        EstadoFluxo.META_EM_RISCO: _ou_pausa(
-            EstadoFluxo.CONVIDANDO, EstadoFluxo.ENTREGANDO, EstadoFluxo.CONCLUIDA
-        ),
-        EstadoFluxo.CONVIDANDO: _ou_pausa(EstadoFluxo.ENTREGANDO),
-        EstadoFluxo.ENTREGANDO: _ou_pausa(EstadoFluxo.CONCLUIDA),
-        # A tabela lista os destinos possíveis; `_transitar` só aceita o estado anterior salvo.
-        EstadoFluxo.PAUSADA: ESTADOS_ATIVOS,
-        EstadoFluxo.CONCLUIDA: frozenset(),
-    }
-)
 
 
 def _transitar(
@@ -170,7 +133,7 @@ class MotivoPausa(StrEnum):
     DESTINO_INDISPONIVEL = "DESTINO_INDISPONIVEL"
     MANDATO_INVALIDO = "MANDATO_INVALIDO"
     RESPOSTAS_INVALIDAS = "RESPOSTAS_INVALIDAS"
-    AUDITORIA_REPROVADA = "AUDITORIA_REPROVADA"
+    AUDITORIA_REPROVADA = MOTIVO_AUDITORIA_REPROVADA
     TAXA_ANOMALA = "TAXA_ANOMALA"
     PARADA_PELO_RH = "PARADA_PELO_RH"
 
@@ -289,8 +252,10 @@ class FluxoVaga:
         relogio: Callable[[], datetime],
         consultas: Callable[[Vaga, int], list[str]] = _consulta_pelo_titulo,
         medidor_gasto: Callable[[], float] | None = None,
+        auditoria: Auditoria | None = None,
     ) -> None:
         self._repo = repositorio
+        self._auditoria = Auditoria(repositorio) if auditoria is None else auditoria
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -418,6 +383,10 @@ class FluxoVaga:
         execucao = self._repo.carregar_estado(self.vaga.empresa_id, self.vaga.id)
         estado = self.estado
         if estado == EstadoFluxo.PAUSADA:
+            if self._barreira_da_auditoria():
+                raise DecisoesAutomaticasPausadas(
+                    "erro na amostra auditada: uma pessoa precisa liberar antes de retomar"
+                )
             self._sair_da_pausa(execucao.motivo, execucao.estado_anterior, execucao.cursor)
         elif estado == EstadoFluxo.CONCLUIDA:
             self._entregar_fora_da_execucao()
@@ -466,7 +435,7 @@ class FluxoVaga:
         analise = progresso.analises.get(candidato_id)
         if tipo == TipoDecisao.INDICAR:
             self._exigir_evidencias(progresso.candidato(candidato_id), analise)
-        evidencias = [] if analise is None else analise.evidencias
+        evidencias = atual.evidencias if analise is None else analise.evidencias
         nova = self._decisao_humana(atual, tipo, "decisao_humana", motivo, nome, evidencias)
         if tipo == TipoDecisao.INDICAR:
             self._agir_sobre_indicacao(candidato_id)
@@ -551,12 +520,23 @@ class FluxoVaga:
                 "regra_anterior": anterior.regra,
                 "responsavel_anterior": anterior.responsavel,
             },
-            evidencias=evidencias,
+            evidencias=evidencias or anterior.evidencias,
             momento=self._relogio(),
         )
-        self._repo.salvar_decisao(decisao)
+        self._auditoria.registrar_decisao(decisao)
         self._evento("decisao", f"{decisao.tipo}: {decisao.regra}", decisao.candidato_id)
         return decisao
+
+    def _registrar_decisao(self, decisao: Decisao) -> None:
+        """Registra pela auditoria. Se ela recusa, a vaga pausa e a decisão fica para a retomada."""
+        try:
+            self._auditoria.registrar_decisao(decisao)
+        except (DecisaoIncompleta, DecisoesAutomaticasPausadas) as erro:
+            self._evento(
+                "auditoria", f"decisão recusada: {type(erro).__name__}", decisao.candidato_id
+            )
+            raise _PausaNecessaria(MotivoPausa.AUDITORIA_REPROVADA) from erro
+        self._evento("decisao", f"{decisao.tipo}: {decisao.regra}", decisao.candidato_id)
 
     def _exigir_evidencias(self, candidato: Candidato, analise: Analise | None) -> None:
         if analise is None:
@@ -685,9 +665,14 @@ class FluxoVaga:
         self._conferir_execucao()
         self._ir(destino, cursor=cursor)
 
+    def _barreira_da_auditoria(self) -> bool:
+        return self._auditoria.decisoes_automaticas_pausadas(self.vaga.empresa_id, self.vaga.id)
+
     def _conferir_execucao(self) -> None:
         if self.estado == EstadoFluxo.PAUSADA:
             raise _VagaInterrompida
+        if self._barreira_da_auditoria():
+            raise _PausaNecessaria(MotivoPausa.AUDITORIA_REPROVADA)
         mandato = self.mandato
         if mandato is None or not mandato_valido(mandato, self.vaga, self._relogio()):
             raise MandatoInvalido("mandato não vale para esta vaga neste momento")
@@ -892,8 +877,7 @@ class FluxoVaga:
                     decisao = nao_priorizada(decisao, limite)
                 else:
                     indicados += 1
-            self._repo.salvar_decisao(decisao)
-            self._evento("decisao", f"{decisao.tipo}: {decisao.regra}", decisao.candidato_id)
+            self._registrar_decisao(decisao)
         if not progresso.taxa_aceita and self._taxa_anomala(progresso, mandato):
             raise _PausaNecessaria(MotivoPausa.TAXA_ANOMALA)
         self._avaliar_meta(progresso, mandato)

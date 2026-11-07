@@ -5,6 +5,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from backend.agente.auditoria import (
+    MOTIVO_AUDITORIA_REPROVADA,
+    Auditoria,
+    DecisaoIncompleta,
+    DecisoesAutomaticasPausadas,
+)
 from backend.agente.fluxo import (
     ESTADOS_ATIVOS,
     TRANSICOES,
@@ -1344,7 +1350,7 @@ def test_mandato_vencido_no_meio_pausa_e_exige_nova_assinatura(tmp_path: Path) -
     fluxo.retomar()
 
     assert fluxo.estado is E.CONVIDANDO
-    assert _decisoes(m)["c1"].responsavel.endswith(":v2")
+    assert ":v2:assinante:" in _decisoes(m)["c1"].responsavel
 
 
 def test_vaga_alterada_durante_a_execucao_pausa(tmp_path: Path) -> None:
@@ -2118,3 +2124,216 @@ def test_editar_vaga_assinada_tira_a_aprovacao_e_o_aditivo_devolve(tmp_path: Pat
     _aditivo(fluxo)
     assert fluxo.vaga.aprovada is True
     assert fluxo.mandato.hash_vaga == hash_da_vaga(fluxo.vaga)
+
+
+# Ligação com a auditoria
+
+
+class AuditoriaEspia(Auditoria):
+    """Conta o que passou pelo registro e pode recusar as primeiras decisões."""
+
+    def __init__(self, repositorio: Repositorio, recusar: Exception | None = None) -> None:
+        super().__init__(repositorio)
+        self.registradas: list[Decisao] = []
+        self.recusar = recusar
+
+    def registrar_decisao(self, decisao: Decisao) -> None:
+        if self.recusar is not None:
+            erro, self.recusar = self.recusar, None
+            raise erro
+        super().registrar_decisao(decisao)
+        self.registradas.append(decisao)
+
+
+class AnalisadorSemEvidencias(AnalisadorComEvidencias):
+    def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+        return super().analisar(vaga, candidato).model_copy(update={"evidencias": []})
+
+
+def _auditar_com_erro(m: Montagem, fluxo: FluxoVaga, candidato_id: str) -> None:
+    auditoria = Auditoria(m.repo)
+    decisao = next(
+        d
+        for d in m.repo.listar_decisoes("empresa-a", fluxo.vaga.id)
+        if d.candidato_id == candidato_id
+    )
+    auditoria.registrar_auditoria(
+        decisao, correta=False, auditor="humano:Pessoa Auditora", momento=m.relogio()
+    )
+
+
+def _liberar(m: Montagem, fluxo: FluxoVaga) -> None:
+    Auditoria(m.repo).liberar_decisoes_automaticas(
+        "empresa-a", fluxo.vaga.id, "humano:Pessoa Auditora", "revisto", m.relogio()
+    )
+
+
+def _pasta_nova(tmp_path: Path) -> Path:
+    pasta = tmp_path / "outra"
+    pasta.mkdir()
+    return pasta
+
+
+def test_toda_decisao_do_fluxo_passa_pela_auditoria(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    espia = AuditoriaEspia(m.repo)
+
+    _assinar_fluxo(m.fluxo(auditoria=espia))
+
+    salvas = m.repo.listar_decisoes("empresa-a", "v1")
+    assert len(salvas) == 2
+    assert espia.registradas == salvas
+
+
+def test_decisao_humana_tambem_passa_pela_auditoria(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    espia = AuditoriaEspia(m.repo)
+    fluxo = m.fluxo(auditoria=espia)
+    _assinar_fluxo(fluxo)
+
+    fluxo.reverter("c1", "Revisão humana", "Pessoa Recrutadora")
+
+    assert espia.registradas[-1].responsavel == "humano:Pessoa Recrutadora"
+
+
+def test_analise_sem_evidencia_e_analise_invalida_nao_travam_o_fluxo(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos(), analisador=AnalisadorSemEvidencias())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    decisoes = m.repo.listar_decisoes("empresa-a", "v1")
+    assert [d.tipo for d in decisoes] == [TipoDecisao.PEDIR_HUMANO] * 2
+    assert all(d.evidencias for d in decisoes)
+
+    invalida = Montagem(
+        _pasta_nova(tmp_path),
+        [candidato_exemplo("c1")],
+        analisador=AnalisadorQueFalha(RespostaInvalida("fora do esquema"), {"c1"}),
+    )
+    _assinar_fluxo(invalida.fluxo())
+    assert [d.regra for d in invalida.repo.listar_decisoes("empresa-a", "v1")] == [
+        "analise_invalida"
+    ]
+
+
+def test_descartar_sem_autorizacao_com_analise_vazia_fica_registrado(tmp_path: Path) -> None:
+    sem_autorizacao = candidato_exemplo("c1", autorizou_contato=False)
+    m = Montagem(tmp_path, [sem_autorizacao], analisador=AnalisadorSemEvidencias())
+
+    _assinar_fluxo(m.fluxo())
+
+    decisao = m.repo.listar_decisoes("empresa-a", "v1")[0]
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == "sem_autorizacao"
+    assert decisao.evidencias
+
+
+def test_resolver_fila_sem_analise_guarda_a_evidencia_da_decisao_anterior(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path,
+        [candidato_exemplo("c1")],
+        analisador=AnalisadorQueFalha(RespostaInvalida("fora do esquema"), {"c1"}),
+    )
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    decisao = fluxo.resolver_fila("c1", TipoDecisao.DESCARTAR, "Sem perfil", "Pessoa Recrutadora")
+
+    assert decisao.evidencias == m.repo.listar_decisoes("empresa-a", "v1")[0].evidencias
+
+
+def test_erro_na_amostra_pausa_e_so_retoma_depois_da_liberacao(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert fluxo.estado is E.CONVIDANDO
+
+    _auditar_com_erro(m, fluxo, "c1")
+
+    assert fluxo.estado is E.PAUSADA
+    assert _execucao(m).motivo == MotivoPausa.AUDITORIA_REPROVADA
+    with pytest.raises(DecisoesAutomaticasPausadas):
+        fluxo.retomar()
+    assert fluxo.estado is E.PAUSADA
+
+    _liberar(m, fluxo)
+    fluxo.retomar()
+
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_barreira_da_auditoria_vale_em_pausa_por_outro_motivo(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    fluxo.parar()
+
+    _auditar_com_erro(m, fluxo, "c1")
+
+    assert _execucao(m).motivo == MotivoPausa.PARADA_PELO_RH
+    with pytest.raises(DecisoesAutomaticasPausadas):
+        fluxo.retomar()
+
+    _liberar(m, fluxo)
+    fluxo.retomar()
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_auditoria_que_recusa_a_decisao_pausa_com_motivo_e_nao_duplica(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    espia = AuditoriaEspia(m.repo, recusar=DecisoesAutomaticasPausadas("barreira"))
+    fluxo = m.fluxo(auditoria=espia)
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.PAUSADA
+    assert _execucao(m).motivo == MotivoPausa.AUDITORIA_REPROVADA
+    assert _execucao(m).estado_anterior == E.DECIDINDO
+    assert m.repo.listar_decisoes("empresa-a", "v1") == []
+
+    fluxo.retomar()
+
+    assert fluxo.estado is E.CONVIDANDO
+    assert sorted(d.candidato_id for d in m.repo.listar_decisoes("empresa-a", "v1")) == [
+        "c1",
+        "c2",
+    ]
+
+
+def test_decisao_incompleta_pausa_em_vez_de_derrubar_a_execucao(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    espia = AuditoriaEspia(m.repo, recusar=DecisaoIncompleta("decisão sem: entrada"))
+    fluxo = m.fluxo(auditoria=espia)
+
+    _assinar_fluxo(fluxo)
+
+    assert _execucao(m).motivo == MotivoPausa.AUDITORIA_REPROVADA
+    assert any(e.etapa == "auditoria" and "DecisaoIncompleta" in e.mensagem for e in fluxo.eventos)
+
+
+def test_barreira_segura_a_entrega_tardia_ate_a_liberacao(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path,
+        _dois_candidatos(),
+        vaga=vaga_exemplo(meta_candidatos=1),
+        analisador=AnalisadorComEvidencias(notas={"c2": 0.5}),
+    )
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+    assert fluxo.estado is E.CONCLUIDA
+    assert len(m.destino.entregues) == 1
+
+    _auditar_com_erro(m, fluxo, "c1")
+    fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Perfil bom", "Pessoa Recrutadora")
+    assert len(m.destino.entregues) == 1
+
+    fluxo.retomar()
+    assert len(m.destino.entregues) == 1
+
+    _liberar(m, fluxo)
+    fluxo.retomar()
+    assert len(m.destino.entregues) == 2
+
+
+def test_motivo_da_auditoria_e_o_mesmo_nos_dois_modulos() -> None:
+    assert MotivoPausa.AUDITORIA_REPROVADA == MOTIVO_AUDITORIA_REPROVADA

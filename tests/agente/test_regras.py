@@ -6,8 +6,10 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from backend.agente.auditoria import responsavel_do_mandato
 from backend.agente.mandato import Mandato, MandatoInvalido, Politica, assinar
 from backend.agente.regras import (
+    FONTE_REGRA,
     FONTES_VERIFICAVEIS,
     StatusRequisito,
     TipoEvidencia,
@@ -16,6 +18,7 @@ from backend.agente.regras import (
     classificar_faixa,
     contem_termo,
     decidir,
+    decisao_sem_analise,
     pode_contatar,
     separar_palavras,
     validar_criterios,
@@ -438,7 +441,7 @@ def test_indica_na_faixa_verde_sem_humano() -> None:
     assert decisao.tipo is TipoDecisao.INDICAR
     assert decisao.regra == "faixa_verde_v1"
     assert decisao.responsavel.startswith("agente:mandato:mandato-")
-    assert decisao.responsavel.endswith(":v1")
+    assert decisao.responsavel.endswith(":v1:assinante:Pessoa Recrutadora")
 
 
 def test_decisao_guarda_regra_entrada_evidencias_e_responsavel() -> None:
@@ -847,3 +850,38 @@ def test_normalizacao_de_palavras_e_publica() -> None:
     assert separar_palavras("Cor_da Pele") == ("cor", "da", "pele")
     assert contem_termo(("a", "cor", "da", "pele"), ("cor", "da", "pele"))
     assert not contem_termo(("cor", "pele"), ("cor", "da", "pele"))
+
+
+def test_responsavel_da_decisao_e_o_que_a_auditoria_exige() -> None:
+    vaga = _vaga_faixa()
+    mandato = _mandato(vaga)
+    decisao = _decidir(vaga=vaga)
+    sem_analise = decisao_sem_analise(vaga, _candidato_faixa(), mandato, AGORA, "rastro-1")
+
+    assert decisao.responsavel.startswith("agente:mandato:mandato-")
+    assert decisao.responsavel == responsavel_do_mandato(_mandato(vaga))
+    assert sem_analise.responsavel == responsavel_do_mandato(mandato)
+
+
+def test_decisao_sem_evidencia_do_perfil_guarda_o_fato_da_regra() -> None:
+    decisao = _decidir(analise=_analise(evidencias=[]))
+
+    assert [e.fonte for e in decisao.evidencias] == [FONTE_REGRA]
+    assert decisao.evidencias[0].criterio == decisao.regra
+    assert decisao.evidencias[0].trecho == decisao.motivo
+
+
+def test_evidencia_em_branco_nao_chega_a_decisao() -> None:
+    em_branco = Evidencia(criterio="r1", trecho="   ", fonte="rede_simulada")
+    decisao = _decidir(analise=_analise(evidencias=[em_branco]))
+
+    assert [e.fonte for e in decisao.evidencias] == [FONTE_REGRA]
+
+
+def test_decisao_sem_analise_guarda_o_fato_da_regra() -> None:
+    vaga = _vaga_faixa()
+    decisao = decisao_sem_analise(vaga, _candidato_faixa(), _mandato(vaga), AGORA, "rastro-1")
+
+    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
+    assert decisao.regra == "analise_invalida"
+    assert [e.fonte for e in decisao.evidencias] == [FONTE_REGRA]

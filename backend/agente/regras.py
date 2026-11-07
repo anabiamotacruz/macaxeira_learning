@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 
+from backend.agente.auditoria import responsavel_do_mandato
 from backend.agente.mandato import Mandato, MandatoInvalido, mandato_valido
 from backend.contratos.modelos import (
     Analise,
@@ -41,6 +42,9 @@ TERMOS_SENSIVEIS: tuple[tuple[str, ...], ...] = (
 
 FONTES_VERIFICAVEIS = frozenset({"github", "rede_simulada"})
 """Fontes externas à autodeclaração. Currículo e perfil enviado pela pessoa ficam de fora."""
+
+FONTE_REGRA = "regra_deterministica"
+"""Fonte da evidência criada por código, quando a decisão não tem trecho do perfil para citar."""
 
 
 class StatusRequisito(StrEnum):
@@ -297,6 +301,15 @@ def classificar_faixa(
     return faixa(TipoDecisao.PEDIR_HUMANO, "fora_da_faixa_verde", tuple(faltas))
 
 
+def evidencia_da_regra(regra: str, motivo: str) -> Evidencia:
+    """Registra o fato que a regra usou. Não vem do modelo nem é trecho do perfil."""
+    return Evidencia(criterio=regra, trecho=motivo, fonte=FONTE_REGRA)
+
+
+def _evidencia_completa(evidencia: Evidencia) -> bool:
+    return all(texto.strip() for texto in (evidencia.criterio, evidencia.trecho, evidencia.fonte))
+
+
 def _entrada(
     vaga: Vaga, candidato: Candidato, mandato: Mandato, faixa: Faixa, hoje: date
 ) -> dict[str, str]:
@@ -330,17 +343,19 @@ def decidir(
 ) -> Decisao:
     """Transforma a faixa em `Decisao`, com regra, entrada, evidências e responsável."""
     faixa = classificar_faixa(vaga, candidato, analise, mandato, hoje, agora)
+    motivo = ", ".join(faixa.faltas) or "dentro da faixa verde do mandato"
+    evidencias = [e for e in analise.evidencias if _evidencia_completa(e)]
     return Decisao(
         empresa_id=vaga.empresa_id,
         vaga_id=vaga.id,
         candidato_id=candidato.id,
         tipo=faixa.tipo,
         regra=faixa.regra,
-        motivo=", ".join(faixa.faltas) or "dentro da faixa verde do mandato",
-        responsavel=f"agente:mandato:{mandato.id}:v{mandato.versao}",
+        motivo=motivo,
+        responsavel=responsavel_do_mandato(mandato),
         rastro_id=rastro_id,
         entrada=_entrada(vaga, candidato, mandato, faixa, hoje),
-        evidencias=analise.evidencias,
+        evidencias=evidencias or [evidencia_da_regra(faixa.regra, motivo)],
         momento=agora,
     )
 
@@ -360,14 +375,15 @@ def decisao_sem_analise(
     vaga: Vaga, candidato: Candidato, mandato: Mandato, agora: datetime, rastro_id: str
 ) -> Decisao:
     """Falha individual: sem análise válida, a decisão fica com uma pessoa."""
+    regra, motivo = "analise_invalida", "a análise voltou inválida"
     return Decisao(
         empresa_id=vaga.empresa_id,
         vaga_id=vaga.id,
         candidato_id=candidato.id,
         tipo=TipoDecisao.PEDIR_HUMANO,
-        regra="analise_invalida",
-        motivo="a análise voltou inválida",
-        responsavel=f"agente:mandato:{mandato.id}:v{mandato.versao}",
+        regra=regra,
+        motivo=motivo,
+        responsavel=responsavel_do_mandato(mandato),
         rastro_id=rastro_id,
         entrada={
             "vaga_id": vaga.id,
@@ -376,7 +392,7 @@ def decisao_sem_analise(
             "mandato_versao": str(mandato.versao),
             "hash_vaga": mandato.hash_vaga,
         },
-        evidencias=[],
+        evidencias=[evidencia_da_regra(regra, motivo)],
         momento=agora,
     )
 
