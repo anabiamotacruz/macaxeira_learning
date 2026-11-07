@@ -12,6 +12,7 @@ import pytest
 from backend.agente import auditoria as modulo_auditoria
 from backend.agente.auditoria import (
     MOTIVO_AUDITORIA_REPROVADA,
+    NAO_MEDIDO,
     RASTRO_LOCAL,
     Auditoria,
     AuditoriaInvalida,
@@ -24,6 +25,7 @@ from backend.agente.auditoria import (
     configurar_destino_externo,
     contexto_rastro,
     destino_do_ambiente,
+    metricas_autonomia,
     rastreado,
     responsavel_do_mandato,
     selecionar_amostra,
@@ -833,3 +835,144 @@ def test_explicacao_mostra_a_auditoria_do_candidato(auditoria):
     explicacao = auditoria.explicar_candidato("empresa-a", "cand-1", "vaga-1")
 
     assert [e["etapa"] for e in explicacao["eventos"]] == ["auditoria_amostra"]
+
+
+def _registrar_lote(auditoria: Auditoria, *decisoes: Decisao) -> None:
+    for decisao in decisoes:
+        auditoria.registrar_decisao(decisao)
+
+
+def test_metricas_de_autonomia(auditoria):
+    indicada_certa = _decisao(candidato_id="c1")
+    indicada_errada = _decisao(candidato_id="c2")
+    descartada_certa = _decisao(candidato_id="c3", tipo=TipoDecisao.DESCARTAR)
+    para_humano = _decisao(candidato_id="c4", tipo=TipoDecisao.PEDIR_HUMANO)
+    _registrar_lote(auditoria, indicada_certa, indicada_errada, descartada_certa, para_humano)
+    _auditar(auditoria, indicada_certa, correta=True)
+    _auditar(auditoria, descartada_certa, correta=True)
+    _auditar(auditoria, indicada_errada, correta=False)
+
+    metricas = metricas_autonomia(
+        [indicada_certa, indicada_errada, descartada_certa, para_humano],
+        auditoria.listar_auditorias("empresa-a", "vaga-1"),
+    )
+
+    assert metricas.candidatos == 4
+    assert metricas.sem_revisao == 3
+    assert metricas.porcentagem_sem_revisao == 75.0
+    assert metricas.tamanho_amostra == 3
+    assert metricas.erros == 1
+    assert metricas.erro == pytest.approx(33.33, abs=0.01)
+    assert metricas.amostra_indicacoes == 2
+    assert metricas.erro_indicacoes == 50.0
+    assert metricas.amostra_descartes == 1
+    assert metricas.erro_descartes == 0.0
+
+
+def test_sem_dado_auditado_o_erro_e_nao_medido_nunca_zero():
+    metricas = metricas_autonomia(_automaticas(3, 2), [])
+
+    assert metricas.porcentagem_sem_revisao == 100.0
+    assert metricas.tamanho_amostra == 0
+    assert metricas.erros == 0
+    assert metricas.erro == NAO_MEDIDO == "não medido"
+    assert metricas.erro_indicacoes == NAO_MEDIDO
+    assert metricas.erro_descartes == NAO_MEDIDO
+
+
+def test_erro_zero_medido_e_numero_e_nao_texto(auditoria):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    resultado = _auditar(auditoria, decisao, correta=True)
+
+    metricas = metricas_autonomia([decisao], [resultado])
+
+    assert metricas.erro == 0.0
+    assert metricas.erro != NAO_MEDIDO
+
+
+def test_grupo_sem_auditoria_nao_herda_o_erro_do_outro(auditoria):
+    indicada = _decisao(candidato_id="c1")
+    descartada = _decisao(candidato_id="c2", tipo=TipoDecisao.DESCARTAR)
+    _registrar_lote(auditoria, indicada, descartada)
+    resultado = _auditar(auditoria, indicada, correta=True)
+
+    metricas = metricas_autonomia([indicada, descartada], [resultado])
+
+    assert metricas.erro_indicacoes == 0.0
+    assert metricas.erro_descartes == NAO_MEDIDO
+    assert metricas.amostra_descartes == 0
+
+
+def test_sem_decisoes_nada_e_medido():
+    metricas = metricas_autonomia([], [])
+
+    assert metricas.candidatos == 0
+    assert metricas.porcentagem_sem_revisao == NAO_MEDIDO
+    assert metricas.erro == NAO_MEDIDO
+
+
+def test_candidato_conta_uma_vez_pela_primeira_decisao():
+    automatica = _decisao(candidato_id="c1")
+    revertida = _decisao(
+        candidato_id="c1",
+        tipo=TipoDecisao.DESCARTAR,
+        responsavel="humano:Carla Lima",
+        momento=MOMENTO + timedelta(hours=1),
+    )
+    na_fila = _decisao(candidato_id="c2", tipo=TipoDecisao.PEDIR_HUMANO)
+    resolvida = _decisao(
+        candidato_id="c2",
+        tipo=TipoDecisao.INDICAR,
+        responsavel="humano:Carla Lima",
+        momento=MOMENTO + timedelta(hours=1),
+    )
+
+    metricas = metricas_autonomia([revertida, automatica, resolvida, na_fila], [])
+
+    assert metricas.candidatos == 2
+    assert metricas.sem_revisao == 1
+    assert metricas.porcentagem_sem_revisao == 50.0
+
+
+def test_mesmo_candidato_em_duas_vagas_conta_duas_vezes():
+    decisoes = [_decisao(), _decisao(vaga_id="vaga-2")]
+
+    assert metricas_autonomia(decisoes, []).candidatos == 2
+
+
+def test_segunda_auditoria_substitui_a_primeira_e_nao_infla_a_amostra(auditoria):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    primeira = _auditar(auditoria, decisao, correta=False)
+    segunda = _auditar(auditoria, decisao, correta=True, momento=MOMENTO + timedelta(hours=1))
+
+    metricas = metricas_autonomia([decisao], [segunda, primeira])
+
+    assert metricas.tamanho_amostra == 1
+    assert metricas.erros == 0
+
+
+def test_auditoria_sem_decisao_correspondente_nao_conta(auditoria):
+    decisao = _decisao(candidato_id="cand-fora-da-lista")
+    auditoria.registrar_decisao(decisao)
+    resultado = _auditar(auditoria, decisao, correta=False)
+
+    metricas = metricas_autonomia(_automaticas(2), [resultado])
+
+    assert metricas.tamanho_amostra == 0
+    assert metricas.erro == NAO_MEDIDO
+
+
+def test_metricas_nao_misturam_empresas(auditoria):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    resultado = _auditar(auditoria, decisao, correta=True)
+
+    with pytest.raises(ValueError, match="empresa"):
+        metricas_autonomia([decisao, _decisao(empresa_id="empresa-b")], [])
+    with pytest.raises(ValueError, match="empresa"):
+        metricas_autonomia(
+            [_decisao(empresa_id="empresa-b")],
+            [resultado],
+        )

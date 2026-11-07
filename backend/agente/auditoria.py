@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import wraps
 from threading import Lock
-from typing import NamedTuple, Protocol
+from typing import Literal, NamedTuple, Protocol
 
 from pydantic import AwareDatetime, ValidationError
 
@@ -45,6 +45,7 @@ ETAPA_AUDITORIA = "auditoria_amostra"
 ETAPA_LIBERACAO = "auditoria_liberada"
 MOTIVO_AUDITORIA_REPROVADA = "auditoria_reprovada"
 TIPOS_AUTOMATICOS = frozenset({TipoDecisao.INDICAR, TipoDecisao.DESCARTAR})
+NAO_MEDIDO: Literal["não medido"] = "não medido"
 _RESPONSAVEL_AGENTE = re.compile(
     r"agente:mandato:(?P<id>[^:]+):v(?P<versao>[1-9]\d*):assinante:(?P<assinante>\S.*)"
 )
@@ -406,6 +407,70 @@ def selecionar_amostra(
         membros.sort(key=lambda membro: membro[0])
         amostra.extend(decisao for _ordem, decisao in membros[:quantidade])
     return amostra
+
+
+class MetricasAutonomia(Contrato):
+    """Quanto o agente decide sozinho e o erro medido nesses casos, em porcentagem.
+
+    Mostre o erro sempre com o tamanho da amostra: zero em poucos casos não prova zero.
+    """
+
+    candidatos: int
+    sem_revisao: int
+    porcentagem_sem_revisao: float | Literal["não medido"]
+    tamanho_amostra: int
+    erros: int
+    erro: float | Literal["não medido"]
+    amostra_indicacoes: int
+    erro_indicacoes: float | Literal["não medido"]
+    amostra_descartes: int
+    erro_descartes: float | Literal["não medido"]
+
+
+def _porcentagem(parte: int, total: int) -> float | Literal["não medido"]:
+    return round(100 * parte / total, 2) if total else NAO_MEDIDO
+
+
+def _sem_revisao_por_candidato(decisoes: list[Decisao]) -> tuple[int, int]:
+    """Conta candidatos por vaga e quantos tiveram a primeira decisão tomada pelo agente."""
+    primeiras: dict[tuple[str, str], Decisao] = {}
+    for decisao in sorted(decisoes, key=lambda item: item.momento):
+        primeiras.setdefault((decisao.vaga_id, decisao.candidato_id), decisao)
+    return len(primeiras), sum(map(decisao_automatica, primeiras.values()))
+
+
+def metricas_autonomia(
+    decisoes: Iterable[Decisao], auditorias: Iterable[ResultadoAuditoria]
+) -> MetricasAutonomia:
+    """Calcula as métricas de uma empresa. Sem dado auditado, o erro é "não medido".
+
+    Só contam auditorias de decisões automáticas da lista, e vale a mais recente de cada uma.
+    """
+    lista = list(decisoes)
+    vereditos = sorted(auditorias, key=lambda item: item.momento)
+    empresas = {decisao.empresa_id for decisao in lista} | {a.empresa_id for a in vereditos}
+    if len(empresas) > 1:
+        raise ValueError("as métricas não misturam dados de empresas diferentes")
+
+    automaticas = {chave_decisao(d) for d in lista if decisao_automatica(d)}
+    validos = {a.decisao_chave: a for a in vereditos if a.decisao_chave in automaticas}
+    amostra = list(validos.values())
+    erros = sum(not a.correta for a in amostra)
+    indicacoes = [a for a in amostra if a.tipo_decisao == TipoDecisao.INDICAR]
+    descartes = [a for a in amostra if a.tipo_decisao == TipoDecisao.DESCARTAR]
+    candidatos, sem_revisao = _sem_revisao_por_candidato(lista)
+    return MetricasAutonomia(
+        candidatos=candidatos,
+        sem_revisao=sem_revisao,
+        porcentagem_sem_revisao=_porcentagem(sem_revisao, candidatos),
+        tamanho_amostra=len(amostra),
+        erros=erros,
+        erro=_porcentagem(erros, len(amostra)),
+        amostra_indicacoes=len(indicacoes),
+        erro_indicacoes=_porcentagem(sum(not a.correta for a in indicacoes), len(indicacoes)),
+        amostra_descartes=len(descartes),
+        erro_descartes=_porcentagem(sum(not a.correta for a in descartes), len(descartes)),
+    )
 
 
 def _e_pessoa(responsavel: str) -> bool:
