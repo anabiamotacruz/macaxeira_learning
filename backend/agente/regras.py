@@ -5,7 +5,7 @@ import unicodedata
 from datetime import date
 from enum import StrEnum
 
-from backend.contratos.modelos import Candidato, EstadoBanco, Requisito, Vaga
+from backend.contratos.modelos import Candidato, EstadoBanco, Evidencia, Requisito, Vaga
 
 TERMOS_SENSIVEIS: tuple[tuple[str, ...], ...] = (
     ("cor", "da", "pele"),
@@ -26,11 +26,20 @@ TERMOS_SENSIVEIS: tuple[tuple[str, ...], ...] = (
 )
 """Sequências de palavras já normalizadas, em ordem alfabética."""
 
+FONTES_VERIFICAVEIS = frozenset({"github", "rede_simulada"})
+"""Fontes externas à autodeclaração. Currículo e perfil enviado pela pessoa ficam de fora."""
+
 
 class StatusRequisito(StrEnum):
     ATENDE = "atende"
     NAO_ATENDE = "nao_atende"
     SEM_DADO = "sem_dado"
+
+
+class TipoEvidencia(StrEnum):
+    INFERIDA = "inferida"
+    DECLARADA = "declarada"
+    COMPROVADA = "comprovada"
 
 
 def _sem_acento(texto: str) -> str:
@@ -129,3 +138,25 @@ def pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga, hoje: date)
         and validade >= hoje
         and 0 <= tentativas < vaga.max_tentativas_contato
     )
+
+
+def _trecho_no_perfil(trecho: str, perfil: str) -> bool:
+    """Confere o trecho inteiro, palavra a palavra: `Java` não confere com `JavaScript`."""
+    alvo = _normalizar_valor(trecho)
+    if not _palavras(alvo):
+        return False
+    return re.search(rf"(?<!\w){re.escape(alvo)}(?!\w)", _normalizar_valor(perfil)) is not None
+
+
+def classificar_evidencia(evidencia: Evidencia, candidato: Candidato) -> TipoEvidencia:
+    """Dá o tipo da evidência por código, sem confiar no que o modelo afirma.
+
+    Sem o trecho literal no perfil, é INFERIDA. COMPROVADA exige que a fonte citada seja
+    verificável e igual à fonte do perfil conferido: citar `github` num currículo não promove.
+    """
+    if not _trecho_no_perfil(evidencia.trecho, candidato.perfil_texto):
+        return TipoEvidencia.INFERIDA
+    fonte = _normalizar_valor(evidencia.fonte)
+    if fonte in FONTES_VERIFICAVEIS and fonte == _normalizar_valor(candidato.fonte):
+        return TipoEvidencia.COMPROVADA
+    return TipoEvidencia.DECLARADA
