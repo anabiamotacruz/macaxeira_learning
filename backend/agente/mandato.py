@@ -35,6 +35,10 @@ class MandatoInvalido(ErroContrato):
 def hash_da_vaga(vaga: Vaga) -> str:
     """Resume o conteúdo da vaga, sem `aprovada`, que muda como efeito da própria assinatura."""
     conteudo = vaga.model_dump(mode="json", exclude={"aprovada"})
+    # Só entra quando marcado: o campo novo não invalida os mandatos assinados antes dele.
+    for requisito in conteudo["requisitos"]:
+        if not requisito["desenvolvivel"]:
+            del requisito["desenvolvivel"]
     canonico = json.dumps(conteudo, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(canonico.encode("utf-8")).hexdigest()
 

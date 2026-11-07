@@ -31,7 +31,8 @@
                         "id": "python",
                         "descricao": "Experiência com Python",
                         "campo": "linguagem",
-                        "valor_esperado": "python"
+                        "valor_esperado": "python",
+                        "desenvolvivel": false
                       }
                     ],
                     "competencias": [
@@ -71,7 +72,8 @@
                         "id": "python",
                         "descricao": "Experiência com Python",
                         "campo": "linguagem",
-                        "valor_esperado": "python"
+                        "valor_esperado": "python",
+                        "desenvolvivel": false
                       }
                     ],
                     "competencias": [
@@ -193,7 +195,9 @@
                       "max_indicacoes": 2,
                       "max_ampliacoes": 1,
                       "modo_entrega": "apos_aceite",
-                      "aceitar_declarada": false
+                      "aceitar_declarada": false,
+                      "lapidar_exige_confirmacao": true,
+                      "prazo_garden_dias": 180
                     },
                     "valido_ate": "2026-11-21T12:00:00Z"
                   }
@@ -227,7 +231,9 @@
                       "max_indicacoes": 2,
                       "max_ampliacoes": 1,
                       "modo_entrega": "apos_aceite",
-                      "aceitar_declarada": false
+                      "aceitar_declarada": false,
+                      "lapidar_exige_confirmacao": true,
+                      "prazo_garden_dias": 180
                     },
                     "assinado_em": "2026-11-07T12:00:00Z",
                     "valido_ate": "2026-11-21T12:00:00Z"
@@ -370,7 +376,8 @@
                         "id": "python",
                         "descricao": "Experiência com Python",
                         "campo": "linguagem",
-                        "valor_esperado": "python"
+                        "valor_esperado": "python",
+                        "desenvolvivel": false
                       }
                     ],
                     "competencias": [
@@ -399,7 +406,9 @@
                       "max_indicacoes": 2,
                       "max_ampliacoes": 1,
                       "modo_entrega": "apos_aceite",
-                      "aceitar_declarada": false
+                      "aceitar_declarada": false,
+                      "lapidar_exige_confirmacao": true,
+                      "prazo_garden_dias": 180
                     },
                     "assinado_em": "2026-11-07T12:00:00Z",
                     "valido_ate": "2026-11-21T12:00:00Z"
@@ -921,7 +930,9 @@
                         "fonte": "banco_de_talentos_simulado",
                         "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
                         "chave_idempotencia": "entrega:empresa-exemplo:vaga-exemplo-1:candidato-exemplo-1",
-                        "simulado": true
+                        "simulado": true,
+                        "pontos_a_explorar": [],
+                        "respostas_pre_triagem": []
                       }
                     ],
                     "simulado": true,
@@ -2257,6 +2268,83 @@
         ],
         "title": "Competencia"
       },
+      "DadoPreTriagem": {
+        "properties": {
+          "pergunta_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pergunta Id"
+          },
+          "criterio": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Criterio"
+          },
+          "situacao": {
+            "$ref": "#/components/schemas/SituacaoResposta"
+          },
+          "trecho": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Trecho"
+          },
+          "fonte": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Fonte"
+          },
+          "coletado_em": {
+            "type": "string",
+            "format": "date",
+            "title": "Coletado Em"
+          },
+          "nivel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NivelCriterio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "voltar_em": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voltar Em"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pergunta_id",
+          "criterio",
+          "situacao",
+          "trecho",
+          "fonte",
+          "coletado_em"
+        ],
+        "title": "DadoPreTriagem",
+        "description": "Uma resposta da pré-triagem, com o trecho da mensagem, a fonte e a data."
+      },
       "Decisao": {
         "properties": {
           "empresa_id": {
@@ -2626,6 +2714,17 @@
         ],
         "title": "ModoEntrega"
       },
+      "NivelCriterio": {
+        "type": "string",
+        "enum": [
+          "nega",
+          "generica",
+          "parcial",
+          "direta"
+        ],
+        "title": "NivelCriterio",
+        "description": "Escala ancorada: o perfil nega, alega sem exemplo, mostra parte ou mostra direto."
+      },
       "PacoteContexto": {
         "properties": {
           "empresa_id": {
@@ -2705,6 +2804,22 @@
           "simulado": {
             "type": "boolean",
             "title": "Simulado"
+          },
+          "pontos_a_explorar": {
+            "items": {
+              "$ref": "#/components/schemas/PontoExplorar"
+            },
+            "type": "array",
+            "title": "Pontos A Explorar",
+            "default": []
+          },
+          "respostas_pre_triagem": {
+            "items": {
+              "$ref": "#/components/schemas/DadoPreTriagem"
+            },
+            "type": "array",
+            "title": "Respostas Pre Triagem",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -2954,6 +3069,17 @@
             "type": "boolean",
             "title": "Aceitar Declarada",
             "default": false
+          },
+          "lapidar_exige_confirmacao": {
+            "type": "boolean",
+            "title": "Lapidar Exige Confirmacao",
+            "default": true
+          },
+          "prazo_garden_dias": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Prazo Garden Dias",
+            "default": 180
           }
         },
         "additionalProperties": false,
@@ -2966,6 +3092,63 @@
         ],
         "title": "Politica",
         "description": "Limites dentro dos quais o agente decide sozinho."
+      },
+      "PontoExplorar": {
+        "properties": {
+          "tipo": {
+            "$ref": "#/components/schemas/TipoPonto"
+          },
+          "criterio": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Criterio"
+          },
+          "descricao": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Descricao"
+          },
+          "trecho": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Trecho"
+          },
+          "fonte": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Fonte"
+          },
+          "verificado": {
+            "type": "boolean",
+            "title": "Verificado"
+          },
+          "inferencia": {
+            "type": "boolean",
+            "title": "Inferencia",
+            "default": false
+          },
+          "rotulo": {
+            "type": "string",
+            "enum": [
+              "Verificado",
+              "Não verificado"
+            ],
+            "title": "Rotulo",
+            "default": "Não verificado"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tipo",
+          "criterio",
+          "descricao",
+          "trecho",
+          "fonte",
+          "verificado"
+        ],
+        "title": "PontoExplorar",
+        "description": "O que o recrutador e a entrevista podem aprofundar, sempre com trecho e fonte."
       },
       "Requisito": {
         "properties": {
@@ -2984,6 +3167,11 @@
           "valor_esperado": {
             "type": "string",
             "title": "Valor Esperado"
+          },
+          "desenvolvivel": {
+            "type": "boolean",
+            "title": "Desenvolvivel",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3579,6 +3767,15 @@
         "title": "SaidaPersonalizada",
         "description": "Pacotes de contexto dos indicados de uma vaga, para leitura na interface.\n\nO pacote só leva contexto: agendar, entrevistar e contratar ficam fora do agente."
       },
+      "SituacaoResposta": {
+        "type": "string",
+        "enum": [
+          "confirma",
+          "nega",
+          "incerta"
+        ],
+        "title": "SituacaoResposta"
+      },
       "TaxaMedida": {
         "properties": {
           "valor": {
@@ -3657,6 +3854,16 @@
           "afirmacao_sem_evidencia"
         ],
         "title": "TipoErro"
+      },
+      "TipoPonto": {
+        "type": "string",
+        "enum": [
+          "lacuna",
+          "contradicao",
+          "afirmacao_sem_exemplo",
+          "experiencia_parecida"
+        ],
+        "title": "TipoPonto"
       },
       "Vaga": {
         "properties": {
