@@ -217,10 +217,10 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** implementação de `FonteCandidatos`, `remover_duplicatas(candidatos) -> list[Candidato]` e controles para injetar falha e limite.
 
-- [ ] Testar paginação, filtros e `test_identifica_fonte_como_simulada`.
-- [ ] Testar `test_remove_duplicata_entre_paginas_e_fontes`.
-- [ ] Testar `test_injeta_falha_com_fonte_indisponivel`.
-- [ ] Implementar e verificar.
+- [x] Testar paginação, filtros e `test_identifica_fonte_como_simulada`.
+- [x] Testar `test_remove_duplicata_entre_paginas_e_fontes`.
+- [x] Testar `test_injeta_falha_com_fonte_indisponivel`.
+- [x] Implementar e verificar.
 
 ### T2.7 [P] (onda 1): geração de consultas
 
