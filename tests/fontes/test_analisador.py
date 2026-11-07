@@ -549,6 +549,13 @@ def test_resposta_invalida_segue_para_o_fluxo():
         analisador.analisar(_vaga(), _candidato())
 
 
+def test_resposta_vazia_e_resposta_invalida():
+    analisador = AnalisadorPorModelo(ClienteModeloSimulado({ETAPA_ANALISE: {}}))
+
+    with pytest.raises(RespostaInvalida):
+        analisador.analisar(_vaga(), _candidato())
+
+
 def test_nota_fora_da_escala_e_resposta_invalida():
     analisador, _ = _analisador(notas={COMPETENCIA_A: 9})
 

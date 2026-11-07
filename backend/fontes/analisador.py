@@ -132,7 +132,7 @@ def preparar_perfil(candidato: Candidato, retirar: Iterable[str] = ()) -> Perfil
     return PerfilPreparado(_mascarar_nome(" ".join(frases), candidato.nome), tem_instrucao)
 
 
-def _como_no_perfil(trecho: str) -> str:
+def como_no_perfil(trecho: str) -> str:
     """Desfaz a troca de `como_dado`, para o trecho voltar a ser literal."""
     return trecho.replace("‹", "<").replace("›", ">")
 
@@ -145,6 +145,16 @@ def trecho_confere(trecho: str, candidato: Candidato, perfil: PerfilPreparado) -
         classificar_evidencia(citacao, alvo) is not TipoEvidencia.INFERIDA
         for alvo in (candidato, enviado)
     )
+
+
+def criterios_da_vaga(vaga: Vaga) -> dict[str, str]:
+    """Id de requisito e nome de competência, indexados como o modelo pode escrevê-los."""
+    criterios = {_normalizar(r.id): r.id for r in vaga.requisitos}
+    return criterios | {_normalizar(c.nome): c.nome for c in vaga.competencias}
+
+
+def criterio_citado(criterios: dict[str, str], citado: str) -> str | None:
+    return criterios.get(_normalizar(citado))
 
 
 def descrever_vaga(vaga: Vaga) -> str:
@@ -167,8 +177,8 @@ Nota = Annotated[float, Field(ge=0, le=1, strict=True, allow_inf_nan=False)]
 class RespostaAnalise(BaseModel):
     """O que se aceita do modelo. Qualquer outro campo, como confiança ou fonte, é ignorado."""
 
-    notas: dict[str, Nota | None] = {}
-    evidencias: list[EvidenciaModelo] = []
+    notas: dict[str, Nota | None]
+    evidencias: list[EvidenciaModelo]
     lacunas: list[str] = []
     pontos_a_aprofundar: list[str] = []
     instrucoes_detectadas: list[str] = []
@@ -189,9 +199,9 @@ class AnalisadorPorModelo:
         perfil = preparar_perfil(candidato)
         resposta = self._perguntar(vaga, perfil)
         apontadas = [
-            _como_no_perfil(trecho)
+            como_no_perfil(trecho)
             for trecho in resposta.instrucoes_detectadas
-            if trecho_confere(_como_no_perfil(trecho), candidato, perfil)
+            if trecho_confere(como_no_perfil(trecho), candidato, perfil)
         ]
         if apontadas:
             # A nota pode ter sido influenciada: vale a análise do perfil sem a instrução.
@@ -231,12 +241,11 @@ class AnalisadorPorModelo:
         vaga: Vaga, candidato: Candidato, perfil: PerfilPreparado, resposta: RespostaAnalise
     ) -> list[Evidencia]:
         """Fica só o que cita critério da vaga e trecho literal. A fonte é sempre a do perfil."""
-        criterios = {_normalizar(r.id): r.id for r in vaga.requisitos}
-        criterios |= {_normalizar(c.nome): c.nome for c in vaga.competencias}
+        criterios = criterios_da_vaga(vaga)
         aceitas: dict[tuple[str, str], Evidencia] = {}
         for evidencia in resposta.evidencias:
-            criterio = criterios.get(_normalizar(evidencia.criterio))
-            trecho = _como_no_perfil(evidencia.trecho).strip()
+            criterio = criterio_citado(criterios, evidencia.criterio)
+            trecho = como_no_perfil(evidencia.trecho).strip()
             if criterio is not None and trecho_confere(trecho, candidato, perfil):
                 aceitas.setdefault(
                     (criterio, _normalizar(trecho)),
