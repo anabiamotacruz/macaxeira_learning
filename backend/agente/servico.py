@@ -244,6 +244,12 @@ class ServicoVagas:
         with self._exclusivo(empresa_id, vaga_id):
             fluxo.registrar_resposta(resposta)
 
+    def entregar(self, empresa_id: str, vaga_id: str) -> tuple[list[str], list[str]]:
+        """Entrega quem o fluxo já libera. Devolve quem foi entregue e quem ficou pendente."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        with self._exclusivo(empresa_id, vaga_id):
+            return fluxo.entregar_indicados()
+
     def situacao_candidatos(
         self, empresa_id: str, vaga_id: str
     ) -> list[tuple[Candidato, TipoDecisao | None, DestinoPessoa | None]]:

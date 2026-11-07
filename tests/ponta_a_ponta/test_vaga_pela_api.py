@@ -54,7 +54,7 @@ def _pessoa(candidato_id: str, **campos):
 
 class Cenario:
     def __init__(self, caminho, destino=None, fonte=None) -> None:
-        self.banco = BancoTalentos(hoje=date(2026, 11, 7))
+        self.banco = BancoTalentos(hoje=date(2026, 11, 7), confiar_autorizacao_sintetica=True)
         self.fonte = fonte or FonteSimulada(
             [
                 _pessoa("verde"),

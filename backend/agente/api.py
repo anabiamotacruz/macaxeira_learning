@@ -800,6 +800,16 @@ _ERROS_DE_DOMINIO: dict[type[ErroContrato], tuple[int, str, str]] = {
 }
 
 
+def mensagem_segura(erro: ErroContrato) -> str:
+    """A mesma mensagem que a API daria a este erro, sem detalhes internos."""
+    if isinstance(erro, ErroApi):
+        return erro.mensagem
+    if isinstance(erro, AcaoRecusada):
+        return str(erro)
+    tipo = next((t for t in type(erro).__mro__ if t in _ERROS_DE_DOMINIO), None)
+    return "Erro interno." if tipo is None else _ERROS_DE_DOMINIO[tipo][2]
+
+
 async def _tratar_erro_de_dominio(_: Request, erro: ErroContrato) -> JSONResponse:
     tipo = next(t for t in type(erro).__mro__ if t in _ERROS_DE_DOMINIO)
     status, codigo, mensagem = _ERROS_DE_DOMINIO[tipo]

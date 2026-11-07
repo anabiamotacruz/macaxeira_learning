@@ -2,14 +2,14 @@
 
 Não se confunde com `conector_mcp.py`, em que o agente é o cliente de outro agente recrutador.
 
-As ferramentas chamam as mesmas funções de `api.py`, sem regra própria. Como a API, elas devolvem
-exemplos fixos e sintéticos, identificados com `simulado` e `exemplo_fixo`, até a API chamar o
-fluxo. `empresa_id` vem só da configuração do servidor e nunca é argumento de ferramenta.
+As ferramentas passam por `ServicoVagas`, como as rotas de `api.py`, sem regra própria: a entrega
+tem as mesmas conferências do fluxo. `empresa_id` vem só da configuração do servidor e nunca é
+argumento de ferramenta. A sessão ainda é simulada, e as respostas vêm com `simulado`.
 
 Para rodar por stdio: `MCP_EMPRESA_ID=empresa-exemplo uv run python -m backend.agente.mcp`.
+Com `MCP_BANCO`, usa esse arquivo; sem ele, a demonstração começa vazia numa pasta temporária.
 """
 
-import logging
 import os
 from collections.abc import Callable
 from typing import Annotated, Any
@@ -20,40 +20,22 @@ from pydantic import BaseModel, Field
 
 from backend.agente import api
 from backend.agente.auditoria import contexto_rastro, rastreado
-from backend.agente.conector_mcp import ConectorMCP
+from backend.agente.montagem import montar_demo
+from backend.agente.servico import ServicoVagas
 from backend.contratos.erros import ErroContrato
-from backend.contratos.interfaces import AgenteRecrutador
-from backend.contratos.simulacoes import ClienteNaraSimulado
-
-logger = logging.getLogger(__name__)
 
 VARIAVEL_EMPRESA = "MCP_EMPRESA_ID"
+VARIAVEL_BANCO = "MCP_BANCO"
 
 Pagina = Annotated[int, Field(ge=1)]
 Limite = Annotated[int, Field(ge=1, le=api.LIMITE_MAXIMO)]
 
 
 class RespostaEntregaMCP(api.RespostaSimulada):
-    """Quem foi entregue e quem ficou pendente, para repetir depois com a mesma chave."""
+    """Quem já foi entregue e quem pode receber mas ficou pendente, para repetir depois."""
 
     entregues: list[str]
     pendentes: list[str]
-
-
-def _entregar_pacotes(
-    empresa_id: str, vaga_id: str, destino: AgenteRecrutador
-) -> RespostaEntregaMCP:
-    """Entrega os pacotes da API. Falha do destino deixa a pessoa pendente e não para as outras."""
-    entregues: list[str] = []
-    pendentes: list[str] = []
-    for pacote in api.consultar_entrega(vaga_id, empresa_id).saida.pacotes:
-        try:
-            entregue = destino.entregar(pacote)
-        except (ErroContrato, OSError) as erro:
-            logger.warning("entrega pendente: %s", type(erro).__name__)
-            entregue = False
-        (entregues if entregue else pendentes).append(pacote.candidato_id)
-    return RespostaEntregaMCP(entregues=entregues, pendentes=pendentes)
 
 
 def _executar(
@@ -67,15 +49,13 @@ def _executar(
     with contexto_rastro(empresa_id=empresa_id, vaga_id=vaga_id, candidato_id=candidato_id):
         try:
             return rastreado(f"mcp_ferramenta:{ferramenta}")(acao)().model_dump(mode="json")
-        except api.ErroApi as erro:
-            raise ToolError(erro.mensagem) from None
+        except ErroContrato as erro:
+            raise ToolError(api.mensagem_segura(erro)) from None
 
 
-def criar_servidor_mcp(empresa_id: str, destino: AgenteRecrutador) -> MCPServer:
-    """Cria o servidor de uma única empresa, que entrega os pacotes ao destino injetado."""
+def criar_servidor_mcp(empresa_id: str, servico: ServicoVagas) -> MCPServer:
+    """Cria o servidor de uma única empresa, sobre o serviço de vagas injetado."""
     empresa = api.empresa_da_sessao(empresa_id)
-    if isinstance(destino, ConectorMCP) and not destino.simulado:
-        raise ValueError("exemplo fixo não pode ir para destino real")
     servidor = MCPServer(
         "agente-recrutador",
         instructions=(
@@ -92,7 +72,7 @@ def criar_servidor_mcp(empresa_id: str, destino: AgenteRecrutador) -> MCPServer:
         return _executar(
             empresa,
             "buscar_candidatos",
-            lambda: api.listar_candidatos(vaga_id, empresa, pagina, limite),
+            lambda: api.listar_candidatos(vaga_id, empresa, servico, pagina, limite),
             vaga_id=vaga_id,
         )
 
@@ -102,20 +82,23 @@ def criar_servidor_mcp(empresa_id: str, destino: AgenteRecrutador) -> MCPServer:
         return _executar(
             empresa,
             "explicar_escolha",
-            lambda: api.consultar_decisao(candidato_id, empresa, vaga_id),
+            lambda: api.consultar_decisao(candidato_id, empresa, servico, vaga_id),
             vaga_id=vaga_id,
             candidato_id=candidato_id,
         )
 
     @servidor.tool()
-    def entregar_a_nara(vaga_id: str) -> dict[str, Any]:
-        """Entrega o contexto dos indicados da vaga à Nara. Repetir não duplica a entrega."""
-        return _executar(
-            empresa,
-            "entregar_a_nara",
-            lambda: _entregar_pacotes(empresa, vaga_id, destino),
-            vaga_id=vaga_id,
-        )
+    def entregar_candidatos(vaga_id: str) -> dict[str, Any]:
+        """Entrega ao destino quem já pode receber, com as checagens do fluxo. Repetir não duplica.
+
+        Não convida ninguém: pelo modo de entrega do mandato, pode ser preciso esperar o aceite.
+        """
+
+        def entregar() -> RespostaEntregaMCP:
+            entregues, pendentes = servico.entregar(empresa, vaga_id)
+            return RespostaEntregaMCP(entregues=entregues, pendentes=pendentes)
+
+        return _executar(empresa, "entregar_candidatos", entregar, vaga_id=vaga_id)
 
     return servidor
 
@@ -124,7 +107,8 @@ def main() -> None:
     empresa_id = os.environ.get(VARIAVEL_EMPRESA, "").strip()
     if not empresa_id:
         raise SystemExit(f"defina {VARIAVEL_EMPRESA} com a empresa deste servidor")
-    criar_servidor_mcp(empresa_id, ClienteNaraSimulado()).run()
+    caminho = os.environ.get(VARIAVEL_BANCO, "").strip() or None
+    criar_servidor_mcp(empresa_id, montar_demo(caminho)).run()
 
 
 if __name__ == "__main__":

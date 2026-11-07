@@ -502,6 +502,18 @@ class FluxoVaga:
         elif estado in ESTADOS_ATIVOS:
             self._executar()
 
+    def entregar_indicados(self) -> tuple[list[str], list[str]]:
+        """Entrega quem já pode receber, sem convidar nem mudar de etapa. Vaga parada não entrega.
+
+        Devolve quem já foi entregue e quem pode receber, mas ficou pendente.
+        """
+        if self.mandato is None:
+            return [], []
+        if self.estado in (EstadoFluxo.CONVIDANDO, EstadoFluxo.ENTREGANDO, EstadoFluxo.CONCLUIDA):
+            self._entregar_fora_da_execucao()
+        progresso = self._progresso()
+        return progresso.entregues, self._a_entregar(progresso)
+
     def _registrar_controle(self, acao: str, nome: str | None, motivo: str) -> None:
         if nome is not None:
             detalhe = f": {motivo.strip()}" if motivo.strip() else ""
