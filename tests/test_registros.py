@@ -13,7 +13,6 @@ from evals.registros import (
     validar_decisao_jsonl,
 )
 
-
 DECISAO = {
     "id": "d-1",
     "candidato_id": "c-1",

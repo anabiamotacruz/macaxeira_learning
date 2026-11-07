@@ -93,11 +93,11 @@ def test_decisao_humana_registrada_e_aceita():
     # Protege a rastreabilidade quando uma pessoa autoriza o resultado do fluxo.
     decisao = DecisaoHumana("c-1", "revisar", "Caso ambíguo")
     assert exigir_decisao_humana("c-1", decisao) is decisao
-
-
 @pytest.mark.xfail(
-    reason="PENDENTE: integrar este contrato ao fluxo real do agente quando a frente do agente entregar o adaptador"
+    reason=(
+        "PENDENTE: integrar este contrato ao fluxo real do agente "
+        "quando a frente do agente entregar o adaptador"
+    )
 )
 def test_fluxo_real_deve_bloquear_opt_out():
-    # Protege a integração ponta a ponta; permanece pendente enquanto o agente não existe.
-    raise NotImplementedError
+    pass

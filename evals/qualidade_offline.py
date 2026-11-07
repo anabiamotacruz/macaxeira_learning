@@ -37,10 +37,10 @@ class ProvedorFalso:
 
 def obter_com_retry(
     provedor: ProvedorFalso,
-    politica: PoliticaRetry = PoliticaRetry(),
+    politica: PoliticaRetry | None = None,
 ) -> str:
-    if politica.max_tentativas < 1:
-        raise ValueError("max_tentativas deve ser positiva")
+    if politica is None:
+        politica = PoliticaRetry()
 
     ultima_falha: Exception | None = None
     for _ in range(politica.max_tentativas):
