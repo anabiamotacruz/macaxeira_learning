@@ -11,6 +11,10 @@ dependencies = [
     "langfuse>=2.53",
     "pandas>=2.2",
     "mcp>=2.3,<3",
+    "pytesseract>=0.3.13",
+    "pillow>=13.0.0",
+    "pdfplumber>=0.11.10",
+    "pypdf>=7.0.0",
 ]
 
 [dependency-groups]
