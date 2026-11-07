@@ -75,6 +75,12 @@ TERMOS_SENSIVEIS_TEXTO: tuple[tuple[str, ...], ...] = tuple(
 )
 """Palavras que indicam atributo sensível em texto livre, além de `regras.TERMOS_SENSIVEIS`."""
 
+LIMITE_DE_IDADE = re.compile(
+    r"\b(ate|menos de|maximo|entre \d+ e) (1[6-9]|[2-9]\d) anos\b"
+    r"(?! de (experiencia|atuacao|mercado|carreira))"
+)
+"""Sobre o texto normalizado: limite de idade escrito sem a palavra `idade`."""
+
 MARCADORES_DE_AVISO: tuple[tuple[str, ...], ...] = (
     ("bem", "vindas"),
     ("bem", "vindos"),
@@ -202,7 +208,10 @@ def _alertar_instrucao_embutida(descricao: str, empresa_id: str) -> None:
 def _termos_no_texto(texto: str) -> list[str]:
     palavras = _palavras(texto)
     termos = TERMOS_SENSIVEIS + TERMOS_SENSIVEIS_TEXTO
-    return sorted({" ".join(termo) for termo in termos if _contem(palavras, termo)})
+    achados = {" ".join(termo) for termo in termos if _contem(palavras, termo)}
+    if LIMITE_DE_IDADE.search(" ".join(palavras)):
+        achados.add("idade")
+    return sorted(achados)
 
 
 def _restringe_quem_concorre(palavras: tuple[str, ...]) -> bool:

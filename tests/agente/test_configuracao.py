@@ -168,6 +168,9 @@ def test_proposta_passa_por_validar_criterios(campos):
         "Valorizamos a diversidade. Idade entre 20 e 30 anos.",
         "Sem distinção de gênero, exceto para esta vaga: só homens.",
         "Vaga inclusiva para mulheres.",
+        "Pessoa desenvolvedora de até 35 anos.",
+        "Dev Python com no máximo 30 anos.",
+        "Candidatos entre 20 e 30 anos.",
     ],
 )
 def test_criterio_sensivel_na_descricao_vira_pergunta_sem_chamar_o_modelo(descricao):
@@ -216,6 +219,14 @@ def test_aviso_de_nao_discriminacao_nao_bloqueia_a_proposta(aviso):
 
     assert isinstance(resultado, Vaga)
     assert resultado.descricao == descricao
+
+
+@pytest.mark.parametrize(
+    "descricao",
+    ["Dev com até 5 anos de experiência.", "Backend com no máximo 20 anos de experiência."],
+)
+def test_tempo_de_experiencia_nao_e_confundido_com_idade(descricao):
+    assert isinstance(propor_configuracao(descricao, "empresa-a", _cliente()), Vaga)
 
 
 def test_palavra_parecida_nao_e_confundida_com_termo_sensivel():
