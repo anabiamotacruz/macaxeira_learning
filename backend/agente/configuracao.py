@@ -6,19 +6,29 @@ Na dúvida, devolve uma pergunta: não inventa requisito nem deixa critério sen
 """
 
 import hashlib
+import logging
+import math
 import re
+from typing import Annotated, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from backend.agente import prompts
 from backend.agente.regras import TERMOS_SENSIVEIS, _contem, _palavras, validar_criterios
+from backend.contratos.erros import RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
 from backend.contratos.modelos import Competencia, Contrato, Requisito, Texto, Vaga
+
+logger = logging.getLogger(__name__)
 
 ETAPA_CONFIGURACAO = "configuracao"
 
 MAX_TENTATIVAS_CONTATO = 2
 """Limite de contato fixado em código: nem a descrição nem o modelo o alteram."""
+
+MAX_META_CANDIDATOS = 100
+MAX_PRAZO_DIAS = 180
+"""Tetos da proposta. Acima deles, a resposta é inválida e a pessoa recebe uma pergunta."""
 
 TAMANHO_MAXIMO_DESCRICAO = 20_000
 TAMANHO_MAXIMO_TRECHO = 200
@@ -121,6 +131,23 @@ MARCADORES_DE_RESTRICAO = frozenset(
 """Palavras que tiram da frase o caráter de aviso: ela passa a restringir quem pode concorrer."""
 
 
+PERGUNTA_RESPOSTA_INVALIDA = (
+    "Não foi possível interpretar a descrição com segurança. "
+    "Pode detalhar requisitos, competências, meta e prazo?"
+)
+
+PADROES_DE_INSTRUCAO: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(padrao)
+    for padrao in (
+        r"\b(ignor\w*|desconsider\w*|esquec\w*|disregard|forget)\b"
+        r".*\b(instruc\w*|regras?|prompt|instructions?|rules?)\b",
+        r"\b(system prompt|prompt do sistema)\b",
+        r"\b(voce agora|you are now)\b",
+    )
+)
+"""Sobre o texto normalizado. Só geram alerta: a defesa é o texto seguir como dado."""
+
+
 class PerguntaVaga(Contrato):
     """Dúvida devolvida à pessoa, em vez de uma vaga proposta. Modelo local: não cruza frentes."""
 
@@ -135,14 +162,40 @@ class PropostaModelo(Contrato):
     titulo: str = ""
     requisitos: list[Requisito] = Field(default_factory=list)
     competencias: list[Competencia] = Field(default_factory=list)
-    meta_candidatos: int | None = None
-    prazo_dias: int | None = None
+    meta_candidatos: Annotated[int, Field(ge=1, le=MAX_META_CANDIDATOS)] | None = None
+    prazo_dias: Annotated[int, Field(ge=1, le=MAX_PRAZO_DIAS)] | None = None
     duvidas: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _criterios_bem_formados(self) -> Self:
+        ids = [requisito.id for requisito in self.requisitos]
+        if len(set(ids)) != len(ids):
+            raise ValueError("requisitos com id repetido")
+        for requisito in self.requisitos:
+            if not (requisito.id.strip() and requisito.campo.strip()):
+                raise ValueError("requisito sem id ou sem campo")
+            if not requisito.valor_esperado.strip():
+                raise ValueError("requisito sem valor esperado")
+        for competencia in self.competencias:
+            if not (math.isfinite(competencia.peso) and competencia.peso > 0):
+                raise ValueError("competência com peso que não é positivo e finito")
+        return self
 
 
 def _id_da_vaga(empresa_id: str, descricao: str) -> str:
     resumo = hashlib.sha256(f"{empresa_id}\n{descricao}".encode()).hexdigest()
     return f"vaga-{resumo[:12]}"
+
+
+def _alertar_instrucao_embutida(descricao: str, empresa_id: str) -> None:
+    """Registra o alerta sem copiar o texto, que é dado não confiável."""
+    normalizado = " ".join(_palavras(descricao))
+    if any(padrao.search(normalizado) for padrao in PADROES_DE_INSTRUCAO):
+        logger.warning(
+            "descrição de vaga com possível instrução embutida: empresa=%s vaga=%s",
+            empresa_id,
+            _id_da_vaga(empresa_id, descricao),
+        )
 
 
 def _termos_no_texto(texto: str) -> list[str]:
@@ -277,10 +330,16 @@ def propor_configuracao(
     if pergunta:
         return pergunta
 
-    proposta = cliente_modelo.completar(
-        prompts.SISTEMA_CONFIGURACAO,
-        prompts.USUARIO_CONFIGURACAO.format(descricao=descricao),
-        PropostaModelo,
-        ETAPA_CONFIGURACAO,
-    )
+    _alertar_instrucao_embutida(descricao, empresa_id)
+    try:
+        proposta = cliente_modelo.completar(
+            prompts.SISTEMA_CONFIGURACAO,
+            prompts.USUARIO_CONFIGURACAO.format(descricao=prompts.como_dado(descricao)),
+            PropostaModelo,
+            ETAPA_CONFIGURACAO,
+        )
+    except RespostaInvalida:
+        return PerguntaVaga(empresa_id=empresa_id, pergunta=PERGUNTA_RESPOSTA_INVALIDA)
+    if not isinstance(proposta, PropostaModelo):
+        return PerguntaVaga(empresa_id=empresa_id, pergunta=PERGUNTA_RESPOSTA_INVALIDA)
     return _vaga_ou_pergunta(proposta, descricao, empresa_id)
