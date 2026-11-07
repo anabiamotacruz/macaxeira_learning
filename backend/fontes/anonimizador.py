@@ -1,9 +1,12 @@
 """Pseudonimização do perfil antes de qualquer envio ao modelo e aos rastros.
 
 O nome do arquivo segue o pedido da tarefa, mas o nome correto do que ele faz é pseudonimização:
-precisamos reidentificar a pessoa depois, então existe um cofre com a correspondência. Pelo art. 13
-da LGPD, o resultado continua sendo dado pessoal, sujeito às mesmas regras de autorização e remoção.
-Nunca descreva este texto como anônimo em interface ou documento.
+precisamos reidentificar a pessoa depois, então existe um cofre com a correspondência. O que pode
+ser revertido segue sendo dado pessoal: a LGPD só tira dessa condição o dado anonimizado, sem
+reversão por meios próprios ou com esforços razoáveis (art. 5º, I, III e XI; art. 12, caput e §§).
+O resultado fica sujeito às mesmas regras de autorização e remoção. O art. 13 trata de estudos em
+saúde pública, e o §4º dele serve aqui só como definição de pseudonimização. Esta leitura depende
+de confirmação jurídica. Nunca descreva este texto como anônimo em interface ou documento.
 
 O que fica aqui:
 - `Pseudonimizador` troca identificadores diretos sempre; a `PoliticaGeneralizacao` escolhe os

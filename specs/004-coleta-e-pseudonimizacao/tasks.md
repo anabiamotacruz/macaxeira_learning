@@ -52,11 +52,12 @@ description: "Tarefas da feature de coleta e pseudonimização"
 - [X] T005 [P] [US1] [F2] Lista configurável de fontes em `backend/fontes/registro.py`. Teste: `tests/fontes/test_registro_fontes.py`.
 - [X] T006 [P] [US1] [F2] Política de URL com bloqueio de domínios, encurtadores e endereços internos, em `backend/fontes/provedores/url_segura.py`. Teste: `tests/fontes/provedores/test_url_segura.py`.
 - [X] T007 [P] [US1] [F2] Transporte com lista de hosts, teto de resposta e tempo total, em `backend/fontes/provedores/transporte.py`. Teste: `tests/fontes/provedores/test_transporte.py`.
-- [X] T008 [P] [US1] [F2] Provedor Bright Data, com busca pela SERP API e leitura pela zona de Web Unlocker, sem cookies nem opções de desbloqueio, em `backend/fontes/provedores/bright_data.py`. Teste: `tests/fontes/provedores/test_bright_data.py`.
+- [X] T008 [P] [US1] [F2] Provedor Bright Data, com leitura pela zona de Web Unlocker e busca pela SERP API só quando habilitada de propósito, sem cookies nem opções de desbloqueio, em `backend/fontes/provedores/bright_data.py`. Teste: `tests/fontes/provedores/test_bright_data.py`.
 - [X] T009 [P] [US1] [F2] Provedor People Data Labs, só com Person Enrichment, em `backend/fontes/provedores/people_data_labs.py`. Teste: `tests/fontes/provedores/test_people_data_labs.py`.
 - [X] T010 [US1] [F2] Cadeia com ordem, troca registrada, repetição, disjuntor, orçamento, cache e supressão, em `backend/fontes/provedores/cadeia.py` e `controles.py`. Testes: `test_cadeia.py` e `test_controles.py`, em `tests/fontes/provedores/`.
-- [X] T011 [US1] [F2] Ativação por chave, Bright Data primeiro, `MODO_DADOS` e recusa de valor inválido, em `backend/fontes/provedores/configuracao.py`. Teste: `tests/fontes/provedores/test_configuracao.py`.
+- [X] T011 [US1] [F2] Ativação por chave, Brave primeiro, `MODO_DADOS` e recusa de valor inválido, em `backend/fontes/provedores/configuracao.py`. Teste: `tests/fontes/provedores/test_configuracao.py`.
 - [X] T012 [US1] [F2] `FonteProvedores` com estado visível, modo sintético e guarda como pendente, em `backend/fontes/provedores/fonte.py`. Testes: `test_fonte.py` e `test_integracao_fluxo.py`, em `tests/fontes/provedores/`.
+- [X] T073 [P] [US1] [F2] Provedor Brave Search, só para consultas de texto, com país BR, idioma `pt-br` e `offset` limitado, em `backend/fontes/provedores/brave.py`. Teste: `tests/fontes/provedores/test_brave.py`. Responde a Q2.
 
 ### Falta
 
@@ -208,11 +209,12 @@ Todos em `backend/fontes/anonimizador.py`, com teste em `tests/fontes/test_anoni
 **Objetivo**: o que depende de decisão, contrato comercial ou parecer. Estas tarefas não entram em `/speckit-implement` e não são feitas por agente. **Nenhuma delas pede para burlar login, CAPTCHA ou bloqueio.**
 
 - [ ] T063 [TIME] Responder Q1: como o legítimo interesse convive com o corte `sem_autorizacao` e com a constituição. Bloqueia T045 e parte de T046.
-- [ ] T064 [TIME] Responder Q2: manter a SERP API da Bright Data, cujo alvo é `google.com/search`, ou trocar por uma API de busca oficial. Registrar a decisão na arquitetura.
+- [X] T064 [TIME] Responder Q2: a busca passa a usar a Brave Search API, por decisão do responsável pelo produto (código em T073). Falta só registrar a decisão na arquitetura, que está em `origin/main`.
+- [ ] T074 [TIME] Responder Q4: contratar por escrito o direito de armazenar resultados da Brave, ou reduzir o que é guardado, antes de usar dados reais.
 - [ ] T065 [TIME] **Dados do LinkedIn por provedor contratado.** Definir dono, forma da entrega (dataset ou API), termos e plano. A coleta é do provedor; a integração é implementação do time, revisada por pessoas, inclusive a relação com os bloqueios atuais em `url_segura.py`, `bright_data.py` e `people_data_labs.py`. O código atual, escrito pelo agente, não faz essa coleta. Responde a Q3.
 - [ ] T066 [TIME] Obter o parecer jurídico sobre a base legal, o uso de pseudonimização, a camada 6 e o prazo de retenção, e escrever o teste de balanceamento (LIA) e, se pedido, o relatório de impacto (RIPD).
 - [ ] T067 [TIME] Acertar entre as quatro frentes a emenda ao princípio VII da constituição e aos textos ligados a ela. Há um rascunho local 2.0.0, não commitado, que precisa de revisão antes de valer.
-- [ ] T068 [TIME] Contratar e configurar os provedores: chaves fora do repositório e orçamentos. Antes de ligar `BRIGHTDATA_ZONA_WEB`, decidir o uso do Web Unlocker, que contorna bloqueios, e a configuração da zona no painel. Começar pela busca, como recomendado.
+- [ ] T068 [TIME] Contratar e configurar os provedores: chaves fora do repositório e orçamentos. Antes de ligar `BRIGHTDATA_ZONA_WEB`, decidir o uso do Web Unlocker, que contorna bloqueios, e a configuração da zona no painel. Começar pela busca, com `BRAVE_API_KEY`.
 - [ ] T069 [TIME] Conduzir a validação com fontes reais pelo protocolo da arquitetura, seção 13, com pessoa responsável, amostra definida antes e apagamento no prazo (FR-E049). Dados reais não entram no repositório, nas mensagens nem nos rastros compartilhados.
 - [ ] T070 [TIME] Definir quem implementa as tarefas em `backend/fontes`, que o `AGENTS.md` atribui à Frente 2 e hoje recebe código das branches `frente/agente-*`, e qual é a pasta das avaliações (`avaliacoes/` ou `evals/`).
 

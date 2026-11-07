@@ -16,7 +16,7 @@ Estas decisões estão **decididas** e não são reabertas aqui.
 | Id | Decisão | Onde está | Estado no código |
 | --- | --- | --- | --- |
 | D1 | Fontes plugáveis: a lista é configurável e só entra o que for habilitado. | Pedido do time; arquitetura, seção 10 | Existe, sem ligação à montagem |
-| D2 | Bright Data como provedor principal e People Data Labs como reserva. Cada um fica ativo quando a chave está configurada. Não há proxy próprio. | Pedido do time; arquitetura, seção 4, camada 6 | Existe, sem ligação à montagem. A reserva só cobre enriquecimento |
+| D2 | Brave Search API para a busca, Bright Data para ler páginas e People Data Labs para enriquecer. Cada um fica ativo quando a chave está configurada. Não há proxy próprio. | Decisão do responsável pelo produto, que responde a Q2 e substitui "Bright Data como principal"; arquitetura, seções 3 e 4 | Existe, sem ligação à montagem |
 | D3 | `MODO_DADOS=sinteticos` na demo. Esse modo manda sobre as chaves. | Pedido do time; arquitetura, seções 13 e 14 | Existe, sem ligação à montagem |
 | D4 | Pseudonimização antes do modelo e dos rastros, com cofre separado. | Pedido do time | Existe na análise e na revisão; identificadores comuns ainda escapam |
 | D5 | Perfil estruturado em JSON. | Pedido do time; `PerfilColetado` | Existe para GitHub, site e documento; falta para provedores |
@@ -25,10 +25,10 @@ Estas decisões estão **decididas** e não são reabertas aqui.
 
 ## Pseudonimização não é anonimização
 
-- **Anonimização:** o dado perde o vínculo com a pessoa, sem caminho de volta por meios razoáveis. Pelo art. 12 da LGPD, dado anonimizado deixa de ser dado pessoal, salvo se o processo for revertido.
-- **Pseudonimização:** o art. 13, §4º, da LGPD a define como o tratamento em que o dado só volta a se associar à pessoa com uma informação adicional, mantida separadamente pelo controlador em ambiente controlado e seguro. Aqui, essa informação é o cofre.
-- **Consequência para este produto:** o resultado continua sendo dado pessoal, sujeito às mesmas regras de base legal, remoção, retenção e segurança. O texto enviado ao modelo nunca é descrito como anônimo.
-- **Limite da leitura:** o art. 13 trata de estudos em saúde pública. O uso dessa definição em recrutamento faz parte do parecer jurídico pendente.
+- **Anonimização:** o dado perde o vínculo com a pessoa, sem caminho de volta por meios razoáveis (art. 5º, III e XI, da LGPD). Pelo art. 12, dado anonimizado deixa de ser pessoal, salvo se o processo puder ser revertido por meios próprios ou com esforços razoáveis. O §1º lista os fatores do que é razoável.
+- **Pseudonimização:** o art. 13 trata de estudos em saúde pública. O §4º dele serve aqui só como definição: o dado só volta a se associar à pessoa com uma informação adicional, mantida separadamente pelo controlador em ambiente controlado e seguro. Aqui, essa informação é o cofre.
+- **Consequência para este produto:** o que vem do art. 5º e do art. 12, e não do art. 13, é que dado que pode ser revertido segue sendo pessoal, sujeito às mesmas regras de base legal, remoção, retenção e segurança. O texto enviado ao modelo nunca é descrito como anônimo.
+- **Limite da leitura:** esta interpretação ainda precisa de confirmação jurídica, inclusive o uso em recrutamento de uma definição escrita para estudos em saúde pública (T066).
 
 ## Dados do LinkedIn: o que é fato hoje
 
@@ -44,13 +44,18 @@ Estas decisões estão **decididas** e não são reabertas aqui.
 **Sobre a Bright Data:**
 
 - **Web Unlocker contorna bloqueios.** O cabeçalho de `bright_data.py` registra que a API não tem parâmetro para desligar o desbloqueio, que o resolvedor de CAPTCHA só se desliga no painel da zona e que a troca de proxies e o tratamento de impressão digital continuam ligados, porque são o próprio produto. O leitor próprio (`site_publico.py`) faz o oposto: login, CAPTCHA ou bloqueio encerram a leitura.
-- **A busca é a parte recomendada para o início.** Na prática: configurar `BRIGHTDATA_ZONA_BUSCA` e deixar `BRIGHTDATA_ZONA_WEB` vazia. O código aceita essa configuração, avisa que a leitura de páginas está indisponível e mantém o trecho do resultado (`test_token_sem_zona_entra_na_cadeia_e_avisa`, `test_falha_ao_ler_uma_pagina_nao_perde_o_trecho`). A questão Q2 trata do alvo dessa busca.
+- **A busca saiu da Bright Data por padrão.** A SERP só entra com `BRIGHTDATA_ZONA_BUSCA` e `BRIGHTDATA_BUSCA_HABILITADA=1`. Essa opção usa alvo Google, que a arquitetura deixa de fora, e o estado das fontes avisa quando ela está ligada. Na consulta real, o alvo Bing devolveu resposta vazia.
+
+**Sobre a Brave:**
+
+- **Para começar, basta a busca.** Na prática: configurar `BRAVE_API_KEY` e deixar `BRIGHTDATA_ZONA_WEB` vazia. O código mantém o trecho do resultado, sem ler a página (`test_falha_ao_ler_uma_pagina_nao_perde_o_trecho`).
+- **Armazenar depende de contrato.** Os termos (seção 3(b)(i)) proíbem guardar, fazer cache ou montar base de resultados, salvo armazenamento transitório necessário à operação. A questão Q4 trata disso.
 
 ## Cenários de usuário e testes *(obrigatório)*
 
 ### História 1: escolher as fontes pela configuração (Prioridade: P1)
 
-Quem opera o produto liga ou desliga fontes pela configuração. A demo roda só com dados sintéticos, mesmo que existam chaves no ambiente. Com chaves e sem o modo sintético, a Bright Data responde primeiro e a People Data Labs entra como reserva.
+Quem opera o produto liga ou desliga fontes pela configuração. A demo roda só com dados sintéticos, mesmo que existam chaves no ambiente. Com chaves e sem o modo sintético, a Brave faz a busca, a Bright Data lê as páginas e a People Data Labs enriquece.
 
 **Por que esta prioridade**: sem isso, a demo pode chamar um provedor real por engano, e o modo real não tem como ser ligado.
 
@@ -58,9 +63,9 @@ Quem opera o produto liga ou desliga fontes pela configuração. A demo roda só
 
 **Cenários de aceite**:
 
-1. **Dado** `MODO_DADOS=sinteticos` e as duas chaves configuradas, **quando** a montagem cria as fontes, **então** nenhum provedor nem transporte é criado e o estado diz "somente dados sintéticos".
-2. **Dado** as duas chaves e o modo real, **quando** a primeira consulta é feita, **então** a Bright Data é chamada primeiro e cada troca de provedor é registrada com o motivo.
-3. **Dado** nenhuma chave, **quando** a API sobe, **então** o estado diz "sem fontes externas" e o agente segue só com o banco de talentos, sem troca silenciosa.
+1. **Dado** `MODO_DADOS=sinteticos` e todas as chaves configuradas, **quando** a montagem cria as fontes, **então** nenhum provedor nem transporte é criado e o estado diz "somente dados sintéticos".
+2. **Dado** todas as chaves e o modo real, **quando** a primeira consulta de texto é feita, **então** a Brave é chamada primeiro, a Bright Data não recebe a busca, e cada troca de provedor é registrada com o motivo.
+3. **Dado** nenhuma chave, **quando** a API sobe, **então** o estado diz "sem fontes externas", avisa que falta `BRAVE_API_KEY` e o agente segue só com o banco de talentos, sem troca silenciosa.
 4. **Dado** um valor inválido em `MODO_DADOS`, **quando** a montagem roda, **então** a subida é recusada.
 5. **Dado** a configuração real, **quando** a API sobe pela montagem real, **então** as fontes configuradas são as que o fluxo usa, e a subida é recusada se faltar uma peça obrigatória.
 
@@ -171,9 +176,14 @@ Quem escreve a página ou o arquivo é a própria pessoa candidata. O conteúdo 
 ### Casos de borda
 
 - **Chave em branco:** conta como ausente, e o provedor não entra.
-- **Token da Bright Data sem zona:** o provedor entra na cadeia e a operação sem zona falha com motivo próprio, sem cobrança.
-- **Os dois provedores fora do ar:** o fluxo segue com cobertura parcial, com o motivo registrado.
-- **Busca de texto com a Bright Data fora do ar:** a People Data Labs não aceita consulta de texto, então não há reserva para a busca. O resultado é cobertura parcial, não troca.
+- **Token da Bright Data sem zona de leitura:** o provedor entra na cadeia e a leitura falha com motivo próprio, sem cobrança.
+- **Bright Data sem as duas variáveis da SERP:** ela não aceita consulta de texto, e o estado avisa quando só uma delas foi definida.
+- **SERP ligada de propósito:** entra depois da Brave, e o estado avisa que o alvo é o Google.
+- **Sem `BRAVE_API_KEY`:** a Brave fica de fora, e o estado avisa que a busca na web está indisponível.
+- **Todos os provedores fora do ar:** o fluxo segue com cobertura parcial, com o motivo registrado.
+- **Busca de texto com a Brave fora do ar:** a People Data Labs não aceita consulta de texto e a SERP fica desligada por padrão, então não há reserva para a busca. O resultado é cobertura parcial, não troca.
+- **Página além da décima na Brave:** o `offset` da API vai só até 9, então a consulta termina sem chamar nem cobrar.
+- **Cota mensal da Brave esgotada:** o 429 não é repetido e sai com o motivo `sem_creditos`. Limite por segundo é repetido.
 - **Orçamento esgotado no meio da execução:** nada é chamado além do limite, e a reserva é devolvida em caso de falha.
 - **Resultado de busca sem página lida:** o trecho é mantido como declarado, sem virar comprovado.
 - **Página que se declara de domínio bloqueado:** é recusada, mesmo que a URL pedida seja outra.
@@ -197,7 +207,7 @@ Quem escreve a página ou o arquivo é a própria pessoa candidata. O conteúdo 
 | --- | --- | --- |
 | **FR-E001** | As fontes DEVEM vir de uma lista configurável, em que só entra o que foi habilitado. Fonte fora do catálogo DEVE impedir a subida. | Existe |
 | **FR-E002** | Toda fonte DEVE implementar a mesma interface, de modo que trocar ou acrescentar uma fonte não mude o núcleo. | Existe |
-| **FR-E003** | Com as duas chaves, a Bright Data DEVE responder primeiro e a People Data Labs DEVE ser a reserva. Cada provedor DEVE ficar ativo apenas quando sua chave estiver configurada, sem outro interruptor. | Existe |
+| **FR-E003** | A Brave DEVE responder primeiro às consultas de texto. A Bright Data só DEVE fazer busca com `BRIGHTDATA_ZONA_BUSCA` e `BRIGHTDATA_BUSCA_HABILITADA=1`, com aviso de que o alvo é o Google. A leitura de páginas continua na Bright Data, e o enriquecimento, só na People Data Labs. Cada provedor DEVE ficar ativo apenas quando sua chave estiver configurada. | Existe |
 | **FR-E004** | O sistema NÃO DEVE operar nem ler do ambiente um proxy próprio. O roteamento fica a cargo do provedor contratado. | Parcial: código sem teste dedicado |
 | **FR-E005** | `MODO_DADOS=sinteticos` DEVE mandar sobre as chaves: nenhum provedor ou transporte é criado, e item sem a marca de simulado é descartado. Valor inválido DEVE impedir a subida. | Existe |
 | **FR-E006** | O estado das fontes (ativas, sem fontes externas, somente sintéticos) DEVE ficar visível na API e na interface, sem troca silenciosa. | Parcial: existe em `FonteProvedores.estado`, sem exposição |
@@ -261,7 +271,7 @@ Quem escreve a página ou o arquivo é a própria pessoa candidata. O conteúdo 
 
 ### Resultados mensuráveis
 
-- **SC-E001**: Em modo sintético, com as duas chaves configuradas, 0 pedido sai para qualquer provedor em toda a suíte.
+- **SC-E001**: Em modo sintético, com todas as chaves configuradas, 0 pedido sai para qualquer provedor em toda a suíte.
 - **SC-E002**: Os 18 casos `L1` e os casos `L2` e `L5` da revisão passam, com 0 identificador escapando.
 - **SC-E003**: Num conjunto sintético de pelo menos 50 currículos, com identificadores conhecidos e meta declarada, 0 identificador direto chega ao modelo ou aos rastros. O resultado para identificadores indiretos é publicado por categoria.
 - **SC-E004**: 100% dos fatos dos perfis de exemplo de GitHub, site, documento e provedor têm fonte, origem, data, trecho e tipo, e 0 fato de provedor sai como comprovado.
@@ -288,5 +298,6 @@ Quem escreve a página ou o arquivo é a própria pessoa candidata. O conteúdo 
 | Id | Questão | Por que importa | Opções |
 | --- | --- | --- | --- |
 | **Q1** | Como a base de legítimo interesse convive com o corte `sem_autorizacao` e com "sem contato frio a partir de dados de terceiros" da constituição? | Hoje todo candidato de fonte externa é cortado antes da análise, e há teste que fixa isso. A correção técnica depende da resposta. | **A:** manter a exigência de autorização; a coleta só alimenta quem autorizou. **B:** registrar a base por pessoa, permitir a análise sem autorização e condicionar o contato ao e-mail publicado e à transparência; exige emenda à constituição e parecer. |
-| **Q2** | A busca inicial pode usar a SERP API da Bright Data, cujo alvo no código é `google.com/search`? | A arquitetura, seção 4, deixa de fora raspar resultados do Google "direto ou por APIs de terceiros" e cita Brave Search como exemplo, enquanto a recomendação é começar pela busca. | **A:** aceitar a SERP da Bright Data e atualizar a arquitetura. **B:** trocar o alvo por uma API de busca oficial, como a arquitetura descreve. |
+| **Q2** | **Respondida: opção B, Brave Search API.** A busca inicial pode usar a SERP API da Bright Data, cujo alvo no código é `google.com/search`? | O responsável pelo produto decidiu pela API oficial da Brave: a SERP com alvo Google conflita com a arquitetura, seção 4, e o alvo Bing devolveu resposta vazia na consulta real. | Implementada em `provedores/brave.py`. A SERP fica desligada por padrão. Falta registrar a decisão na arquitetura, que está em `origin/main` (T064). |
 | **Q3** | Como os dados do LinkedIn por provedor contratado entram, e quem é o dono? | A decisão existe, o código bloqueia, e a constituição confirmada ainda proíbe. | Decisão do time: dataset ou API, termos do plano, dono humano, emenda à constituição e relação com os bloqueios atuais. |
+| **Q4** | Como guardar o que vem da Brave, se os termos proíbem sem um plano com esse direito? | O plano público (Search, US$ 5 por mil) não diz incluir o direito, e a Brave não publica qual plano inclui. Hoje o resultado inteiro fica até 24 horas no `CacheConsultas`, em memória, e a URL do resultado é gravada em `decisoes` e `progressos` depois do corte do funil. `FonteProvedores.guardar` não tem chamador em produção. | **A:** contratar o direito com a Brave, por escrito, antes de usar dados reais. **B:** reduzir o cache ao transitório e tirar a URL do que é gravado, o que depende de A-6 e de parecer sobre o que é "transitório". |

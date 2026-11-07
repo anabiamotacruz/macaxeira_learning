@@ -6,7 +6,7 @@
 
 ## Resumo
 
-As peças de coleta e pseudonimização já existem e têm teste: fontes plugáveis, cadeia Bright Data e People Data Labs, `MODO_DADOS`, `PerfilColetado`, pseudonimizador, cofre e reidentificação. O problema é que elas funcionam isoladas. Só os testes usam essas peças, e a única montagem é `montar_demo`.
+As peças de coleta e pseudonimização já existem e têm teste: fontes plugáveis, cadeia Brave, Bright Data e People Data Labs, `MODO_DADOS`, `PerfilColetado`, pseudonimizador, cofre e reidentificação. O problema é que elas funcionam isoladas. Só os testes usam essas peças, e a única montagem é `montar_demo`.
 
 Este plano liga as peças, leva a prova de cada fato até a decisão, acrescenta a identidade entre fontes e fecha os achados abertos da revisão. Nenhuma linha de código muda nesta entrega: aqui ficam só a spec, o plano e as tarefas.
 
@@ -18,7 +18,7 @@ Este plano liga as peças, leva a prova de cada fato até a decisão, acrescenta
 - Apêndice da revisão, rodado numa cópia isolada: 81 falham e 4 passam, o mesmo resultado do commit revisado (`f07125c`). Conferi o motivo dos casos `O1` a `O3`, `O5`, `L2`, `L3`, `V1` a `V3`, `X1`, `X2`, `M6`, `M7`, `H1`, `H2`, `H6` a `H9`, `Q1` e `Q3`: são falhas de comportamento, não de assinatura.
 - Configuração só com `BRIGHTDATA_API_TOKEN` e `BRIGHTDATA_ZONA_BUSCA`, com transporte falso: 1 pedido de busca, nenhuma leitura de página, trecho mantido e pessoa em estado `pendente`.
 
-Nenhum provedor real nem o modelo real foram chamados nesta medição.
+Nenhum provedor real nem o modelo real foram chamados nesta medição, que é anterior à troca da busca pela Brave. Hoje essa configuração também exige `BRIGHTDATA_BUSCA_HABILITADA=1`.
 
 ## Contexto técnico
 
@@ -66,7 +66,7 @@ Nenhum provedor real nem o modelo real foram chamados nesta medição.
 | Módulo | O que já faz | O que falta |
 | --- | --- | --- |
 | `fontes/registro.py` | Lista configurável de fontes | Catálogo real na montagem |
-| `fontes/provedores/` | Cadeia, política de URL, orçamento, cache, disjuntor, supressão e `MODO_DADOS` | Ligação à montagem; `PerfilColetado`; decisão sobre a busca |
+| `fontes/provedores/` | Cadeia, política de URL, orçamento, cache, disjuntor, supressão e `MODO_DADOS` | Ligação à montagem; `PerfilColetado`; direito de armazenar os resultados da Brave (Q4) |
 | `fontes/github_teste.py` | API oficial, só para contas consentidas | Consentimento por empresa, token e autorização |
 | `fontes/site_publico.py` | SSRF, `robots.txt`, login e CAPTCHA encerram a leitura | Casos hostis, contato de terceiro e prazo total |
 | `fontes/documentos.py` | PDF, OCR e limites | Texto invisível e limite geral de PDF |
@@ -137,7 +137,7 @@ Todas pedem aviso às quatro frentes (T002), antes de começar:
 | 2 | **LinkedIn, dentro da própria arquitetura** | Camada 6 inclui; seções 4, 6 e 12 mantêm "bloqueio fixo em código, sem exceção"; seção 13 diz "nada de `linkedin.com`" | Segue o bloqueio |
 | 3 | **Constituição** | `constitution.md` 1.0.0 e `AGENTS.md`, como estão confirmados: "sem scraping do LinkedIn" e "somente dados sintéticos". Há um rascunho local não commitado (2.0.0) que diz "o conector coleta o LinkedIn pela Bright Data" | O conector não faz isso, e a arquitetura atribui a coleta ao provedor |
 | 4 | **Camadas 1 e 2** | Consultas `site:linkedin.com/in` e URL do LinkedIn como chave de identidade | `-site:linkedin.com`, `validar_texto_de_busca` e `remover_links_proibidos` fazem o oposto |
-| 5 | **Busca** | Arquitetura, seção 4: raspar resultados do Google, mesmo por terceiros, fica de fora; seção 3 cita Brave Search | `bright_data.py` usa a SERP API com alvo `google.com/search` |
+| 5 | **Busca** | Arquitetura, seção 4: raspar resultados do Google, mesmo por terceiros, fica de fora; seção 3 cita Brave Search | **Resolvida (Q2):** a busca é da Brave, em `brave.py`. A SERP com alvo `google.com/search` só entra com `BRIGHTDATA_BUSCA_HABILITADA=1`, com aviso. Falta registrar na arquitetura |
 | 6 | **Bright Data** | "Dataset ou API do provedor", com perfis profissionais | Web Unlocker e SERP API, sem dataset |
 | 7 | **People Data Labs** | "Busca de pessoas por cargo e cidade", com `linkedin_url` | Só Person Enrichment, sem busca nem `linkedin_url`. Por isso, a reserva não cobre consulta de texto |
 | 8 | **Regras de coleta** | Arquitetura, seção 6: `robots.txt`, limites por domínio e sem contorno | Valem em `site_publico.py`. O caminho pela Bright Data não consulta `robots.txt`, e o Web Unlocker contorna bloqueios por natureza |
@@ -163,7 +163,7 @@ Todas pedem aviso às quatro frentes (T002), antes de começar:
 | 3. Contato e Nara | `backend/contato`, `backend/nara_simulada` | Usa só o contato publicado; mostra a origem no primeiro e-mail; aplica o opt-out recebido. Campos de identificação no pacote seguem com o achado M-3 |
 | 4. Produto e qualidade | `web`, avaliações, `docs/pitch` | Mostra o estado das fontes e a etiqueta de simulação; conjunto sintético e medição de vazamento |
 | Compartilhada | `backend/contratos` | Só com aviso às quatro frentes |
-| Time (pessoas) | Fora do código | Parecer jurídico, Q1, Q2, Q3, emenda à constituição, contas e chaves, e dados do LinkedIn |
+| Time (pessoas) | Fora do código | Parecer jurídico, Q1, Q3, Q4, emenda à constituição, contas e chaves, e dados do LinkedIn |
 
 **Enquanto as outras frentes não chegam**, a Frente 1 usa as simulações de `backend/contratos/simulacoes.py` e avisa o que cada frente precisa entregar.
 
@@ -199,6 +199,7 @@ backend/
     ├── site_publico.py
     ├── banco_talentos.py
     └── provedores/
+        ├── brave.py
         ├── bright_data.py
         ├── people_data_labs.py
         ├── cadeia.py
