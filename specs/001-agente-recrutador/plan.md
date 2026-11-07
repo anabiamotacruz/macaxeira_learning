@@ -6,7 +6,7 @@
 
 **Arquitetura:** máquina de estados em código, com IA nas decisões abertas. Fontes, mensagens e Nara ficam atrás de interfaces, com simulações trocáveis. API e MCP usam o mesmo núcleo.
 
-**Tecnologias:** Python 3.12, FastAPI, Pydantic, pytest, ruff, Langfuse, cliente OpenAI com Featherless, Next e TypeScript.
+**Tecnologias:** Python 3.12, FastAPI, Pydantic, SQLite, pytest, ruff, Langfuse, cliente OpenAI com Featherless, Next e TypeScript.
 
 **Spec:** `specs/001-agente-recrutador/spec.md`. **Design:** `docs/superpowers/specs/2026-11-07-agente-recrutador-design.md`.
 
@@ -20,6 +20,8 @@
 - Modelo padrão: `zai-org/GLM-5.2`, com `max_tokens` de pelo menos 1000.
 - Simulações são identificadas com `simulado=True` na API e na interface.
 - Chaves ficam só em variáveis de ambiente.
+- Toda consulta recebe `empresa_id`; nenhum dado é lido sem esse escopo.
+- Chamadas externas têm tempo limite; o valor padrão é 30 segundos.
 
 ## Foco de revisão
 
@@ -33,11 +35,11 @@
 
 ```text
 backend/
-  contratos/      modelos.py, interfaces.py         (compartilhada)
-  agente/         regras.py, fluxo.py, rotina_banco.py, aprendizado.py, api.py, mcp.py
-  modelos/        cliente.py
-  fontes/         banco_talentos.py, rede_simulada.py, analisador.py, revisor.py, github_teste.py
-  contato/        mensageiro.py, conversa.py, cadastro.py, pacote.py
+  contratos/      modelos.py, interfaces.py, erros.py, simulacoes.py  (compartilhada)
+  agente/         regras.py, fluxo.py, configuracao.py, persistencia.py, auditoria.py, rotina_banco.py, aprendizado.py, api.py, mcp.py
+  modelos/        cliente.py, resiliencia.py
+  fontes/         banco_talentos.py, consultas.py, funil.py, documentos.py, rede_simulada.py, analisador.py, revisor.py, github_teste.py
+  contato/        mensageiro.py, conversa.py, cadastro.py, entrada.py, recontato.py, pacote.py
   nara_simulada/  servico.py
 dados/            gerador.py, sinteticos/
 avaliacoes/       casos/, test_avaliacoes.py, relatorio.py
@@ -73,8 +75,10 @@ class Analise(BaseModel):
 class TipoDecisao(StrEnum): DESCARTAR="descartar"; INDICAR="indicar"; PEDIR_HUMANO="pedir_humano"
 class Decisao(BaseModel):
     vaga_id: str; candidato_id: str; tipo: TipoDecisao; regra: str; motivo: str; responsavel: str; rastro_id: str
+    entrada: dict[str, str]; evidencias: list[Evidencia]; momento: datetime
+class TipoConvite(StrEnum): AUTORIZACAO="autorizacao"; VAGA="vaga"
 class Convite(BaseModel):
-    id: str; vaga_id: str; candidato_id: str; mensagem: str; link_nara: str; chave_idempotencia: str; simulado: bool
+    id: str; empresa_id: str; tipo: TipoConvite; canal: str; vaga_id: str | None; candidato_id: str; mensagem: str; link_nara: str; chave_idempotencia: str; simulado: bool
 class TipoResposta(StrEnum): ACEITE="aceite"; RECUSA="recusa"; DUVIDA="duvida"; SILENCIO="silencio"; OPT_OUT="opt_out"
 class RespostaCandidato(BaseModel): convite_id: str; tipo: TipoResposta; texto: str = ""
 class PacoteNara(BaseModel):
@@ -83,6 +87,7 @@ class PacoteNara(BaseModel):
     pontos_a_aprofundar: list[str]; ressalvas_revisor: list[str]
     autorizacao: str; fonte: str; rastro_id: str; chave_idempotencia: str
 class ResultadoNara(BaseModel): vaga_id: str; candidato_id: str; notas: dict[str, float]; aprovado: bool; simulado: bool = True
+class PropostaAjuste(BaseModel): vaga_id: str; motivo: str; antes: Vaga; depois: Vaga; resultado_avaliacao: dict[str, float]; aprovada: bool = False
 class EventoFluxo(BaseModel): vaga_id: str; etapa: str; mensagem: str; candidato_id: str | None = None; custo_usd: float = 0; momento: datetime
 ```
 
@@ -90,12 +95,12 @@ Definidos em `backend/contratos/interfaces.py` (`typing.Protocol`):
 
 ```python
 class FonteCandidatos(Protocol):
-    def buscar(self, consulta: str, pagina: int = 1) -> list[Candidato]: ...
+    def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]: ...
 class BancoTalentos(FonteCandidatos, Protocol):
     def importar(self, empresa_id: str, registros: list[dict]) -> list[Candidato]: ...
-    def registrar_autorizacao(self, candidato_id: str, valida_ate: date) -> Candidato: ...
-    def atualizar(self, candidato_id: str, dados: dict[str, str]) -> Candidato: ...
-    def remover(self, candidato_id: str) -> None: ...
+    def registrar_autorizacao(self, empresa_id: str, candidato_id: str, valida_ate: date) -> Candidato: ...
+    def atualizar(self, empresa_id: str, candidato_id: str, dados: dict[str, str]) -> Candidato: ...
+    def remover(self, empresa_id: str, candidato_id: str) -> None: ...
     def vencendo(self, empresa_id: str, ate: date) -> list[Candidato]: ...
 class Analisador(Protocol):
     def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise: ...
@@ -112,6 +117,12 @@ class ClienteModelo(Protocol):
 ```
 
 Erros compartilhados, em `backend/contratos/erros.py`: `FonteIndisponivel`, `ModeloIndisponivel`, `RespostaInvalida`, `LimiteGastoAtingido`.
+
+Em `backend/contratos/simulacoes.py` ficam as simulações de todas as interfaces, usadas pelas frentes enquanto as implementações reais não chegam.
+
+## Persistência
+
+SQLite em arquivo local, por decisão de design, sem Postgres até haver necessidade. Tabelas: execuções, eventos, decisões, convites e chaves de idempotência. O banco de talentos pode começar no mesmo arquivo. Dados sintéticos são recarregados por `POST /sessoes/reiniciar`.
 
 ## Estados do fluxo
 

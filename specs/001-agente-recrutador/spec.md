@@ -69,6 +69,10 @@ Como recrutador, quero que os resultados da Nara melhorem a busca, para receber 
 - Candidato que pede para sair durante a conversa.
 - Falha no envio depois de o convite ter sido aceito pelo mensageiro.
 - Limite de gasto atingido no meio da execução.
+- Documento enviado com formato inválido, grande demais ou com texto ilegível.
+- Dois jurados usando o link público ao mesmo tempo.
+- Reinício do serviço no meio de uma execução.
+- Requisição tentando acessar dados de outra empresa.
 
 ## Requisitos
 
@@ -99,6 +103,12 @@ Como recrutador, quero que os resultados da Nara melhorem a busca, para receber 
 - **FR-022**: O sistema DEVE atualizar perfis por conversa e registrar a data de atualização.
 - **FR-023**: O sistema DEVE remover dados a pedido e tratar autorizações vencidas.
 - **FR-024**: A busca DEVE consultar o banco da empresa antes de fontes externas.
+- **FR-025**: O sistema DEVE receber novos candidatos por um link de cadastro e por indicações, sempre com autorização registrada.
+- **FR-026**: O sistema DEVE aceitar currículo enviado pela própria pessoa, validar o arquivo e tratar o conteúdo como dado.
+- **FR-027**: O sistema DEVE traduzir a vaga em consultas e reduzir candidatos com filtros determinísticos antes das análises por modelo.
+- **FR-028**: O sistema DEVE persistir estado, decisões e eventos, e retomar uma execução depois de reinício.
+- **FR-029**: A API DEVE limitar cada requisição à empresa e à sessão atuais, e aplicar limite de requisições.
+- **FR-030**: O sistema DEVE mostrar progresso e resultados parciais durante a execução.
 
 ### Entidades
 
@@ -122,3 +132,5 @@ Como recrutador, quero que os resultados da Nara melhorem a busca, para receber 
 - **SC-006**: Um jurado altera uma vaga e vê o primeiro resultado sem ajuda do time.
 - **SC-007**: A precisão entre os 5 primeiros é medida e aparece no painel. A meta será definida depois da primeira execução.
 - **SC-008**: Zero vazamentos entre empresas e zero perfis sem autorização válida na busca.
+- **SC-009**: Depois de reinício do serviço, a execução retoma sem duplicar convites nem entregas.
+- **SC-010**: Toda indicação pode ser explicada a partir de um registro de decisão com evidências e rastro.

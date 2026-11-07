@@ -1,26 +1,38 @@
 # Tarefas: agente recrutador conectado à Nara
 
-Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode rodar em paralelo. Cada tarefa segue o ciclo: teste falhando, implementação mínima, verificação e commit.
+Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **2** até sábado às 17h, **3** até domingo às 11h. O marcador **(corte)** indica o que pode sair se faltar tempo. **`[P]`** indica tarefa que pode rodar em paralelo. Cada tarefa segue o ciclo: teste falhando, implementação mínima, verificação e commit.
 
 **Verificação padrão:** `pytest <arquivo-do-teste> -v` e `ruff check .`.
+
+## Resumo por frente e onda
+
+| Frente | Onda 1 | Onda 2 | Onda 3 |
+| --- | --- | --- | --- |
+| **1. Agente** | T1.1, T1.2, T1.3, T1.8, T1.9 | T1.4, T1.7, T1.10, T1.11 | T1.5, T1.6 |
+| **2. Fontes e dados** | T2.1, T2.6, T2.7, T2.8 | T2.2, T2.3, T2.4, T2.9 | T2.5 |
+| **3. Contato e Nara** | T3.1, T3.2, T3.3, T3.4 | T3.5, T3.6 | Ajustes da integração |
+| **4. Produto e qualidade** | T4.1, T4.2 | T4.3, T4.5, T4.6 | T4.4 |
 
 ## Fase 0: em conjunto (sábado, das 10h às 11h)
 
 ### T0: contratos e base do projeto
 
-**Arquivos:** `pyproject.toml`, `backend/contratos/modelos.py`, `backend/contratos/interfaces.py`, `backend/contratos/erros.py`, `tests/contratos/test_modelos.py`, `.env.example`.
+**Arquivos:** `pyproject.toml`, `backend/contratos/modelos.py`, `backend/contratos/interfaces.py`, `backend/contratos/erros.py`, `backend/contratos/simulacoes.py`, `tests/contratos/test_modelos.py`, `tests/contratos/test_simulacoes.py`, `.env.example`, `.github/workflows/ci.yml`.
 
 **Produz:** os contratos de `plan.md`.
 
 - [ ] Escrever `test_candidato_tem_empresa_e_validade_de_autorizacao`, `test_vaga_nao_aprovada_por_padrao`, `test_pacote_exige_chave_idempotencia` e `test_convite_identifica_simulacao`.
 - [ ] Criar `pyproject.toml` com fastapi, uvicorn, pydantic, openai, langfuse, pandas, pytest e ruff, e o marcador `eval`.
 - [ ] Implementar modelos, interfaces e erros de `plan.md`.
+- [ ] Testar `test_busca_exige_empresa_id` e `test_simulacoes_seguem_as_interfaces`.
+- [ ] Implementar simulações de todas as interfaces em `simulacoes.py`.
 - [ ] Criar `.env.example` só com nomes de variáveis.
+- [ ] Criar CI que rode `ruff check .` e `pytest` em todo pull request, sem chaves.
 - [ ] Rodar a verificação, abrir PR e levar à `main`. As frentes começam depois disso.
 
 ## Frente 1: agente
 
-### T1.1 [P]: regras determinísticas
+### T1.1 [P] (onda 1): regras determinísticas
 
 **Arquivo:** `backend/agente/regras.py`. **Teste:** `tests/agente/test_regras.py`.
 
@@ -32,7 +44,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_pede_humano_com_ressalva_do_revisor` e `test_nao_indica_sem_evidencia`.
 - [ ] Implementar e verificar.
 
-### T1.2: máquina de estados
+### T1.2 (onda 1): máquina de estados
 
 **Arquivo:** `backend/agente/fluxo.py`. **Teste:** `tests/agente/test_fluxo.py`.
 
@@ -44,7 +56,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_estado_salvo_permite_retomar` e `test_meta_em_risco_avisa_recrutador`.
 - [ ] Implementar, salvando o estado após cada etapa, e verificar.
 
-### T1.3 [P]: cliente de modelos e rastro
+### T1.3 [P] (onda 1): cliente de modelos e rastro
 
 **Arquivo:** `backend/modelos/cliente.py`. **Teste:** `tests/modelos/test_cliente.py`.
 
@@ -56,7 +68,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_registra_tokens_custo_e_tempo_por_etapa`.
 - [ ] Implementar com a API compatível com a OpenAI e verificar.
 
-### T1.4: API
+### T1.4 (onda 2): API
 
 **Arquivo:** `backend/agente/api.py`. **Teste:** `tests/agente/test_api.py`.
 
@@ -66,7 +78,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_respostas_identificam_simulacao`.
 - [ ] Implementar e verificar.
 
-### T1.5: aprendizado
+### T1.5 (onda 3, corte): aprendizado
 
 **Arquivo:** `backend/agente/aprendizado.py`. **Teste:** `tests/agente/test_aprendizado.py`.
 
@@ -76,7 +88,53 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_nao_aplica_sem_aprovacao`, `test_permite_reverter` e `test_nao_propoe_criterio_sensivel`.
 - [ ] Implementar e verificar.
 
-### T1.7: rotina do banco
+### T1.8 [P] (onda 1): persistência e retomada
+
+**Arquivo:** `backend/agente/persistencia.py`. **Teste:** `tests/agente/test_persistencia.py`.
+
+**Produz:** `Repositorio` com `salvar_estado`, `carregar_estado`, `registrar_evento`, `listar_eventos`, `registrar_chave` e `chave_ja_usada`, em SQLite.
+
+- [ ] Testar `test_estado_sobrevive_a_reinicio`.
+- [ ] Testar `test_chave_repetida_nao_duplica_acao`.
+- [ ] Testar `test_empresa_so_le_os_proprios_dados`.
+- [ ] Implementar e verificar.
+
+### T1.9 [P] (onda 1): proposta de configuração da vaga
+
+**Arquivo:** `backend/agente/configuracao.py`. **Teste:** `tests/agente/test_configuracao.py`.
+
+**Produz:** `propor_configuracao(descricao: str, empresa_id: str, cliente_modelo) -> Vaga | PerguntaVaga`, com `aprovada=False`.
+
+- [ ] Testar `test_propoe_requisitos_competencias_e_meta`.
+- [ ] Testar `test_vaga_ambigua_devolve_pergunta`.
+- [ ] Testar `test_proposta_passa_por_validar_criterios`.
+- [ ] Testar `test_descricao_com_instrucao_nao_altera_regras`.
+- [ ] Implementar e verificar.
+
+### T1.10 [P] (onda 2): resiliência
+
+**Arquivo:** `backend/modelos/resiliencia.py`. **Teste:** `tests/modelos/test_resiliencia.py`.
+
+**Produz:** `com_tentativas(funcao, tentativas: int, espera: float, tempo_limite: float)` e `DisjuntorFonte`, para parar temporariamente uma fonte com falhas seguidas.
+
+- [ ] Testar `test_repete_erro_temporario_com_espera`.
+- [ ] Testar `test_nao_repete_erro_permanente`.
+- [ ] Testar `test_tempo_limite_gera_erro_claro`.
+- [ ] Testar `test_disjuntor_abre_e_fecha`.
+- [ ] Implementar e aplicar nas chamadas de modelo e fontes.
+
+### T1.11 (onda 2): auditoria
+
+**Arquivo:** `backend/agente/auditoria.py`. **Teste:** `tests/agente/test_auditoria.py`.
+
+**Produz:** `registrar_decisao(decisao: Decisao)`, `explicar_candidato(empresa_id: str, candidato_id: str, vaga_id: str) -> dict` e `@rastreado(etapa: str)`, para chamadas de modelo e ferramentas.
+
+- [ ] Testar `test_toda_decisao_tem_entrada_regra_evidencias_e_responsavel`.
+- [ ] Testar `test_explicacao_liga_decisao_eventos_e_rastro`.
+- [ ] Testar `test_rastro_nao_contem_chave`.
+- [ ] Implementar e verificar.
+
+### T1.7 (onda 2): rotina do banco
 
 **Arquivo:** `backend/agente/rotina_banco.py`. **Teste:** `tests/agente/test_rotina_banco.py`.
 
@@ -87,13 +145,13 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_autorizacao_vencida_sai_da_busca`, com decisão registrada.
 - [ ] Implementar e verificar.
 
-### T1.6 (opcional): adaptador MCP
+### T1.6 (onda 3, corte): adaptador MCP
 
 **Arquivo:** `backend/agente/mcp.py`. Expor `buscar_candidatos`, `explicar_escolha` e `entregar_a_nara` sobre as mesmas funções. Só começar com o fluxo principal integrado.
 
 ## Frente 2: fontes e dados
 
-### T2.1 [P]: dados sintéticos
+### T2.1 [P] (onda 1): dados sintéticos
 
 **Arquivos:** `dados/gerador.py`, `dados/sinteticos/`. **Teste:** `tests/dados/test_gerador.py`.
 
@@ -106,7 +164,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_gera_duas_empresas_separadas`.
 - [ ] Implementar e verificar.
 
-### T2.6 [P]: banco de talentos
+### T2.6 [P] (onda 1): banco de talentos
 
 **Arquivo:** `backend/fontes/banco_talentos.py`. **Teste:** `tests/fontes/test_banco_talentos.py`.
 
@@ -118,7 +176,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_remover_apaga_dados_e_impede_novo_contato`.
 - [ ] Implementar e verificar.
 
-### T2.2 [P]: rede de talentos simulada
+### T2.2 [P] (onda 2): rede de talentos simulada
 
 **Arquivo:** `backend/fontes/rede_simulada.py`. **Teste:** `tests/fontes/test_rede_simulada.py`.
 
@@ -129,7 +187,31 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_injeta_falha_com_fonte_indisponivel`.
 - [ ] Implementar e verificar.
 
-### T2.3: analisador
+### T2.7 [P] (onda 1): geração de consultas
+
+**Arquivo:** `backend/fontes/consultas.py`. **Teste:** `tests/fontes/test_consultas.py`.
+
+**Produz:** `gerar_consultas(vaga: Vaga, cliente_modelo) -> list[str]` e `ampliar_consultas(vaga: Vaga, anteriores: list[str], cliente_modelo) -> list[str]`.
+
+- [ ] Testar `test_inclui_sinonimos_de_cargo`.
+- [ ] Testar `test_nao_usa_criterio_sensivel`.
+- [ ] Testar `test_ampliacao_nao_remove_requisito_eliminatorio`.
+- [ ] Testar `test_resposta_invalida_usa_consulta_basica`.
+- [ ] Implementar e verificar.
+
+### T2.8 [P] (onda 1): funil e cache
+
+**Arquivo:** `backend/fontes/funil.py`. **Teste:** `tests/fontes/test_funil.py`.
+
+**Produz:** `priorizar(vaga: Vaga, candidatos: list[Candidato], limite: int = 20) -> list[Candidato]` e `CacheAnalise`, com chave por vaga, perfil e versão da configuração.
+
+- [ ] Testar `test_ordem_reproduzivel`.
+- [ ] Testar `test_exclui_sem_autorizacao_ou_requisito`.
+- [ ] Testar `test_ordem_nao_muda_com_nome_ou_genero`.
+- [ ] Testar `test_cache_evita_nova_analise_e_expira_ao_mudar_vaga`.
+- [ ] Implementar e verificar.
+
+### T2.3 (onda 2): analisador
 
 **Arquivo:** `backend/fontes/analisador.py`. **Teste:** `tests/fontes/test_analisador.py`.
 
@@ -141,7 +223,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_lacuna_nao_reduz_nota_sozinha`.
 - [ ] Implementar e verificar.
 
-### T2.4: revisor independente
+### T2.4 (onda 2): revisor independente
 
 **Arquivo:** `backend/fontes/revisor.py`. **Teste:** `tests/fontes/test_revisor.py`.
 
@@ -150,13 +232,25 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_aponta_exagero_sem_evidencia`, `test_nao_inventa_problema_em_caso_solido` e `test_resposta_invalida_pede_humano`.
 - [ ] Implementar e verificar.
 
-### T2.5 (opcional): GitHub com contas de teste
+### T2.9 (onda 2): documentos enviados pela pessoa
+
+**Arquivo:** `backend/fontes/documentos.py`. **Teste:** `tests/fontes/test_documentos.py`.
+
+**Produz:** `ler_documento(nome: str, conteudo: bytes) -> str`, para texto e PDF, e `extrair_perfil(texto: str, cliente_modelo) -> dict[str, str]`.
+
+- [ ] Testar `test_recusa_tipo_nao_permitido_e_arquivo_grande`, com limite de 5 MB.
+- [ ] Testar `test_pdf_sem_texto_gera_pedido_de_novo_envio`.
+- [ ] Testar `test_instrucao_no_documento_vira_alerta`.
+- [ ] Testar `test_extracao_nao_inventa_experiencia`.
+- [ ] Implementar e verificar.
+
+### T2.5 (onda 3, corte): GitHub com contas de teste
 
 **Arquivo:** `backend/fontes/github_teste.py`. Usar a API oficial, limitada a uma lista explícita de contas de teste do time. Testar `test_recusa_conta_fora_da_lista`.
 
 ## Frente 3: contato e Nara
 
-### T3.1 [P]: convite e mensageiro simulado
+### T3.1 [P] (onda 1): convite e mensageiro simulado
 
 **Arquivo:** `backend/contato/mensageiro.py`. **Teste:** `tests/contato/test_mensageiro.py`.
 
@@ -167,7 +261,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_falha_de_envio_permite_repetir`.
 - [ ] Implementar e verificar.
 
-### T3.2 [P]: conversa com o candidato
+### T3.2 [P] (onda 1): conversa com o candidato
 
 **Arquivo:** `backend/contato/conversa.py`. **Teste:** `tests/contato/test_conversa.py`.
 
@@ -179,7 +273,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_instrucao_na_mensagem_nao_altera_regras`.
 - [ ] Implementar e verificar.
 
-### T3.4 [P]: autorização e atualização por conversa
+### T3.4 [P] (onda 1): autorização e atualização por conversa
 
 **Arquivo:** `backend/contato/cadastro.py`. **Teste:** `tests/contato/test_cadastro.py`.
 
@@ -192,7 +286,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_texto_com_instrucao_nao_altera_regras`.
 - [ ] Implementar e verificar.
 
-### T3.3 [P]: pacote e Nara simulada
+### T3.3 [P] (onda 1): pacote e Nara simulada
 
 **Arquivos:** `backend/contato/pacote.py`, `backend/nara_simulada/servico.py`. **Teste:** `tests/contato/test_pacote.py`, `tests/nara_simulada/test_servico.py`.
 
@@ -204,9 +298,32 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_resultados_reproduziveis_alimentam_aprendizado`.
 - [ ] Implementar e verificar.
 
+### T3.5 [P] (onda 2): entrada de novos candidatos
+
+**Arquivo:** `backend/contato/entrada.py`. **Teste:** `tests/contato/test_entrada.py`.
+
+**Produz:** `gerar_link_cadastro(empresa_id: str, origem: str) -> str`, `registrar_cadastro(token: str, dados: dict[str, str], autorizacao: bool) -> Candidato` e `registrar_indicacao(empresa_id: str, indicador: str, contato: str) -> Convite`.
+
+- [ ] Testar `test_link_identifica_empresa_e_origem`.
+- [ ] Testar `test_cadastro_sem_autorizacao_nao_entra_no_banco`.
+- [ ] Testar `test_indicado_so_recebe_pedido_de_autorizacao`.
+- [ ] Testar `test_token_invalido_e_recusado`.
+- [ ] Implementar e verificar.
+
+### T3.6 [P] (onda 2): recontato e proposta de valor
+
+**Arquivo:** `backend/contato/recontato.py`. **Teste:** `tests/contato/test_recontato.py`.
+
+**Produz:** `montar_recontato(candidato: Candidato, motivo: str, cliente_modelo) -> Convite` e `pode_recontatar(candidato: Candidato, historico, hoje: date) -> bool`, com no máximo 1 contato a cada 90 dias, por decisão de design.
+
+- [ ] Testar `test_respeita_intervalo_entre_contatos`.
+- [ ] Testar `test_mensagem_diz_por_que_contatou_e_como_sair`.
+- [ ] Testar `test_nao_recontata_quem_recusou_ou_saiu`.
+- [ ] Implementar e verificar.
+
 ## Frente 4: produto e qualidade
 
-### T4.1 [P]: painel
+### T4.1 [P] (onda 1): painel
 
 **Arquivos:** `web/app/`. **Teste:** `web` com testes da interface principal.
 
@@ -215,11 +332,12 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Criar a tela do banco, com importação, estados, autorizações e cadastro do candidato fictício.
 - [ ] Criar a tela de vaga, com criação, aprovação e meta.
 - [ ] Criar a tela de candidatos, com explicação, evidências, lacunas e decisão.
+- [ ] Mostrar progresso e resultados parciais durante a execução.
 - [ ] Mostrar eventos em tempo real, aprovação de lote e resposta do jurado como candidato.
 - [ ] Mostrar custo, métricas, rastro e o selo "Simulado".
 - [ ] Verificar no navegador o fluxo principal e o estado de erro.
 
-### T4.2 [P]: avaliações
+### T4.2 [P] (onda 1): avaliações
 
 **Arquivos:** `avaliacoes/casos/`, `avaliacoes/test_avaliacoes.py`, `avaliacoes/relatorio.py`.
 
@@ -230,15 +348,37 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Criar `test_troca_de_nome_e_genero_nao_muda_resultado`.
 - [ ] Criar `test_armadilhas_tratadas` e `test_precisao_top_5`.
 - [ ] Criar `test_conclui_ou_pausa_com_falhas_injetadas`.
+- [ ] Rodar um subconjunto rápido e sem custo de modelo no CI.
 - [ ] Gerar o relatório e verificar.
 
-### T4.3: deploy e link testável
+### T4.5 [P] (onda 2): segurança do link público
+
+**Arquivos:** `backend/agente/api.py`, em conjunto com a Frente 1, `tests/agente/test_seguranca_api.py`.
+
+- [ ] Testar `test_sessao_nao_acessa_dados_de_outra_empresa`.
+- [ ] Testar `test_limite_de_requisicoes_por_sessao`.
+- [ ] Testar `test_erros_nao_expoem_chave_nem_stack_trace`.
+- [ ] Testar `test_limite_de_gasto_por_sessao_bloqueia_novas_execucoes`.
+- [ ] Implementar e verificar.
+
+### T4.6 (onda 2): teste de ponta a ponta
+
+**Arquivo:** `tests/ponta_a_ponta/test_fluxo_demo.py`.
+
+- [ ] Testar `test_da_base_baguncada_a_entrega_na_nara`, com modelo simulado.
+- [ ] Testar `test_jurado_altera_vaga_e_plano_muda`.
+- [ ] Testar `test_fonte_cai_e_execucao_continua`.
+- [ ] Testar `test_reinicio_nao_duplica_convite_nem_entrega`.
+- [ ] Testar `test_dois_jurados_nao_se_afetam`.
+- [ ] Rodar com o modelo real uma vez antes de cada congelamento.
+
+### T4.3 (onda 2): deploy e link testável
 
 - [ ] Publicar API e painel em um link público, até sábado às 17h.
 - [ ] Configurar segredos no provedor e limite de gasto por sessão.
 - [ ] Verificar o link em uma aba anônima, com dados reiniciados.
 
-### T4.4: demo e submissão
+### T4.4 (onda 3): demo e submissão
 
 **Arquivos:** `docs/pitch/`.
 
@@ -252,19 +392,21 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 ## Dependências
 
 - T0 antes de tudo.
-- T1.1, T1.3, T2.1, T2.2, T2.6, T3.1, T3.2, T3.3, T3.4, T4.1 e T4.2 podem rodar em paralelo depois de T0.
+- As tarefas marcadas com [P] podem rodar em paralelo depois de T0.
 - T1.2 depende só dos contratos e usa simulações até as demais chegarem.
 - T2.3 e T2.4 usam um `ClienteModelo` simulado até T1.3 chegar.
 - T1.5 depende de `ClienteNara.resultados`, com simulação disponível desde T0.
 - T1.7 usa um `BancoTalentos` simulado até T2.6 chegar.
+- T1.11 usa `Repositorio` de T1.8. T2.3 usa o funil de T2.8.
+- T4.5 depende de T1.4; T4.6 depende da integração da onda 1.
 - T4.3 e a parte final de T4.4 dependem da integração.
 
 ## Cobertura da spec
 
 | Requisitos | Tarefas |
 |---|---|
-| FR-001, FR-002 | T1.1, T1.2, T4.1 |
-| FR-003, FR-012 | T2.2, T1.2 |
+| FR-001, FR-002 | T1.9, T1.1, T1.2, T4.1 |
+| FR-003, FR-012 | T2.2, T1.2, T1.10 |
 | FR-004 | T1.1 |
 | FR-005 | T2.3, T3.3 |
 | FR-006 | T2.4 |
@@ -272,8 +414,18 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 | FR-008, FR-009 | T3.1, T3.2 |
 | FR-010 | T3.3 |
 | FR-013, FR-017 | T1.3, T4.1 |
-| FR-014 | T1.1, T1.2, T1.4 |
+| FR-014 | T1.1, T1.11, T1.4 |
 | FR-015 | T2.2, T3.1, T3.3, T1.4, T4.1 |
 | FR-016 | T1.5 |
+| FR-025 | T3.5 |
+| FR-026 | T2.9 |
+| FR-027 | T2.7, T2.8 |
+| FR-028 | T1.8, T1.2 |
+| FR-029 | T4.5, T1.4 |
+| FR-030 | T4.1, T1.2 |
+| SC-001 a SC-004, SC-008 | T4.2 |
+| SC-005, SC-006, SC-009 | T4.6 |
+| SC-007 | T4.2, T4.1 |
+| SC-010 | T1.11 |
 | FR-018, FR-019, FR-021, FR-023, FR-024 | T2.6, T1.2, T1.7 |
 | FR-020, FR-022 | T3.4 |
