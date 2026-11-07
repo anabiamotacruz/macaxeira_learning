@@ -18,6 +18,7 @@ from backend.agente.auditoria import (
 from backend.agente.fluxo import (
     ESTADOS_ATIVOS,
     TRANSICOES,
+    AcaoRecusada,
     DestinoPessoa,
     EstadoFluxo,
     FluxoVaga,
@@ -364,6 +365,7 @@ class Montagem:
             "mensageiro": self.mensageiro,
             "destino": self.destino,
             "relogio": self.relogio,
+            "medidor_gasto": lambda: 0.0,
             **self.extras,
             **pecas,
         }
@@ -1938,10 +1940,11 @@ def test_indicacao_humana_ainda_respeita_a_autorizacao(tmp_path: Path) -> None:
     _assinar_fluxo(fluxo)
     fluxo.reverter("c4", "Quero rever", RH)
 
-    fluxo.resolver_fila("c4", TipoDecisao.INDICAR, "Confere", RH)
+    with pytest.raises(AcaoRecusada, match="sem análise"):
+        fluxo.resolver_fila("c4", TipoDecisao.INDICAR, "Confere", RH)
 
     assert "c4" not in _convites_por_candidato(m)
-    assert any("bloqueado" in e.mensagem for e in fluxo.eventos if e.candidato_id == "c4")
+    assert "c4" not in m.analisador.analisados
 
 
 def test_indicar_de_novo_depois_de_reverter_faz_novo_convite(tmp_path: Path) -> None:
@@ -2027,11 +2030,11 @@ def test_resumo_traz_contagens_por_faixa_e_gasto(tmp_path: Path) -> None:
     assert resumo.simulado is True
 
 
-def test_resumo_sem_medidor_nao_inventa_gasto_zero(tmp_path: Path) -> None:
-    fluxo = _montagem_com_fila(tmp_path).fluxo()
-    _assinar_fluxo(fluxo)
+def test_fluxo_sem_medidor_de_gasto_e_recusado(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
 
-    assert fluxo.resumo().gasto_usd is None
+    with pytest.raises(ValueError, match="limite de gasto"):
+        m.fluxo(medidor_gasto=None)
 
 
 def test_resumo_usa_a_decisao_vigente(tmp_path: Path) -> None:
@@ -2249,7 +2252,7 @@ def test_analise_sem_evidencia_e_analise_invalida_nao_travam_o_fluxo(tmp_path: P
     ]
 
 
-def test_descartar_sem_autorizacao_com_analise_vazia_fica_registrado(tmp_path: Path) -> None:
+def test_sem_autorizacao_nao_vai_ao_modelo_e_o_descarte_fica_registrado(tmp_path: Path) -> None:
     sem_autorizacao = candidato_exemplo("c1", autorizou_contato=False)
     m = Montagem(tmp_path, [sem_autorizacao], analisador=AnalisadorSemEvidencias())
 
@@ -2257,7 +2260,7 @@ def test_descartar_sem_autorizacao_com_analise_vazia_fica_registrado(tmp_path: P
 
     decisao = m.repo.listar_decisoes("empresa-a", "v1")[0]
     assert decisao.tipo is TipoDecisao.DESCARTAR
-    assert decisao.regra == "sem_autorizacao"
+    assert decisao.regra == "funil:sem_autorizacao"
     assert decisao.evidencias
 
 

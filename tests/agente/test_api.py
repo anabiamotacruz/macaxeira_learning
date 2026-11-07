@@ -268,6 +268,18 @@ def test_criterio_sensivel_e_recusado_e_nada_e_gravado(cliente, servico, criteri
     assert servico.vagas("empresa-a") == []
 
 
+def test_requisito_sem_valor_esperado_e_recusado_e_nada_e_gravado(cliente, servico):
+    requisito = {"id": "r1", "descricao": "CNH", "campo": "cnh", "valor_esperado": " "}
+
+    resposta = cliente.post(
+        "/vagas", headers=SESSAO, json={**PEDIDO_VAGA, "requisitos": [requisito]}
+    )
+
+    assert resposta.status_code == 422
+    assert _erro_padrao(resposta)["codigo"] == "requisito_incompleto"
+    assert servico.vagas("empresa-a") == []
+
+
 def test_mandato_inicia_a_busca_em_segundo_plano_e_a_resposta_nao_espera(cliente):
     vaga = _criar_vaga(cliente)
     corpo = cliente.post(f"/vagas/{vaga}/mandato", headers=SESSAO, json=PEDIDO_MANDATO).json()

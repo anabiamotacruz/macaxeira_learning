@@ -12,6 +12,7 @@ import unicodedata
 
 from pydantic import BaseModel
 
+from backend.contratos.criterios import tem_termo_sensivel
 from backend.contratos.erros import ModeloIndisponivel, RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
 from backend.contratos.modelos import Vaga
@@ -63,80 +64,6 @@ SINONIMOS_CARGO: tuple[tuple[str, ...], ...] = (
 )
 """Cada grupo reúne cargos equivalentes, para a busca seguir de pé sem o modelo."""
 
-TERMOS_SENSIVEIS_CONSULTA: tuple[str, ...] = (
-    "age",
-    "asiatica",
-    "asiatico",
-    "branca",
-    "branco",
-    "candomble",
-    "casada",
-    "casado",
-    "catolica",
-    "catolico",
-    "cor da pele",
-    "deficiencia",
-    "deficiente",
-    "estado civil",
-    "etnia",
-    "etnias",
-    "evangelica",
-    "evangelico",
-    "female",
-    "feminina",
-    "feminino",
-    "filhos",
-    "gay",
-    "gender",
-    "genero",
-    "generos",
-    "gestante",
-    "gravida",
-    "homem",
-    "homens",
-    "idade",
-    "idades",
-    "idosa",
-    "idoso",
-    "indigena",
-    "jovem",
-    "jovens",
-    "judaica",
-    "judeu",
-    "lesbica",
-    "lgbt",
-    "lgbtqia",
-    "male",
-    "masculina",
-    "masculino",
-    "men",
-    "muculmana",
-    "muculmano",
-    "mulher",
-    "mulheres",
-    "nascimento",
-    "negra",
-    "negro",
-    "orientacao sexual",
-    "parda",
-    "pardo",
-    "pcd",
-    "race",
-    "raca",
-    "racas",
-    "religiao",
-    "religioes",
-    "sexo",
-    "solteira",
-    "solteiro",
-    "trans",
-    "transgenero",
-    "umbanda",
-    "woman",
-    "women",
-)
-"""Mais ampla que a lista de critérios da vaga: consulta também não pode nomear o grupo."""
-
 TERMOS_QUE_RELAXAM: frozenset[str] = frozenset(
     {
         "dispensa",
@@ -166,19 +93,6 @@ def _normalizar(texto: str) -> str:
 
 def _palavras(texto: str) -> list[str]:
     return re.findall(r"[^\W_]+", _normalizar(texto))
-
-
-_SEQUENCIAS_SENSIVEIS = tuple(tuple(_palavras(termo)) for termo in TERMOS_SENSIVEIS_CONSULTA)
-
-
-def tem_termo_sensivel(texto: str) -> bool:
-    """Diz se o texto traz um termo sensível, comparando palavras inteiras, sem acento nem caixa."""
-    palavras = _palavras(texto)
-    return any(
-        tuple(palavras[inicio : inicio + len(termo)]) == termo
-        for termo in _SEQUENCIAS_SENSIVEIS
-        for inicio in range(len(palavras) - len(termo) + 1)
-    )
 
 
 def _relaxa_requisito(consulta: str) -> bool:

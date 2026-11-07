@@ -16,7 +16,7 @@ from backend.agente.mcp import criar_servidor_mcp, main
 from backend.agente.montagem import montar_demo
 from backend.agente.servico import ServicoVagas
 from backend.contratos.erros import ErroContrato
-from backend.contratos.simulacoes import ClienteNaraSimulado
+from backend.contratos.simulacoes import ClienteNaraSimulado, MensageiroSimulado
 from tests.agente.apoio import (
     AGORA,
     PEDIDO_VAGA,
@@ -165,6 +165,17 @@ def test_entregar_candidatos_nao_entrega_quem_ainda_nao_aceitou(cenario: Cenario
     assert resultado.structured_content["entregues"] == []
     assert resultado.structured_content["pendentes"] == []
     assert cenario.destino.entregues == {}
+
+
+def test_entregar_candidatos_nao_reenvia_convite_que_falhou(tmp_path: Path) -> None:
+    mensageiro = MensageiroSimulado(falhas_restantes=1)
+    cenario = Cenario(tmp_path / "agente.db", mensageiro=mensageiro)
+    cenario.assinar(ModoEntrega.APOS_ACEITE)
+    assert mensageiro.enviados == {}
+
+    cenario.chamar("entregar_candidatos", vaga_id=cenario.vaga)
+
+    assert mensageiro.enviados == {}
 
 
 def test_entregar_candidatos_com_vaga_parada_nao_entrega(tmp_path: Path) -> None:

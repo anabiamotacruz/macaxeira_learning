@@ -15,11 +15,11 @@ from pydantic import BaseModel, Field, model_validator
 
 from backend.agente import prompts
 from backend.agente.auditoria import contexto_rastro, rastreado
-from backend.agente.regras import (
-    TERMOS_SENSIVEIS,
-    contem_termo,
+from backend.agente.regras import validar_requisitos_e_competencias
+from backend.contratos.criterios import (
+    frases_com_termo_sensivel,
     separar_palavras,
-    validar_criterios,
+    termos_sensiveis,
 )
 from backend.contratos.erros import RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
@@ -38,110 +38,6 @@ MAX_PRAZO_DIAS = 180
 
 TAMANHO_MAXIMO_DESCRICAO = 20_000
 TAMANHO_MAXIMO_TRECHO = 200
-
-TERMOS_SENSIVEIS_TEXTO: tuple[tuple[str, ...], ...] = tuple(
-    (termo,) if isinstance(termo, str) else termo
-    for termo in (
-        "brancas",
-        "brancos",
-        "casada",
-        "casadas",
-        "casado",
-        "casados",
-        "deficiencia",
-        "feminina",
-        "feminino",
-        "gender",
-        "gestante",
-        "gestantes",
-        "gravida",
-        "gravidas",
-        "homem",
-        "homens",
-        "jovem",
-        "jovens",
-        "masculina",
-        "masculino",
-        "mulher",
-        "mulheres",
-        "negra",
-        "negras",
-        "negro",
-        "negros",
-        "pcd",
-        "religion",
-        "solteira",
-        "solteiras",
-        "solteiro",
-        "solteiros",
-        ("boa", "aparencia"),
-        ("marital", "status"),
-    )
-)
-"""Palavras que indicam atributo sensível em texto livre, além de `regras.TERMOS_SENSIVEIS`."""
-
-LIMITE_DE_IDADE = re.compile(
-    r"\b(ate|menos de|maximo|entre \d+ e) (1[6-9]|[2-9]\d) anos\b"
-    r"(?! de (experiencia|atuacao|mercado|carreira))"
-)
-"""Sobre o texto normalizado: limite de idade escrito sem a palavra `idade`."""
-
-MARCADORES_DE_AVISO: tuple[tuple[str, ...], ...] = (
-    ("bem", "vindas"),
-    ("bem", "vindos"),
-    ("diversidade",),
-    ("encorajamos",),
-    ("igualdade", "de", "oportunidades"),
-    ("incentivamos",),
-    ("inclusao",),
-    ("inclusiva",),
-    ("inclusivo",),
-    ("independente", "de"),
-    ("independentemente", "de"),
-    ("nao", "discrimina"),
-    ("nao", "discriminamos"),
-    ("nao", "fazemos", "distincao"),
-    ("oportunidades", "iguais"),
-    ("sem", "discriminacao"),
-    ("sem", "distincao"),
-)
-"""Expressões típicas de aviso de não discriminação."""
-
-MARCADORES_DE_RESTRICAO = frozenset(
-    {
-        "abaixo",
-        "acima",
-        "apenas",
-        "ate",
-        "contudo",
-        "entre",
-        "exceto",
-        "exclusiva",
-        "exclusivamente",
-        "exclusivo",
-        "exige",
-        "exigida",
-        "exigido",
-        "exigimos",
-        "maxima",
-        "maximo",
-        "mas",
-        "minima",
-        "minimo",
-        "necessaria",
-        "necessario",
-        "obrigatoria",
-        "obrigatorio",
-        "porem",
-        "preferencia",
-        "preferencialmente",
-        "requisito",
-        "so",
-        "somente",
-    }
-)
-"""Palavras que tiram da frase o caráter de aviso: ela passa a restringir quem pode concorrer."""
-
 
 PERGUNTA_RESPOSTA_INVALIDA = (
     "Não foi possível interpretar a descrição com segurança. "
@@ -210,30 +106,6 @@ def _alertar_instrucao_embutida(descricao: str, empresa_id: str) -> None:
         )
 
 
-def _termos_no_texto(texto: str) -> list[str]:
-    palavras = separar_palavras(texto)
-    termos = TERMOS_SENSIVEIS + TERMOS_SENSIVEIS_TEXTO
-    achados = {" ".join(termo) for termo in termos if contem_termo(palavras, termo)}
-    if LIMITE_DE_IDADE.search(" ".join(palavras)):
-        achados.add("idade")
-    return sorted(achados)
-
-
-def _restringe_quem_concorre(palavras: tuple[str, ...]) -> bool:
-    if any(p in MARCADORES_DE_RESTRICAO or p.isdigit() for p in palavras):
-        return True
-    termos = TERMOS_SENSIVEIS + TERMOS_SENSIVEIS_TEXTO
-    return any(contem_termo(palavras, ("para", *termo)) for termo in termos)
-
-
-def _e_aviso_de_nao_discriminacao(frase: str) -> bool:
-    """Reconhece o aviso frase a frase: ele não pode servir de escudo para um critério."""
-    palavras = separar_palavras(frase)
-    if _restringe_quem_concorre(palavras):
-        return False
-    return any(contem_termo(palavras, marcador) for marcador in MARCADORES_DE_AVISO)
-
-
 def _pergunta_sobre_dado_sensivel(
     onde: str, termos: list[str], trecho: str, empresa_id: str
 ) -> PerguntaVaga:
@@ -249,11 +121,11 @@ def _pergunta_sobre_dado_sensivel(
 
 
 def _pergunta_sobre_texto_da_descricao(descricao: str, empresa_id: str) -> PerguntaVaga | None:
-    for frase in re.split(r"[.!?;\n]+", descricao):
-        termos = _termos_no_texto(frase)
-        if termos and not _e_aviso_de_nao_discriminacao(frase):
-            return _pergunta_sobre_dado_sensivel("A descrição", termos, frase.strip(), empresa_id)
-    return None
+    achadas = frases_com_termo_sensivel(descricao)
+    if not achadas:
+        return None
+    frase, termos = achadas[0]
+    return _pergunta_sobre_dado_sensivel("A descrição", termos, frase, empresa_id)
 
 
 def _pergunta_sobre_descricao(descricao: str, empresa_id: str) -> PerguntaVaga | None:
@@ -283,23 +155,6 @@ def _lacuna_da_proposta(proposta: PropostaModelo) -> str | None:
     return None
 
 
-def _criterios_sensiveis(vaga: Vaga) -> list[str]:
-    """`validar_criterios` mais a lista ampliada, sem exceção para aviso: critério é critério."""
-    problemas = validar_criterios(vaga)
-    for requisito in vaga.requisitos:
-        texto = f"{requisito.descricao}\n{requisito.campo}\n{requisito.valor_esperado}"
-        termos = _termos_no_texto(texto)
-        if termos:
-            problemas.append(f"requisito {requisito.id!r} usa dado sensível: {', '.join(termos)}")
-    for competencia in vaga.competencias:
-        termos = _termos_no_texto(competencia.nome)
-        if termos:
-            problemas.append(
-                f"competência {competencia.nome!r} usa dado sensível: {', '.join(termos)}"
-            )
-    return list(dict.fromkeys(problemas))
-
-
 def _vaga_ou_pergunta(
     proposta: PropostaModelo, descricao: str, empresa_id: str
 ) -> Vaga | PerguntaVaga:
@@ -322,13 +177,13 @@ def _vaga_ou_pergunta(
         max_tentativas_contato=MAX_TENTATIVAS_CONTATO,
         aprovada=False,
     )
-    problemas = _criterios_sensiveis(vaga)
+    problemas = validar_requisitos_e_competencias(vaga)
     if problemas:
         return PerguntaVaga(
             empresa_id=empresa_id,
             pergunta=f"A proposta foi recusada: {'; '.join(problemas)}. Como reescrever a vaga?",
         )
-    termos_no_titulo = _termos_no_texto(vaga.titulo)
+    termos_no_titulo = termos_sensiveis(vaga.titulo)
     if termos_no_titulo:
         return _pergunta_sobre_dado_sensivel("O título", termos_no_titulo, vaga.titulo, empresa_id)
     return vaga

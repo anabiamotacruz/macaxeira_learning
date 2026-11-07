@@ -144,6 +144,11 @@ def _agora() -> datetime:
     return datetime.now(UTC)
 
 
+def _sem_gasto() -> float:
+    """A demonstração não chama modelo: não há gasto a medir."""
+    return 0.0
+
+
 def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
     """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
     if caminho is None:
@@ -159,6 +164,7 @@ def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
             mensageiro=MensageiroSimulado(),
             destino=ClienteNaraSimulado(),
             relogio=_agora,
+            medidor_gasto=_sem_gasto,
             consultas=consultas_por_modelo(
                 ClienteModeloSimulado({ETAPA_GERAR: {"consultas": ["python"]}})
             ),

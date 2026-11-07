@@ -100,7 +100,11 @@ def test_priorizador_respeita_o_limite():
 
 
 def test_toda_regra_do_funil_tem_tipo_de_decisao_conhecido():
-    assert {r.value for r in RegraCorte} == {*CORTES_QUE_DESCARTAM, "fora_do_limite"}
+    assert {r.value for r in RegraCorte} == {
+        *CORTES_QUE_DESCARTAM,
+        "fora_do_limite",
+        "perfil_desatualizado",
+    }
 
 
 @pytest.mark.parametrize("regra", list(RegraCorte))
@@ -124,9 +128,8 @@ def test_corte_real_vira_decisao_valida(regra):
 
     decisao = decisao_de_corte(corte, mandato, agora, "rastro-1")
 
-    esperado = (
-        TipoDecisao.PEDIR_HUMANO if regra is RegraCorte.FORA_DO_LIMITE else TipoDecisao.DESCARTAR
-    )
+    vao_para_uma_pessoa = (RegraCorte.FORA_DO_LIMITE, RegraCorte.PERFIL_DESATUALIZADO)
+    esperado = TipoDecisao.PEDIR_HUMANO if regra in vao_para_uma_pessoa else TipoDecisao.DESCARTAR
     assert decisao.tipo is esperado
     assert decisao.regra == f"funil:{regra.value}"
     assert all(valor.strip() for valor in decisao.entrada.values())

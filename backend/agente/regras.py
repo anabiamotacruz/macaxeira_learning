@@ -3,7 +3,6 @@
 import json
 import math
 import re
-import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
@@ -11,6 +10,15 @@ from typing import Protocol
 
 from backend.agente.auditoria import responsavel_do_mandato
 from backend.agente.mandato import Mandato, MandatoInvalido, mandato_valido
+from backend.contratos.criterios import TERMOS_SENSIVEIS as TERMOS_SENSIVEIS
+from backend.contratos.criterios import (
+    campo_sensivel,
+    frases_restritivas,
+    sem_acento,
+    termos_sensiveis,
+)
+from backend.contratos.criterios import contem_termo as contem_termo
+from backend.contratos.criterios import separar_palavras as separar_palavras
 from backend.contratos.modelos import (
     Analise,
     Candidato,
@@ -22,25 +30,6 @@ from backend.contratos.modelos import (
     Vaga,
 )
 
-TERMOS_SENSIVEIS: tuple[tuple[str, ...], ...] = (
-    ("cor", "da", "pele"),
-    ("estado", "civil"),
-    ("etnia",),
-    ("etnias",),
-    ("genero",),
-    ("generos",),
-    ("idade",),
-    ("idades",),
-    ("nascimento",),
-    ("orientacao", "sexual"),
-    ("raca",),
-    ("racas",),
-    ("religiao",),
-    ("religioes",),
-    ("sexo",),
-)
-"""Sequências de palavras já normalizadas, em ordem alfabética."""
-
 FONTES_VERIFICAVEIS = frozenset({"github", "rede_simulada"})
 """Fontes externas à autodeclaração. Currículo e perfil enviado pela pessoa ficam de fora."""
 
@@ -49,13 +38,17 @@ FONTE_REGRA = "regra_deterministica"
 
 
 PREFIXO_REGRA_FUNIL = "funil:"
+PREFIXO_RESPONSAVEL_AGENTE = "agente:"
 CORTES_POR_AUTORIZACAO = frozenset(
     {"autorizacao_vencida", "estado_bloqueado", "opt_out", "sem_autorizacao"}
 )
 """Quem sai por estes cortes não autorizou o uso do perfil nesta vaga."""
 
 CORTES_QUE_DESCARTAM = CORTES_POR_AUTORIZACAO | {"duplicata", "requisito_nao_atendido"}
-"""Fora do limite não descarta: a pessoa é elegível e só não coube nas análises da rodada."""
+"""Fora do limite não descarta: a pessoa é elegível e só não coube nas análises da rodada.
+Perfil desatualizado também não: a autorização vale, e uma pessoa confirma o perfil."""
+
+REGRA_PERFIL_DESATUALIZADO = "perfil_desatualizado"
 
 
 class CorteFunil(Protocol):
@@ -74,55 +67,58 @@ class StatusRequisito(StrEnum):
     SEM_DADO = "sem_dado"
 
 
+SEM_DADO = StatusRequisito.SEM_DADO
+
+
 class TipoEvidencia(StrEnum):
     INFERIDA = "inferida"
     DECLARADA = "declarada"
     COMPROVADA = "comprovada"
 
 
-def _sem_acento(texto: str) -> str:
-    decomposto = unicodedata.normalize("NFKD", texto)
-    return "".join(c for c in decomposto if not unicodedata.combining(c))
+def _problemas_do_requisito(requisito: Requisito) -> list[str]:
+    termos = termos_sensiveis(requisito.descricao, requisito.campo, requisito.valor_esperado)
+    if campo_sensivel(requisito.campo) and requisito.campo.strip():
+        termos = sorted({*termos, *separar_palavras(requisito.campo)})
+    if termos:
+        return [f"requisito {requisito.id!r} usa dado sensível: {', '.join(termos)}"]
+    if not requisito.valor_esperado.strip() or not requisito.campo.strip():
+        return [f"requisito {requisito.id!r} sem atributo ou valor esperado: nunca eliminaria"]
+    return []
 
 
-def separar_palavras(texto: str) -> tuple[str, ...]:
-    """Separa em palavras: sem acento e sem caixa, tratando `_` e camelCase como divisão."""
-    separado = re.sub(r"([a-z])([A-Z])", r"\1 \2", _sem_acento(texto))
-    return tuple(re.findall(r"[^\W_]+", separado.casefold()))
-
-
-def contem_termo(palavras: tuple[str, ...], termo: tuple[str, ...]) -> bool:
-    tamanho = len(termo)
-    return any(palavras[i : i + tamanho] == termo for i in range(len(palavras) - tamanho + 1))
-
-
-def _termos_sensiveis(*textos: str) -> list[str]:
-    achados = {
-        " ".join(termo)
-        for texto in textos
-        for termo in TERMOS_SENSIVEIS
-        if contem_termo(separar_palavras(texto), termo)
-    }
-    return sorted(achados)
-
-
-def validar_criterios(vaga: Vaga) -> list[str]:
-    """Lista os critérios com atributo sensível, um problema por critério, em ordem estável.
-
-    Olha requisitos e competências. Título e descrição ficam de fora: são texto livre e
-    costumam trazer aviso de não discriminação, que cita esses mesmos termos.
-    """
-    problemas = []
-    for requisito in vaga.requisitos:
-        termos = _termos_sensiveis(requisito.descricao, requisito.campo, requisito.valor_esperado)
-        if termos:
-            problemas.append(f"requisito {requisito.id!r} usa dado sensível: {', '.join(termos)}")
+def validar_requisitos_e_competencias(vaga: Vaga) -> list[str]:
+    """Um problema por critério, em ordem estável. Critério não tem exceção para aviso."""
+    problemas = [p for requisito in vaga.requisitos for p in _problemas_do_requisito(requisito)]
     for competencia in vaga.competencias:
-        termos = _termos_sensiveis(competencia.nome)
+        termos = termos_sensiveis(competencia.nome)
         if termos:
             problemas.append(
                 f"competência {competencia.nome!r} usa dado sensível: {', '.join(termos)}"
             )
+    return problemas
+
+
+def requisitos_sem_valor(vaga: Vaga) -> list[str]:
+    """Requisitos que nunca eliminariam ninguém, por não dizerem o atributo ou o valor."""
+    return [
+        requisito.id
+        for requisito in vaga.requisitos
+        if not requisito.valor_esperado.strip() or not requisito.campo.strip()
+    ]
+
+
+def validar_criterios(vaga: Vaga) -> list[str]:
+    """Lista os problemas da vaga: critérios, título e descrição com dado sensível.
+
+    Título e descrição são texto livre e costumam trazer aviso de não discriminação, que cita
+    esses mesmos termos: só a frase que restringe quem concorre, como `apenas homens`, é problema.
+    """
+    problemas = validar_requisitos_e_competencias(vaga)
+    if termos_sensiveis(vaga.titulo):
+        problemas.append(f"título usa dado sensível: {', '.join(termos_sensiveis(vaga.titulo))}")
+    for _, termos in frases_restritivas(vaga.descricao):
+        problemas.append(f"descrição restringe por dado sensível: {', '.join(termos)}")
     return problemas
 
 
@@ -133,7 +129,7 @@ def _exigir_mesma_empresa(vaga: Vaga, candidato: Candidato) -> None:
 
 def _normalizar_valor(texto: str) -> str:
     """Tira acento, caixa e espaços repetidos, mantendo símbolos: `C++` não é `C#`."""
-    return " ".join(_sem_acento(texto).casefold().split())
+    return " ".join(sem_acento(texto).casefold().split())
 
 
 def _status_requisito(requisito: Requisito, candidato: Candidato) -> StatusRequisito:
@@ -171,6 +167,42 @@ def autorizacao_ativa(candidato: Candidato, hoje: date) -> bool:
         and validade is not None
         and validade >= hoje
     )
+
+
+@dataclass(frozen=True)
+class CorteDeAutorizacao:
+    """Saída de quem não pode ir ao modelo, para o fluxo sem funil. Sem dados do perfil."""
+
+    candidato_id: str
+    fonte: str
+    origem: str
+    regra: str
+    motivo: str
+
+
+def corte_de_autorizacao(candidato: Candidato, hoje: date) -> CorteDeAutorizacao | None:
+    """Diz por que a pessoa não pode ir ao modelo. Mesmas regras do funil, para um só registro."""
+    validade = candidato.autorizacao_valida_ate
+
+    def corte(regra: str, motivo: str) -> CorteDeAutorizacao:
+        return CorteDeAutorizacao(candidato.id, candidato.fonte, candidato.origem, regra, motivo)
+
+    if candidato.opt_out:
+        return corte("opt_out", "a pessoa pediu para não ser contatada")
+    if candidato.estado == EstadoBanco.REMOVIDO:
+        return corte("estado_bloqueado", "perfil removido")
+    if not candidato.autorizou_contato or validade is None:
+        return corte("sem_autorizacao", "sem autorização registrada")
+    if validade < hoje:
+        return corte("autorizacao_vencida", f"autorização vencida em {validade.isoformat()}")
+    if candidato.estado in (EstadoBanco.PENDENTE, EstadoBanco.EXPIRADO):
+        return corte("estado_bloqueado", f"perfil com estado {candidato.estado}")
+    if candidato.estado == EstadoBanco.DESATUALIZADO:
+        return corte(
+            REGRA_PERFIL_DESATUALIZADO,
+            "autorização válida, perfil desatualizado: uma pessoa confirma antes de analisar",
+        )
+    return None
 
 
 def pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga, hoje: date) -> bool:
@@ -270,7 +302,8 @@ def classificar_faixa(
 ) -> Faixa:
     """Aplica a regra da faixa verde: indicar, descartar ou pedir uma pessoa.
 
-    Não usa nome, atributo sensível nem confiança declarada pelo modelo. Levanta `ValueError`
+    Não usa nome, atributo sensível nem confiança declarada pelo modelo. Requisito sem dado nunca
+    indica nem descarta: vai para uma pessoa. Levanta `ValueError`
     se as peças são de empresas, vagas ou candidatos diferentes, e `MandatoInvalido` se o
     mandato não vale para a vaga ou se ela usa critério sensível, para o fluxo pausar.
     """
@@ -292,6 +325,11 @@ def classificar_faixa(
         return Faixa(tipo, regra, faltas, nota, requisitos, evidencias)
 
     if not autorizacao_ativa(candidato, hoje):
+        corte = corte_de_autorizacao(candidato, hoje)
+        if corte is not None and corte.regra == REGRA_PERFIL_DESATUALIZADO:
+            return faixa(
+                TipoDecisao.PEDIR_HUMANO, REGRA_PERFIL_DESATUALIZADO, (REGRA_PERFIL_DESATUALIZADO,)
+            )
         return faixa(TipoDecisao.DESCARTAR, "sem_autorizacao")
     reprovados = sorted(i for i, s in requisitos.items() if s == StatusRequisito.NAO_ATENDE)
     if reprovados:
@@ -302,6 +340,8 @@ def classificar_faixa(
     if politica.aceitar_declarada:
         aceitas.add(TipoEvidencia.DECLARADA)
     faltas = _faltas_de_evidencia(vaga, analise, evidencias, frozenset(aceitas))
+    # Sem dado, nenhum trecho citado substitui a verificação: a decisão fica com uma pessoa.
+    faltas += [f"requisito_sem_dado:{i}" for i, s in sorted(requisitos.items()) if s == SEM_DADO]
     if analise.ressalvas_revisor:
         faltas.append("ressalva_do_revisor")
     if analise.alertas:
@@ -320,6 +360,17 @@ def classificar_faixa(
     if faltas == ["nota_abaixo_do_limiar"] and nota < politica.piso_nota:
         return faixa(TipoDecisao.DESCARTAR, "abaixo_do_piso", tuple(faltas))
     return faixa(TipoDecisao.PEDIR_HUMANO, "fora_da_faixa_verde", tuple(faltas))
+
+
+_PARECE_INSTRUCAO = re.compile(
+    r"\b(aprov(e|ar|ado|ada)|contrat(e|ar)|desconsider(e|ar)|ignor(e|ar)|indiqu(e|em)|indicar|"
+    r"reprov(e|ar))\b"
+)
+
+
+def parece_instrucao(texto: str) -> bool:
+    """Texto livre do modelo pode repetir uma instrução do perfil: ela não segue adiante."""
+    return _PARECE_INSTRUCAO.search(" ".join(separar_palavras(texto))) is not None
 
 
 def evidencia_da_regra(regra: str, motivo: str) -> Evidencia:
@@ -444,6 +495,52 @@ def decisao_de_corte(
             "origem": corte.origem or "nao_informada",
         },
         evidencias=[evidencia_da_regra(regra, corte.motivo)],
+        momento=agora,
+    )
+
+
+def decisao_por_novos_requisitos(
+    vaga: Vaga,
+    candidato: Candidato,
+    anterior: Decisao,
+    mandato: Mandato,
+    agora: datetime,
+) -> Decisao | None:
+    """Reavalia quem estava indicado contra a vaga do aditivo. `None` se a indicação continua.
+
+    Falta comprovada descarta. Dado ausente tira da faixa verde só a decisão automática: a
+    pessoa que indicou alguém sem o dado já tomou essa decisão.
+    """
+    status = avaliar_requisitos(vaga, candidato)
+    reprovados = sorted(i for i, s in status.items() if s == StatusRequisito.NAO_ATENDE)
+    sem_dado = sorted(i for i, s in status.items() if s == SEM_DADO)
+    if reprovados:
+        tipo, regra = TipoDecisao.DESCARTAR, f"requisito_eliminatorio:{reprovados[0]}"
+        motivo = f"requisito do aditivo não atendido: {', '.join(reprovados)}"
+    elif sem_dado and anterior.responsavel.startswith(PREFIXO_RESPONSAVEL_AGENTE):
+        tipo, regra = TipoDecisao.PEDIR_HUMANO, "requisito_sem_dado_no_aditivo"
+        motivo = f"requisito do aditivo sem dado: {', '.join(sem_dado)}"
+    else:
+        return None
+    return Decisao(
+        empresa_id=vaga.empresa_id,
+        vaga_id=vaga.id,
+        candidato_id=candidato.id,
+        tipo=tipo,
+        regra=regra,
+        motivo=motivo,
+        responsavel=responsavel_do_mandato(mandato),
+        rastro_id=anterior.rastro_id,
+        entrada={
+            "vaga_id": vaga.id,
+            "candidato_id": candidato.id,
+            "mandato_id": mandato.id,
+            "mandato_versao": str(mandato.versao),
+            "hash_vaga": mandato.hash_vaga,
+            "regra_anterior": anterior.regra,
+            "requisitos": json.dumps(status, sort_keys=True),
+        },
+        evidencias=[evidencia_da_regra(regra, motivo)],
         momento=agora,
     )
 

@@ -213,6 +213,7 @@ def servico_de_teste(caminho, *, candidatos=None, **pecas) -> ServicoVagas:
         "mensageiro": MensageiroSimulado(),
         "destino": ClienteNaraSimulado(),
         "relogio": Relogio(),
+        "medidor_gasto": lambda: 0.0,
         "consultas": consultas_por_modelo(
             ClienteModeloSimulado({ETAPA_GERAR: {"consultas": [CONSULTA_DE_TESTE]}})
         ),

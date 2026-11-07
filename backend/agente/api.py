@@ -35,6 +35,7 @@ from backend.agente.servico import (
     CandidatoInexistente,
     ChaveReutilizada,
     CriteriosSensiveis,
+    RequisitoIncompleto,
     ServicoVagas,
     VagaInexistente,
 )
@@ -765,7 +766,12 @@ _ERROS_DE_DOMINIO: dict[type[ErroContrato], tuple[int, str, str]] = {
     CriteriosSensiveis: (
         422,
         "criterio_sensivel",
-        "A vaga usa dado sensível como critério. Retire-o dos requisitos e das competências.",
+        "A vaga usa dado sensível como critério. Retire-o dos critérios, do título e da descrição.",
+    ),
+    RequisitoIncompleto: (
+        422,
+        "requisito_incompleto",
+        "Todo requisito precisa do atributo e do valor esperado.",
     ),
     ResponsavelInvalido: (
         422,

@@ -704,11 +704,12 @@ def test_regra_eliminatoria_e_estavel_entre_varios_requisitos() -> None:
     assert "r2" in decisao.motivo
 
 
-def test_atributo_ausente_nao_descarta() -> None:
-    """Lacuna não é penalidade: a evidência comprovada no perfil é que sustenta o requisito."""
+def test_atributo_ausente_vai_para_uma_pessoa() -> None:
+    """Lacuna não é penalidade, mas trecho citado não substitui a verificação do requisito."""
     decisao = _decidir(candidato=_candidato_faixa(atributos={}))
 
-    assert decisao.tipo is TipoDecisao.INDICAR
+    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
+    assert "requisito_sem_dado:r1" in decisao.motivo
     assert decisao.entrada["requisitos"] == '{"r1": "sem_dado"}'
 
 

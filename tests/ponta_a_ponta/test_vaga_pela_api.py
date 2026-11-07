@@ -76,6 +76,7 @@ class Cenario:
                 mensageiro=self.mensageiro,
                 destino=self.destino,
                 relogio=self.relogio,
+                medidor_gasto=lambda: 0.0,
                 consultas=consultas_por_modelo(self.modelo),
                 priorizador=priorizador_do_funil(),
                 resiliencia=Resiliencia(dormir=lambda _: None),

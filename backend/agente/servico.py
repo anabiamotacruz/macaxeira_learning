@@ -25,7 +25,7 @@ from backend.agente.fluxo import (
 )
 from backend.agente.mandato import MandatoInvalido, Politica
 from backend.agente.persistencia import Repositorio
-from backend.agente.regras import validar_criterios
+from backend.agente.regras import requisitos_sem_valor, validar_criterios
 from backend.contratos.erros import ErroContrato
 from backend.contratos.interfaces import (
     AgenteRecrutador,
@@ -49,6 +49,7 @@ from backend.contratos.modelos import (
     TaxaMedida,
     TipoDecisao,
     TipoErro,
+    TipoResposta,
     Vaga,
 )
 from backend.modelos.resiliencia import Resiliencia
@@ -66,6 +67,10 @@ class CandidatoInexistente(ErroContrato):
 
 class CriteriosSensiveis(ErroContrato):
     """A vaga usa dado sensível como critério. Nada foi gravado."""
+
+
+class RequisitoIncompleto(ErroContrato):
+    """Requisito sem atributo ou valor esperado nunca eliminaria ninguém. Nada foi gravado."""
 
 
 class AditivoNecessario(ErroContrato):
@@ -100,9 +105,9 @@ class DependenciasFluxo:
     mensageiro: Mensageiro
     destino: AgenteRecrutador
     relogio: Callable[[], datetime]
+    medidor_gasto: Callable[[], float]
+    priorizador: Priorizador
     consultas: ProvedorConsultas = consulta_pelo_titulo
-    priorizador: Priorizador | None = None
-    medidor_gasto: Callable[[], float] | None = None
     resiliencia: Resiliencia = field(default_factory=Resiliencia)
 
 
@@ -169,6 +174,8 @@ class ServicoVagas:
     def criar_vaga(self, empresa_id: str, dados: dict[str, Any]) -> FluxoVaga:
         """Grava a vaga e a deixa à espera do mandato. Critério sensível não entra."""
         vaga = Vaga.model_validate({**dados, "id": self._gerar_id(), "empresa_id": empresa_id})
+        if requisitos_sem_valor(vaga):
+            raise RequisitoIncompleto("todo requisito precisa do atributo e do valor esperado")
         if validar_criterios(vaga):
             raise CriteriosSensiveis("a vaga usa dado sensível como critério")
         self.repositorio.salvar_vaga(vaga)
@@ -239,8 +246,14 @@ class ServicoVagas:
     def registrar_resposta(
         self, empresa_id: str, vaga_id: str, resposta: RespostaCandidato
     ) -> None:
-        """Aplica a resposta da pessoa. A rota que a recebe é da T1.4d e ainda não existe."""
+        """Aplica a resposta da pessoa. A rota que a recebe é da T1.4d e ainda não existe.
+
+        Opt-out não espera a execução em curso: enquanto ela anda, novos contatos sairiam.
+        """
         fluxo = self._fluxo(empresa_id, vaga_id)
+        if resposta.tipo == TipoResposta.OPT_OUT:
+            fluxo.registrar_resposta(resposta)
+            return
         with self._exclusivo(empresa_id, vaga_id):
             fluxo.registrar_resposta(resposta)
 
@@ -282,7 +295,7 @@ class ServicoVagas:
             descartados=resumo.contagens["vermelha"],
             na_fila_humana=resumo.contagens["amarela"],
             revertidos=sum(d.regra == REGRA_REVERSAO for d in decisoes),
-            gasto_usd=resumo.gasto_usd or 0.0,
+            gasto_usd=resumo.gasto_usd,
             limite_gasto_usd=resumo.limite_gasto_usd,
             simulado=True,
             momento=self._dependencias.relogio(),

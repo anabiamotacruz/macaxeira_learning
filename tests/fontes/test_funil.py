@@ -191,11 +191,11 @@ def test_dado_ausente_nao_reduz_prioridade():
     assert _ids(_priorizar(_vaga(), invertidos)[0]) == ["a", "b"]
 
 
-def test_perfil_desatualizado_com_autorizacao_valida_segue_para_confirmacao():
+def test_perfil_desatualizado_com_autorizacao_valida_sai_para_uma_pessoa_confirmar():
     selecionados, cortes = _priorizar(_vaga(), [_pessoa("a", estado=EstadoBanco.DESATUALIZADO)])
 
-    assert _ids(selecionados) == ["a"]
-    assert cortes == []
+    assert selecionados == []
+    assert [(c.candidato_id, c.regra) for c in cortes] == [("a", RegraCorte.PERFIL_DESATUALIZADO)]
 
 
 def test_ordem_nao_muda_com_nome_ou_genero():

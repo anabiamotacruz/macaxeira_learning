@@ -1,8 +1,8 @@
 """Reduz os candidatos antes das análises por modelo (T2.8). Nenhuma regra aqui usa modelo.
 
-A ordenação lê só `perfil_texto`, cargo e descrição do histórico. Nome, atributos, fonte e
-empresas do histórico nunca entram na conta, então não há como favorecer ou prejudicar alguém
-por nome, atributo sensível, GitHub ou dado que faltou.
+A ordenação lê só `perfil_texto`, cargo e descrição do histórico, sem flexão de gênero. Nome,
+atributos, fonte e empresas do histórico nunca entram na conta, então não há como favorecer ou
+prejudicar alguém por nome, gênero da palavra, atributo sensível, GitHub ou dado que faltou.
 """
 
 import hashlib
@@ -17,9 +17,9 @@ from datetime import date
 from enum import StrEnum
 from fractions import Fraction
 
+from backend.contratos.criterios import sem_genero, tem_termo_sensivel
 from backend.contratos.interfaces import Analisador
 from backend.contratos.modelos import Analise, Candidato, EstadoBanco, Vaga
-from backend.fontes.consultas import tem_termo_sensivel
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ AvaliadorRequisitos = Callable[[Vaga, Candidato], Mapping[str, str]]
 
 STATUS_NAO_ATENDE = "nao_atende"
 """Único status que elimina. `sem_dado` e qualquer outro seguem no funil."""
+STATUS_SEM_DADO = "sem_dado"
 
 PALAVRAS_VAZIAS = frozenset(
     {"a", "as", "com", "da", "das", "de", "do", "dos", "e", "em", "na", "nas", "no", "nos", "o"}
@@ -35,8 +36,9 @@ PALAVRAS_VAZIAS = frozenset(
 )
 
 
-CAMPOS_FORA_DO_PERFIL = {"autorizacao_valida_ate", "autorizou_contato", "estado", "opt_out"}
-"""Autorização não muda o que o perfil diz: renovar não pede nova análise."""
+CAMPOS_FORA_DO_PERFIL = {"autorizacao_valida_ate", "autorizou_contato", "estado", "nome", "opt_out"}
+"""Autorização não muda o que o perfil diz: renovar não pede nova análise. O nome não entra na
+análise: trocar o nome não pode pedir outra, que poderia dar outro resultado."""
 
 
 class RegraCorte(StrEnum):
@@ -46,6 +48,7 @@ class RegraCorte(StrEnum):
     SEM_AUTORIZACAO = "sem_autorizacao"
     AUTORIZACAO_VENCIDA = "autorizacao_vencida"
     REQUISITO_NAO_ATENDIDO = "requisito_nao_atendido"
+    PERFIL_DESATUALIZADO = "perfil_desatualizado"
     FORA_DO_LIMITE = "fora_do_limite"
 
 
@@ -66,10 +69,10 @@ RegistrarCorte = Callable[[Corte], None]
 
 
 def _palavras(texto: str) -> set[str]:
-    """Separa em palavras sem acento nem caixa, mantendo `+` e `#`: `C++` não é `C#`."""
+    """Palavras sem acento, caixa nem flexão de gênero, mantendo `+` e `#`: `C++` não é `C#`."""
     decomposto = unicodedata.normalize("NFKD", texto)
     sem_acento = "".join(c for c in decomposto if not unicodedata.combining(c))
-    return set(re.findall(r"[^\W_]+[+#]*", sem_acento.casefold()))
+    return {sem_genero(p) for p in re.findall(r"[^\W_]+[+#]*", sem_acento.casefold())}
 
 
 def _competencias_validas(vaga: Vaga) -> list[tuple[Fraction, set[str]]]:
@@ -120,22 +123,36 @@ def _separar_duplicatas(
 
 
 def _regra_de_autorizacao(registros: list[Candidato], hoje: date) -> tuple[RegraCorte, str] | None:
-    """Opt-out e remoção em qualquer registro valem para a pessoa; o resto olha o mais recente."""
+    """Vale a regra mais restritiva: um registro novo de outra fonte não anula uma restrição."""
     if any(r.opt_out for r in registros):
         return RegraCorte.OPT_OUT, "a pessoa pediu para não ser contatada"
     if any(r.estado == EstadoBanco.REMOVIDO for r in registros):
         return RegraCorte.ESTADO_BLOQUEADO, "perfil removido"
-    atual = registros[0]
-    if not atual.autorizou_contato or atual.autorizacao_valida_ate is None:
-        return RegraCorte.SEM_AUTORIZACAO, "sem autorização registrada"
-    if atual.autorizacao_valida_ate < hoje:
-        return (
-            RegraCorte.AUTORIZACAO_VENCIDA,
-            f"autorização vencida em {atual.autorizacao_valida_ate.isoformat()}",
-        )
-    if atual.estado in (EstadoBanco.PENDENTE, EstadoBanco.EXPIRADO):
-        return RegraCorte.ESTADO_BLOQUEADO, f"perfil com estado {atual.estado.value}"
+    for registro in registros:
+        if not registro.autorizou_contato or registro.autorizacao_valida_ate is None:
+            return RegraCorte.SEM_AUTORIZACAO, "sem autorização registrada"
+    for registro in registros:
+        if registro.autorizacao_valida_ate < hoje:
+            return (
+                RegraCorte.AUTORIZACAO_VENCIDA,
+                f"autorização vencida em {registro.autorizacao_valida_ate.isoformat()}",
+            )
+    for registro in registros:
+        if registro.estado in (EstadoBanco.PENDENTE, EstadoBanco.EXPIRADO):
+            return RegraCorte.ESTADO_BLOQUEADO, f"perfil com estado {registro.estado.value}"
     return None
+
+
+def _faltas_de_requisito(
+    vaga: Vaga, registros: list[Candidato], avaliar_requisitos: AvaliadorRequisitos
+) -> list[str]:
+    """Cada requisito vale pelo registro mais recente que tem o dado: lacuna não esconde falta."""
+    conhecidos: dict[str, str] = {}
+    for registro in registros:
+        for id_requisito, valor in avaliar_requisitos(vaga, registro).items():
+            if conhecidos.get(id_requisito, STATUS_SEM_DADO) == STATUS_SEM_DADO:
+                conhecidos[id_requisito] = valor
+    return sorted(i for i, valor in conhecidos.items() if valor == STATUS_NAO_ATENDE)
 
 
 def _regra_de_corte(
@@ -147,8 +164,12 @@ def _regra_de_corte(
     bloqueio = _regra_de_autorizacao(registros, hoje)
     if bloqueio is not None:
         return bloqueio
-    status = avaliar_requisitos(vaga, registros[0])
-    faltas = sorted(id_req for id_req, valor in status.items() if valor == STATUS_NAO_ATENDE)
+    if registros[0].estado == EstadoBanco.DESATUALIZADO:
+        return (
+            RegraCorte.PERFIL_DESATUALIZADO,
+            "autorização válida, perfil desatualizado: uma pessoa confirma antes de analisar",
+        )
+    faltas = _faltas_de_requisito(vaga, registros, avaliar_requisitos)
     if faltas:
         return (
             RegraCorte.REQUISITO_NAO_ATENDIDO,
@@ -168,8 +189,8 @@ def priorizar(
 ) -> list[Candidato]:
     """Devolve até `limite` candidatos elegíveis, do mais aderente ao menos, com empate por `id`.
 
-    Só falta comprovada elimina: dado ausente segue adiante, e perfil desatualizado com
-    autorização válida também, para confirmação. Cada saída passa por `registrar_corte`.
+    Só falta comprovada elimina: dado ausente segue adiante. Perfil desatualizado com autorização
+    válida sai para uma pessoa confirmar, sem análise. Cada saída passa por `registrar_corte`.
     Candidato de outra empresa levanta `ValueError` antes de qualquer registro.
     """
     if limite < 0:
