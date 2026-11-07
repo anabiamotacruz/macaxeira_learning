@@ -11,9 +11,10 @@ import math
 import re
 from typing import Annotated, Self
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from backend.agente import prompts
+from backend.agente.auditoria import contexto_rastro, rastreado
 from backend.agente.regras import TERMOS_SENSIVEIS, _contem, _palavras, validar_criterios
 from backend.contratos.erros import RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
@@ -319,6 +320,16 @@ def _vaga_ou_pergunta(
     return vaga
 
 
+@rastreado(ETAPA_CONFIGURACAO)
+def _pedir_proposta(cliente_modelo: ClienteModelo, descricao: str) -> BaseModel:
+    return cliente_modelo.completar(
+        prompts.SISTEMA_CONFIGURACAO,
+        prompts.USUARIO_CONFIGURACAO.format(descricao=prompts.como_dado(descricao)),
+        PropostaModelo,
+        ETAPA_CONFIGURACAO,
+    )
+
+
 def propor_configuracao(
     descricao: str, empresa_id: str, cliente_modelo: ClienteModelo
 ) -> Vaga | PerguntaVaga:
@@ -332,12 +343,8 @@ def propor_configuracao(
 
     _alertar_instrucao_embutida(descricao, empresa_id)
     try:
-        proposta = cliente_modelo.completar(
-            prompts.SISTEMA_CONFIGURACAO,
-            prompts.USUARIO_CONFIGURACAO.format(descricao=prompts.como_dado(descricao)),
-            PropostaModelo,
-            ETAPA_CONFIGURACAO,
-        )
+        with contexto_rastro(empresa_id=empresa_id, vaga_id=_id_da_vaga(empresa_id, descricao)):
+            proposta = _pedir_proposta(cliente_modelo, descricao)
     except RespostaInvalida:
         return PerguntaVaga(empresa_id=empresa_id, pergunta=PERGUNTA_RESPOSTA_INVALIDA)
     if not isinstance(proposta, PropostaModelo):

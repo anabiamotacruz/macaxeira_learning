@@ -1,9 +1,20 @@
-"""Auditoria: registro e explicação de decisões. Nada aqui usa modelo de IA."""
+"""Auditoria: rastro, registro e explicação de decisões. Nada aqui usa modelo de IA."""
 
+import inspect
+import logging
+import os
 import re
+import time
+import uuid
 from collections import deque
+from collections.abc import Callable, Collection, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from functools import wraps
 from threading import Lock
-from typing import NamedTuple
+from typing import NamedTuple, Protocol
 
 from pydantic import AwareDatetime, ValidationError
 
@@ -11,7 +22,10 @@ from backend.agente.persistencia import Repositorio
 from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import Contrato, Decisao, Mandato, Texto
 
+logger = logging.getLogger(__name__)
+
 PREFIXO_HUMANO = "humano:"
+SEM_CONTEXTO = "sem-contexto"
 _RESPONSAVEL_AGENTE = re.compile(
     r"agente:mandato:(?P<id>[^:]+):v(?P<versao>[1-9]\d*):assinante:(?P<assinante>\S.*)"
 )
@@ -52,8 +66,16 @@ class RastroLocal:
         with self._trava:
             self._registros.append(registro)
 
+    def limpar(self) -> None:
+        with self._trava:
+            self._registros.clear()
+
     def listar(
-        self, empresa_id: str, vaga_id: str, candidato_id: str, rastro_ids: set[str]
+        self,
+        empresa_id: str,
+        vaga_id: str,
+        candidato_id: str | None,
+        rastro_ids: Collection[str] = (),
     ) -> list[RegistroRastro]:
         """Registros do candidato nesta empresa e vaga, ou citados por uma decisão dele."""
         with self._trava:
@@ -71,6 +93,183 @@ class RastroLocal:
 
 RASTRO_LOCAL = RastroLocal()
 """Rastro local do processo."""
+
+
+class DestinoRastro(Protocol):
+    def registrar(self, registro: RegistroRastro) -> None: ...
+
+
+class RastroLangfuse:
+    """Envia os metadados ao Langfuse, agrupados em um trace por `rastro_id`."""
+
+    def __init__(self, cliente) -> None:
+        self._cliente = cliente
+
+    def registrar(self, registro: RegistroRastro) -> None:
+        self._cliente.create_event(
+            trace_context={"trace_id": self._cliente.create_trace_id(seed=registro.rastro_id)},
+            name=registro.etapa,
+            metadata=registro.model_dump(mode="json"),
+            level="DEFAULT" if registro.sucesso else "ERROR",
+            status_message=registro.erro_tipo,
+        )
+
+
+def destino_do_ambiente() -> RastroLangfuse | None:
+    """Langfuse, se configurado e disponível. Caso contrário, o rastro fica só no local."""
+    if not (os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")):
+        return None
+    try:
+        from langfuse import Langfuse
+
+        return RastroLangfuse(Langfuse())
+    except Exception as erro:  # rastro nunca derruba o fluxo; a mensagem pode conter chave
+        logger.warning("Langfuse indisponível, rastro só local: %s", type(erro).__name__)
+        return None
+
+
+_externo: DestinoRastro | None = None
+_externo_resolvido = False
+_trava_externo = Lock()
+
+
+def configurar_destino_externo(destino: DestinoRastro | None) -> None:
+    """Define o destino externo, sem consultar o ambiente. `None` deixa o rastro só no local."""
+    global _externo, _externo_resolvido
+    with _trava_externo:
+        _externo = destino
+        _externo_resolvido = True
+
+
+def _destino_externo() -> DestinoRastro | None:
+    global _externo, _externo_resolvido
+    with _trava_externo:
+        if not _externo_resolvido:
+            _externo = destino_do_ambiente()
+            _externo_resolvido = True
+        return _externo
+
+
+@dataclass(frozen=True)
+class ContextoRastro:
+    """A quem pertencem as chamadas em andamento. `rastro_id` vai para a `Decisao`."""
+
+    execucao_id: str
+    empresa_id: str
+    vaga_id: str | None = None
+    candidato_id: str | None = None
+
+    @property
+    def rastro_id(self) -> str:
+        return f"{self.execucao_id}:{self.vaga_id or '-'}:{self.candidato_id or '-'}"
+
+
+_contexto: ContextVar[ContextoRastro | None] = ContextVar("contexto_rastro", default=None)
+
+
+def contexto_atual() -> ContextoRastro | None:
+    return _contexto.get()
+
+
+@contextmanager
+def contexto_rastro(
+    *,
+    empresa_id: str | None = None,
+    execucao_id: str | None = None,
+    vaga_id: str | None = None,
+    candidato_id: str | None = None,
+) -> Iterator[ContextoRastro]:
+    """Define execução, vaga e candidato das chamadas internas, herdando o que não for informado.
+
+    Usa `contextvars`, porque `ClienteModelo.completar` não recebe esses dados. Chegam a
+    tarefas `asyncio` e a `asyncio.to_thread`; em `ThreadPoolExecutor`, copie o contexto.
+    """
+    externo = _contexto.get()
+    if externo is not None and empresa_id is not None and empresa_id != externo.empresa_id:
+        raise ValueError("contexto de rastro não pode trocar de empresa")
+    empresa = empresa_id if externo is None else externo.empresa_id
+    if not empresa or not empresa.strip():
+        raise ValueError("empresa_id é obrigatório no contexto de rastro")
+    contexto = ContextoRastro(
+        execucao_id=execucao_id or (externo.execucao_id if externo else uuid.uuid4().hex),
+        empresa_id=empresa,
+        vaga_id=vaga_id or (externo.vaga_id if externo else None),
+        candidato_id=candidato_id or (externo.candidato_id if externo else None),
+    )
+    marca = _contexto.set(contexto)
+    try:
+        yield contexto
+    finally:
+        _contexto.reset(marca)
+
+
+def _emitir(registro: RegistroRastro) -> None:
+    """Grava no local e no destino externo. Falha de rastro é avisada e não sobe ao fluxo."""
+    for destino in (RASTRO_LOCAL, _destino_externo()):
+        if destino is None:
+            continue
+        try:
+            destino.registrar(registro)
+        except Exception as erro:  # a mensagem pode conter chave: só o tipo vai ao log
+            logger.warning("falha ao gravar rastro: %s", type(erro).__name__)
+
+
+@contextmanager
+def _medicao(etapa: str, funcao: str) -> Iterator[None]:
+    momento = datetime.now(UTC)
+    inicio = time.perf_counter()
+    erro_tipo = None
+    try:
+        yield
+    except BaseException as erro:
+        erro_tipo = type(erro).__name__
+        raise
+    finally:
+        contexto = _contexto.get()
+        _emitir(
+            RegistroRastro(
+                rastro_id=contexto.rastro_id if contexto else SEM_CONTEXTO,
+                execucao_id=contexto.execucao_id if contexto else SEM_CONTEXTO,
+                empresa_id=contexto.empresa_id if contexto else None,
+                vaga_id=contexto.vaga_id if contexto else None,
+                candidato_id=contexto.candidato_id if contexto else None,
+                etapa=etapa,
+                funcao=funcao,
+                sucesso=erro_tipo is None,
+                erro_tipo=erro_tipo,
+                duracao_ms=(time.perf_counter() - inicio) * 1000,
+                momento=momento,
+            )
+        )
+
+
+def rastreado[**P, R](etapa: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Registra cada chamada da função e relança qualquer falha, sem alterá-la.
+
+    Argumentos, retorno e mensagem de erro nunca são guardados: podem ter chave ou perfil.
+    """
+    if not etapa.strip():
+        raise ValueError("etapa é obrigatória no rastro")
+
+    def decorador(funcao: Callable[P, R]) -> Callable[P, R]:
+        nome = f"{funcao.__module__}.{funcao.__qualname__}"
+        if inspect.iscoroutinefunction(funcao):
+
+            @wraps(funcao)
+            async def assincrona(*args: P.args, **kwargs: P.kwargs):
+                with _medicao(etapa, nome):
+                    return await funcao(*args, **kwargs)
+
+            return assincrona
+
+        @wraps(funcao)
+        def sincrona(*args: P.args, **kwargs: P.kwargs) -> R:
+            with _medicao(etapa, nome):
+                return funcao(*args, **kwargs)
+
+        return sincrona
+
+    return decorador
 
 
 class MandatoCitado(NamedTuple):

@@ -3,6 +3,7 @@ import logging
 import pytest
 
 from backend.agente import prompts
+from backend.agente.auditoria import RASTRO_LOCAL
 from backend.agente.configuracao import (
     ETAPA_CONFIGURACAO,
     MAX_META_CANDIDATOS,
@@ -11,6 +12,7 @@ from backend.agente.configuracao import (
     TAMANHO_MAXIMO_DESCRICAO,
     PerguntaVaga,
     PropostaModelo,
+    _id_da_vaga,
     propor_configuracao,
 )
 from backend.contratos.erros import LimiteGastoAtingido, ModeloIndisponivel
@@ -364,3 +366,23 @@ def test_falha_do_modelo_nao_vira_pergunta(erro):
 
     with pytest.raises(erro):
         propor_configuracao(DESCRICAO, "empresa-a", ClienteFora())
+
+
+def test_chamada_ao_modelo_gera_rastro_sem_a_descricao():
+    vaga = propor_configuracao(DESCRICAO, "empresa-a", _cliente())
+
+    registros = RASTRO_LOCAL.listar("empresa-a", vaga.id, None)
+    assert [registro.etapa for registro in registros] == ["configuracao"]
+    assert DESCRICAO not in registros[0].model_dump_json()
+
+
+def test_falha_do_modelo_fica_no_rastro():
+    class ClienteFora:
+        def completar(self, sistema, usuario, esquema, etapa):
+            raise ModeloIndisponivel("indisponível")
+
+    with pytest.raises(ModeloIndisponivel):
+        propor_configuracao(DESCRICAO, "empresa-a", ClienteFora())
+
+    registros = RASTRO_LOCAL.listar("empresa-a", _id_da_vaga("empresa-a", DESCRICAO), None)
+    assert [registro.erro_tipo for registro in registros] == ["ModeloIndisponivel"]

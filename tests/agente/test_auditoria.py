@@ -1,18 +1,31 @@
+import asyncio
+import json
+import logging
+import sys
+import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
+from backend.agente import auditoria as modulo_auditoria
 from backend.agente.auditoria import (
+    RASTRO_LOCAL,
     Auditoria,
     DecisaoIncompleta,
     ExplicacaoInexistente,
+    RastroLangfuse,
     RastroLocal,
     RegistroRastro,
+    configurar_destino_externo,
+    contexto_rastro,
+    destino_do_ambiente,
+    rastreado,
     responsavel_do_mandato,
 )
 from backend.agente.mandato import Mandato, Politica
 from backend.agente.persistencia import Repositorio
+from backend.contratos.erros import ModeloIndisponivel
 from backend.contratos.modelos import Decisao, EventoFluxo, Evidencia, TipoDecisao
 
 FUSO_BRASILIA = timezone(timedelta(hours=-3))
@@ -309,3 +322,269 @@ def test_candidato_ainda_sem_decisao_e_explicado_pelos_eventos(auditoria, repo):
 def test_explicacao_exige_empresa(auditoria, empresa_id):
     with pytest.raises(ValueError, match="empresa_id"):
         auditoria.explicar_candidato(empresa_id, "cand-1", "vaga-1")
+
+
+CHAVE = "sk-teste-sintetica-0123456789"
+
+
+class DestinoEmMemoria:
+    def __init__(self) -> None:
+        self.registros: list[RegistroRastro] = []
+
+    def registrar(self, registro: RegistroRastro) -> None:
+        self.registros.append(registro)
+
+
+class DestinoQuebrado:
+    def registrar(self, registro: RegistroRastro) -> None:
+        raise ConnectionError(f"falhou com {CHAVE}")
+
+
+def _listar_local(candidato_id: str = "cand-1") -> list[RegistroRastro]:
+    return RASTRO_LOCAL.listar("empresa-a", "vaga-1", candidato_id)
+
+
+@rastreado("modelo")
+def _completar(sistema: str, api_key: str = "") -> str:
+    return f"resposta com {api_key}"
+
+
+def test_rastro_traz_execucao_vaga_e_candidato_do_contexto():
+    with contexto_rastro(empresa_id="empresa-a", execucao_id="exec-1", vaga_id="vaga-1"):
+        with contexto_rastro(candidato_id="cand-1") as contexto:
+            assert _completar("sistema") == "resposta com "
+
+    registro = _listar_local()[0]
+    assert registro.execucao_id == "exec-1"
+    assert registro.empresa_id == "empresa-a"
+    assert registro.vaga_id == "vaga-1"
+    assert registro.candidato_id == "cand-1"
+    assert registro.rastro_id == contexto.rastro_id
+    assert registro.etapa == "modelo"
+    assert registro.funcao.endswith("_completar")
+    assert registro.sucesso is True
+    assert registro.erro_tipo is None
+    assert registro.duracao_ms >= 0
+    assert registro.momento.tzinfo is not None
+
+
+def test_contexto_e_desfeito_ao_sair():
+    with contexto_rastro(empresa_id="empresa-a", vaga_id="vaga-1"):
+        with contexto_rastro(candidato_id="cand-1"):
+            pass
+        with contexto_rastro(candidato_id="cand-2"):
+            _completar("sistema")
+
+    assert _listar_local("cand-1") == []
+    assert len(_listar_local("cand-2")) == 1
+    assert modulo_auditoria.contexto_atual() is None
+
+
+def test_contexto_gera_execucao_e_a_mantem_nos_aninhados():
+    with contexto_rastro(empresa_id="empresa-a") as externo:
+        with contexto_rastro(vaga_id="vaga-1") as interno:
+            assert interno.execucao_id == externo.execucao_id
+            assert interno.execucao_id
+
+
+def test_contexto_nao_troca_de_empresa():
+    with contexto_rastro(empresa_id="empresa-a"):
+        with pytest.raises(ValueError, match="empresa"):
+            with contexto_rastro(empresa_id="empresa-b"):
+                pass
+
+
+@pytest.mark.parametrize("empresa_id", [None, "", " "])
+def test_contexto_externo_exige_empresa(empresa_id):
+    with pytest.raises(ValueError, match="empresa"):
+        with contexto_rastro(empresa_id=empresa_id):
+            pass
+
+
+def test_rastro_nao_contem_chave(monkeypatch):
+    monkeypatch.setenv("FEATHERLESS_API_KEY", CHAVE)
+    externo = DestinoEmMemoria()
+    configurar_destino_externo(externo)
+
+    @rastreado("modelo")
+    def chamar(sistema: str, api_key: str, cabecalhos: dict) -> str:
+        if sistema == "falhar":
+            raise ModeloIndisponivel(f"recusado: {api_key}")
+        return api_key
+
+    with contexto_rastro(empresa_id="empresa-a", vaga_id="vaga-1", candidato_id="cand-1"):
+        chamar("sistema", CHAVE, {"Authorization": f"Bearer {CHAVE}"})
+        with pytest.raises(ModeloIndisponivel):
+            chamar("falhar", api_key=CHAVE, cabecalhos={})
+
+    registros = _listar_local()
+    assert len(registros) == 2
+    assert registros == externo.registros
+    assert CHAVE not in json.dumps([r.model_dump(mode="json") for r in registros])
+
+
+def test_falha_e_registrada_e_relancada():
+    erro = ModeloIndisponivel("fora do ar")
+
+    @rastreado("modelo")
+    def chamar() -> None:
+        raise erro
+
+    with contexto_rastro(empresa_id="empresa-a", vaga_id="vaga-1", candidato_id="cand-1"):
+        with pytest.raises(ModeloIndisponivel) as capturado:
+            chamar()
+
+    assert capturado.value is erro
+    registro = _listar_local()[0]
+    assert registro.sucesso is False
+    assert registro.erro_tipo == "ModeloIndisponivel"
+
+
+def test_etapa_vazia_e_recusada_ao_decorar():
+    with pytest.raises(ValueError, match="etapa"):
+        rastreado(" ")
+
+
+def test_sem_contexto_o_rastro_nao_quebra_a_funcao():
+    assert _completar("sistema", api_key="x") == "resposta com x"
+
+
+def test_funcao_assincrona_e_medida_ate_terminar():
+    @rastreado("ferramenta")
+    async def buscar() -> str:
+        await asyncio.sleep(0)
+        return "ok"
+
+    @rastreado("ferramenta")
+    async def falhar() -> None:
+        await asyncio.sleep(0)
+        raise ModeloIndisponivel("fora do ar")
+
+    async def executar() -> str:
+        with contexto_rastro(empresa_id="empresa-a", vaga_id="vaga-1", candidato_id="cand-1"):
+            with pytest.raises(ModeloIndisponivel):
+                await falhar()
+            return await buscar()
+
+    assert asyncio.run(executar()) == "ok"
+    assert [r.sucesso for r in _listar_local()] == [False, True]
+
+
+def test_destino_externo_quebrado_nao_quebra_o_fluxo_nem_loga_a_chave(caplog):
+    configurar_destino_externo(DestinoQuebrado())
+
+    with caplog.at_level(logging.WARNING, logger="backend.agente.auditoria"):
+        with contexto_rastro(empresa_id="empresa-a", vaga_id="vaga-1", candidato_id="cand-1"):
+            assert _completar("sistema") == "resposta com "
+
+    assert len(_listar_local()) == 1
+    assert "ConnectionError" in caplog.text
+    assert CHAVE not in caplog.text
+
+
+def test_erro_real_nao_e_trocado_por_falha_do_destino():
+    configurar_destino_externo(DestinoQuebrado())
+
+    @rastreado("modelo")
+    def chamar() -> None:
+        raise ModeloIndisponivel("fora do ar")
+
+    with pytest.raises(ModeloIndisponivel):
+        chamar()
+
+
+def test_explicacao_acha_o_rastro_de_uma_funcao_decorada(auditoria):
+    with contexto_rastro(
+        empresa_id="empresa-a", execucao_id="exec-1", vaga_id="vaga-1", candidato_id="cand-1"
+    ) as contexto:
+        _completar("sistema")
+        auditoria.registrar_decisao(_decisao(rastro_id=contexto.rastro_id))
+
+    explicacao = Auditoria(auditoria._repositorio).explicar_candidato(
+        "empresa-a", "cand-1", "vaga-1"
+    )
+
+    assert explicacao["rastro_ids"] == [contexto.rastro_id]
+    assert [r["etapa"] for r in explicacao["rastro"]] == ["modelo"]
+
+
+class ClienteLangfuseFalso:
+    def __init__(self, **argumentos) -> None:
+        self.argumentos = argumentos
+        self.eventos: list[dict] = []
+
+    @staticmethod
+    def create_trace_id(*, seed: str) -> str:
+        return f"trace-{seed}"
+
+    def create_event(self, **campos) -> None:
+        self.eventos.append(campos)
+
+
+def test_rastro_langfuse_envia_metadados_no_trace_do_rastro():
+    cliente = ClienteLangfuseFalso()
+
+    RastroLangfuse(cliente).registrar(_registro(sucesso=False, erro_tipo="ModeloIndisponivel"))
+
+    evento = cliente.eventos[0]
+    assert evento["name"] == "analise"
+    assert evento["trace_context"] == {"trace_id": "trace-exec-1:vaga-1:cand-1"}
+    assert evento["level"] == "ERROR"
+    assert evento["metadata"]["empresa_id"] == "empresa-a"
+    assert evento["metadata"]["candidato_id"] == "cand-1"
+    assert not {"input", "output"} & set(evento)
+
+
+def test_rastro_langfuse_aceita_o_sdk_real_sem_rede():
+    from langfuse import Langfuse
+
+    cliente = Langfuse(public_key="pk-teste", secret_key="sk-teste", tracing_enabled=False)
+
+    RastroLangfuse(cliente).registrar(_registro())
+
+
+def _simular_sdk(monkeypatch, classe) -> None:
+    monkeypatch.setitem(sys.modules, "langfuse", types.SimpleNamespace(Langfuse=classe))
+
+
+@pytest.mark.parametrize(
+    "ambiente",
+    [{}, {"LANGFUSE_PUBLIC_KEY": "pk"}, {"LANGFUSE_SECRET_KEY": "sk"}],
+)
+def test_sem_chaves_do_langfuse_nao_ha_destino_externo(monkeypatch, ambiente):
+    def nao_deveria_criar(**_argumentos):
+        raise AssertionError("não deveria criar o cliente")
+
+    _simular_sdk(monkeypatch, nao_deveria_criar)
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    for nome, valor in ambiente.items():
+        monkeypatch.setenv(nome, valor)
+
+    assert destino_do_ambiente() is None
+
+
+def test_com_chaves_do_langfuse_usa_o_destino_externo(monkeypatch):
+    _simular_sdk(monkeypatch, ClienteLangfuseFalso)
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+
+    assert isinstance(destino_do_ambiente(), RastroLangfuse)
+
+
+def test_falha_ao_criar_o_langfuse_vira_rastro_local(monkeypatch, caplog):
+    def falhar(**_argumentos):
+        raise RuntimeError(f"erro com {CHAVE}")
+
+    _simular_sdk(monkeypatch, falhar)
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+    monkeypatch.setattr(modulo_auditoria, "_externo_resolvido", False)
+
+    with caplog.at_level(logging.WARNING, logger="backend.agente.auditoria"):
+        with contexto_rastro(empresa_id="empresa-a", vaga_id="vaga-1", candidato_id="cand-1"):
+            assert _completar("sistema") == "resposta com "
+
+    assert len(_listar_local()) == 1
+    assert "RuntimeError" in caplog.text
+    assert CHAVE not in caplog.text
