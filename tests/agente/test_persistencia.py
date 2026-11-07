@@ -609,3 +609,20 @@ def test_apagar_empresa_leva_bloqueios_e_reservas(repo: Repositorio) -> None:
 
     assert not repo.tem_bloqueio("empresa-a", resumos)
     assert repo.reservar_chave("empresa-a", "c", agora, timedelta(minutes=5))
+
+
+def test_threads_escrevendo_juntas_nao_perdem_progresso_nem_eventos(repo: Repositorio) -> None:
+    repo.salvar_progresso("empresa-a", "v1", json.dumps({"contagem": 0}))
+
+    def somar(dados: str) -> str:
+        return json.dumps({"contagem": json.loads(dados)["contagem"] + 1})
+
+    def trabalhar(numero: int) -> None:
+        repo.atualizar_progresso("empresa-a", "v1", somar)
+        repo.registrar_evento(_evento(f"evento {numero}"))
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(trabalhar, range(80)))
+
+    assert json.loads(repo.carregar_progresso("empresa-a", "v1"))["contagem"] == 80
+    assert len(repo.listar_eventos("empresa-a", "vaga-1")) == 80

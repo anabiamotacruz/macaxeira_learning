@@ -6,7 +6,7 @@ import pytest
 
 from backend.agente import fluxo as modulo_fluxo
 from backend.agente.montagem import consultas_por_modelo, priorizador_do_funil
-from backend.agente.regras import CORTES_QUE_DESCARTAM, decisao_de_corte
+from backend.agente.regras import CORTES_QUE_DESCARTAM, CORTES_SEM_DECISAO, decisao_de_corte
 from backend.contratos.erros import LimiteGastoAtingido
 from backend.contratos.modelos import Requisito, TipoDecisao
 from backend.contratos.simulacoes import ClienteModeloSimulado
@@ -104,10 +104,11 @@ def test_toda_regra_do_funil_tem_tipo_de_decisao_conhecido():
         *CORTES_QUE_DESCARTAM,
         "fora_do_limite",
         "perfil_desatualizado",
+        *CORTES_SEM_DECISAO,
     }
 
 
-@pytest.mark.parametrize("regra", list(RegraCorte))
+@pytest.mark.parametrize("regra", [r for r in RegraCorte if r.value not in CORTES_SEM_DECISAO])
 def test_corte_real_vira_decisao_valida(regra):
     from datetime import UTC, datetime
 

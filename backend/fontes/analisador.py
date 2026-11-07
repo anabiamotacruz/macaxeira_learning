@@ -6,6 +6,7 @@ histórico e descrição da vaga não são enviados: datas revelam períodos sem
 livre da vaga pode citar gênero ou outro tema sensível.
 """
 
+import logging
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -33,6 +34,8 @@ from backend.fontes.anonimizador import (
 from backend.fontes.consultas import tem_termo_sensivel
 from backend.fontes.prompts import SISTEMA_ANALISE, USUARIO_ANALISE
 
+logger = logging.getLogger(__name__)
+
 ETAPA_ANALISE = "analise"
 
 ALERTA_INSTRUCAO = (
@@ -44,16 +47,42 @@ FIM_DE_FRASE = re.compile(r"(?<=[.!?])\s+|\n+")
 _RACE_CONDITION = re.compile(r"\brace conditions?\b")
 
 INSTRUCAO = re.compile(
-    r"\b(ignor[ea]\w*|desconsider\w*|esquec\w*|disregard|forget)\b"
-    r".{0,60}\b(regras?|instruc\w+|anteriores|previous|instructions?|prompt|sistema)\b"
+    r"(?<!nao )(?<!sem )"
+    r"\b(ignore\w*|ignorar|desconsidere\w*|desconsiderar|esqueca\w*|esquecer|disregard|forget)\b"
+    r".{0,60}\b(regras?|instruc\w+|anteriores|previous|instructions?|prompt)\b"
     r"|\b(me de|de me|atribua|conceda|give|assign)\b.{0,30}\b(nota|score)\b"
     r"|\b(revele|mostre|exiba|imprima|reveal|print)\b"
     r".{0,30}\b(chave|api key|segredo|senha|prompt)\b"
-    r"|\b(aprove|indique|selecione|contrate|approve|hire)\b"
-    r".{0,30}\b(este|esta|me|candidat\w+|perfil|pessoa|this)\b"
-    r"|\b(system prompt|prompt do sistema|voce agora|you are now|as an ai|como modelo de ia)\b"
+    r"|\b(aprove|indique|selecione|contrate)\b"
+    r".{0,30}\b(este|esta|me|candidat\w+|perfil|pessoa)\b"
+    r"|\b(approve|hire|select|recommend)"
+    r" (me|this (candidate|person|profile|resume)|the candidate)\b"
+    r"|\b(system prompt|prompt do sistema|voce agora|you are now"
+    r"|as an ai (model|assistant|language)|como modelo de ia,)\b"
 )
-"""Sobre texto sem acento nem caixa. O que escapar daqui, o modelo aponta e a análise é refeita."""
+"""Sobre texto sem acento nem caixa. Basta sozinho: quase não aparece em frase de trabalho."""
+
+_QUEM_AVALIA = (
+    r"avaliador\w*|recrutador\w*|analista\w*|leitor\w*|revisor\w*"
+    r"|recruiter|reviewer|evaluator|screener|reader"
+)
+_DIRIGIDO_AO_AVALIADOR = re.compile(
+    r"\b(prezad[oa]s?|car[oa]s?|ola|atencao|dear|hello|hi|attention)[ ,:]+(o |a |os |as |the )?"
+    rf"({_QUEM_AVALIA}|sistema|modelo|ia|assistente|assistant|model|ai|llm|gpt)\b"
+    rf"|\b(ao|aos|para o|para a|note to the|to the)[ ,:]+({_QUEM_AVALIA})\b(?! tecnic)"
+    r"|\bquem (ler|avaliar|analisar|revisar)\b|\b(whoever|anyone) (reads|reviews)\b"
+    r"|\b(classifique|ranqueie|coloque|priorize|recomende|avance|promova|marque|pontue|considere"
+    r"|trate|recomendar|classificar|aprovar|indicar|selecionar|contratar|considerar|pontuar"
+    r"|rank|rate|recommend|advance|promote|mark|treat|consider|select)\b"
+    r".{0,40}\b(este|esta|me|candidat\w+|perfil|pessoa|this|candidate|profile|person)\b"
+    r"|\b(est[ea]|this) (perfil|candidat\w+|pessoa|curriculo|profile|person|resume)"
+    r" (deve|precisa|merece|tem que|should|must|deserves)\b"
+    r"|\b(voce|you) (deve|precisa|tem que|must|should|are)\b"
+    r"|\b(atue|aja|finja|comporte-se|pretend|act)\b.{0,20}\b(como|que|as|you|to)\b"
+    r"|\b(retorne|responda|devolva|return|respond|output)\b.{0,30}\b(nota|score|aprovad\w*|approved)\b"
+)
+"""O que confere um apontamento do modelo: fala com quem avalia ou manda no resultado. Sozinho
+daria falso alarme em frase de trabalho; junto com o apontamento, não."""
 
 _SENSIVEL_ALEM_DA_LISTA = re.compile(
     r"\b(mae|pai|filh[oa]s?|maternidade|paternidade|nascid[oa]|divorciad[oa]|viuv[oa]|bissexual"
@@ -72,9 +101,12 @@ _PERIODO_SEM_TRABALHO = re.compile(
 
 
 def normalizar(texto: str) -> str:
+    """Sem acento, caixa nem caracteres invisíveis, que serviriam para esconder uma instrução."""
     decomposto = unicodedata.normalize("NFKD", texto)
-    sem_acento = "".join(c for c in decomposto if not unicodedata.combining(c))
-    return " ".join(sem_acento.casefold().split())
+    visivel = "".join(
+        c for c in decomposto if not unicodedata.combining(c) and unicodedata.category(c) != "Cf"
+    )
+    return " ".join(visivel.casefold().split())
 
 
 def texto_permitido(texto: str) -> bool:
@@ -112,9 +144,10 @@ def preparar_texto(sessao: SessaoPseudonimizacao, retirar: Iterable[str] = ()) -
     """Tira instruções e frases sobre dado sensível ou período sem trabalho, e pseudonimiza o resto.
 
     Sai a frase inteira, sem alerta quando é dado sensível: mencionar gênero não pode mudar
-    o caminho de ninguém. `retirar` traz instruções que só o modelo percebeu, já com marcadores.
-    A instrução é procurada também depois da troca: `Aprove Fulana` só aparece como
-    `Aprove [PESSOA]`.
+    o caminho de ninguém. `retirar` traz o que só o modelo apontou, já com marcadores: a frase só
+    sai, com alerta, se o próprio texto dela confirma que fala com quem avalia. A opinião do modelo
+    sozinha não basta. A instrução é procurada também depois da troca: `Aprove Fulana` só aparece
+    como `Aprove [PESSOA]`, e por isso a conferência do apontamento usa o texto pseudonimizado.
     """
     retirados = [normalizar(trecho) for trecho in retirar]
     frases = []
@@ -129,8 +162,9 @@ def preparar_texto(sessao: SessaoPseudonimizacao, retirar: Iterable[str] = ()) -
             continue
         pseudonimizada = sessao.frase(inicio, fim)
         normalizada = normalizar(pseudonimizada.texto)
-        if INSTRUCAO.search(normalizada) or any(
-            trecho in normalizada or normalizada in trecho for trecho in retirados
+        apontada = any(trecho in normalizada or normalizada in trecho for trecho in retirados)
+        if INSTRUCAO.search(normalizada) or (
+            apontada and _DIRIGIDO_AO_AVALIADOR.search(normalizada)
         ):
             tem_instrucao = True
         elif texto_permitido(pseudonimizada.texto):
@@ -227,11 +261,16 @@ class AnalisadorPorModelo:
             if trecho_confere(como_no_perfil(trecho), candidato, perfil)
         ]
         if apontadas:
-            # A nota pode ter sido influenciada: vale a análise do perfil sem a instrução.
-            perfil = preparar_perfil(
+            conferido = preparar_perfil(
                 candidato, apontadas, pseudonimizador=self._pseudonimizador, preservar=preservar
             )
-            resposta = self._perguntar(vaga, perfil)
+            if conferido.texto == perfil.texto:
+                # Só o id: o trecho é texto do candidato e não vai para o log.
+                logger.info("apontamento do modelo sem confirmação no texto: %s", candidato.id)
+            else:
+                # A nota pode ter sido influenciada: vale a análise do perfil sem a instrução.
+                perfil = conferido
+                resposta = self._perguntar(vaga, perfil)
 
         evidencias = self._evidencias(vaga, candidato, perfil, resposta)
         notas = self._notas(vaga, resposta, evidencias)
