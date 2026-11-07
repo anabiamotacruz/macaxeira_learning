@@ -8,6 +8,8 @@ from enum import StrEnum
 from backend.contratos.erros import ErroContrato, FonteIndisponivel
 
 TEMPO_LIMITE_PADRAO_S = 30.0
+TEMPO_LIMITE_INTEGRACAO_S = 120.0
+"""Para fontes e destinos: não pode ser menor que o limite do cliente HTTP, que interrompe."""
 LIMITE_DE_FALHAS_PADRAO = 5
 ESPERA_DO_DISJUNTOR_PADRAO_S = 60.0
 
@@ -152,3 +154,58 @@ class DisjuntorFonte:
             self._falhas = 0
             self._teste_em_andamento = False
             self._aberto_em = None
+
+
+class Resiliencia:
+    """Junta tentativas e disjuntores, um por nome. Compartilhe o objeto entre as execuções.
+
+    Um disjuntor só tem efeito se sobreviver à execução: criá-lo por pedido o deixaria sempre
+    fechado. O estado fica em memória e recomeça fechado depois de um reinício do processo.
+    `funcao` precisa ser idempotente e ter tempo limite próprio, de até `tempo_limite`.
+    """
+
+    def __init__(
+        self,
+        *,
+        tentativas: int = 3,
+        espera: float = 1.0,
+        tempo_limite: float = TEMPO_LIMITE_INTEGRACAO_S,
+        limite_falhas: int = LIMITE_DE_FALHAS_PADRAO,
+        espera_disjuntor: float = ESPERA_DO_DISJUNTOR_PADRAO_S,
+        dormir: Callable[[float], None] = time.sleep,
+        relogio: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.tentativas = tentativas
+        self.espera = espera
+        self.tempo_limite = tempo_limite
+        self._limite_falhas = limite_falhas
+        self._espera_disjuntor = espera_disjuntor
+        self._dormir = dormir
+        self._relogio = relogio
+        self._trava = threading.Lock()
+        self._disjuntores: dict[str, DisjuntorFonte] = {}
+
+    def _disjuntor(self, nome: str) -> DisjuntorFonte:
+        with self._trava:
+            if nome not in self._disjuntores:
+                self._disjuntores[nome] = DisjuntorFonte(
+                    nome,
+                    limite_falhas=self._limite_falhas,
+                    espera=self._espera_disjuntor,
+                    relogio=self._relogio,
+                )
+            return self._disjuntores[nome]
+
+    def chamar[T](self, nome: str, funcao: Callable[[], T], *, etapa: str | None = None) -> T:
+        """Chama `funcao` com repetição, por dentro do disjuntor de `nome`."""
+        return self._disjuntor(nome).chamar(
+            lambda: com_tentativas(
+                funcao,
+                self.tentativas,
+                self.espera,
+                self.tempo_limite,
+                etapa=etapa or nome,
+                dormir=self._dormir,
+                relogio=self._relogio,
+            )
+        )

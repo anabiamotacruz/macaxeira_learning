@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import StrEnum
+from functools import partial
 
 from pydantic import AwareDatetime, Field
 
@@ -47,7 +48,6 @@ from backend.agente.regras import (
 )
 from backend.contratos.erros import (
     ErroContrato,
-    FonteIndisponivel,
     LimiteGastoAtingido,
     ModeloIndisponivel,
     RespostaInvalida,
@@ -77,6 +77,7 @@ from backend.contratos.modelos import (
     TipoResposta,
     Vaga,
 )
+from backend.modelos.resiliencia import ERROS_TEMPORARIOS, Resiliencia
 
 
 class TransicaoInvalida(ErroContrato):
@@ -298,9 +299,11 @@ class FluxoVaga:
         consultas: Callable[[Vaga, int], list[str]] = _consulta_pelo_titulo,
         medidor_gasto: Callable[[], float] | None = None,
         auditoria: Auditoria | None = None,
+        resiliencia: Resiliencia | None = None,
     ) -> None:
         self._repo = repositorio
         self._auditoria = Auditoria(repositorio) if auditoria is None else auditoria
+        self._resiliencia = Resiliencia() if resiliencia is None else resiliencia
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -826,15 +829,20 @@ class FluxoVaga:
         consultas = _pedir_consultas(self._consultas, self.vaga, progresso.ampliacoes)
         novos: list[Candidato] = []
         fora: list[str] = []
-        for fonte in fontes:
+        for indice, fonte in enumerate(fontes):
+            nome = f"{indice}:{type(fonte).__name__}"
+            pagina = progresso.ampliacoes + 1
             try:
                 for consulta in consultas:
-                    achados = _buscar_na_fonte(
-                        fonte, self.vaga.empresa_id, consulta, progresso.ampliacoes + 1
+                    achados = self._resiliencia.chamar(
+                        nome,
+                        partial(_buscar_na_fonte, fonte, self.vaga.empresa_id, consulta, pagina),
+                        etapa="busca_fonte",
                     )
                     novos.extend(self._filtrar_achados(achados, vistos))
-            except FonteIndisponivel:
+            except ERROS_TEMPORARIOS as erro:
                 fora.append(type(fonte).__name__)
+                self._evento("fonte", f"{type(fonte).__name__}: {type(erro).__name__}")
         progresso.fontes_fora = fora
         if len(fora) == len(fontes):
             raise _PausaNecessaria(MotivoPausa.FONTES_INDISPONIVEIS)
@@ -1168,7 +1176,12 @@ class FluxoVaga:
         pacote = self._pacote(candidato, progresso.analises[candidato.id], decisao.rastro_id, chave)
         with self._contexto(progresso, candidato.id):
             entregue = self._acao_idempotente(
-                chave, lambda: _entregar_pacote(self._destino, pacote)
+                chave,
+                lambda: self._resiliencia.chamar(
+                    "destino",
+                    partial(_entregar_pacote, self._destino, pacote),
+                    etapa="entrega_destino",
+                ),
             )
         if not entregue:
             raise _PausaNecessaria(MotivoPausa.DESTINO_INDISPONIVEL)

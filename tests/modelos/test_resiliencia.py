@@ -8,10 +8,13 @@ from backend.contratos.erros import (
     ModeloIndisponivel,
     RespostaInvalida,
 )
+from backend.modelos.cliente import TEMPO_LIMITE_PADRAO_S as TEMPO_LIMITE_DO_CLIENTE
 from backend.modelos.resiliencia import (
+    TEMPO_LIMITE_INTEGRACAO_S,
     TEMPO_LIMITE_PADRAO_S,
     DisjuntorFonte,
     EstadoDisjuntor,
+    Resiliencia,
     TempoLimiteExcedido,
     com_tentativas,
 )
@@ -313,3 +316,103 @@ def test_tempo_limite_conta_como_falha_e_repeticoes_contam_uma_vez():
 def test_disjuntor_recusa_parametros_invalidos(opcoes):
     with pytest.raises(ValueError):
         DisjuntorFonte(**{"fonte": "github", **opcoes})
+
+
+class Relogio:
+    def __init__(self) -> None:
+        self.agora = 0.0
+
+    def __call__(self) -> float:
+        return self.agora
+
+
+def _resiliencia(**opcoes) -> Resiliencia:
+    return Resiliencia(dormir=lambda _: None, **opcoes)
+
+
+def test_limite_padrao_nao_corta_chamada_que_o_cliente_ainda_aceita():
+    assert Resiliencia().tempo_limite >= TEMPO_LIMITE_DO_CLIENTE
+    assert TEMPO_LIMITE_INTEGRACAO_S >= TEMPO_LIMITE_DO_CLIENTE
+
+
+def test_resiliencia_repete_e_devolve_o_resultado():
+    respostas = iter([ConnectionError("fora"), "ok"])
+
+    def chamada():
+        resposta = next(respostas)
+        if isinstance(resposta, Exception):
+            raise resposta
+        return resposta
+
+    assert _resiliencia().chamar("fonte", chamada, etapa="busca") == "ok"
+
+
+def test_serie_de_tentativas_conta_como_uma_falha_no_disjuntor():
+    chamadas = []
+
+    def falha():
+        chamadas.append(1)
+        raise ConnectionError("fora")
+
+    resiliencia = _resiliencia(tentativas=3, limite_falhas=2)
+    for _ in range(2):
+        with pytest.raises(ConnectionError):
+            resiliencia.chamar("fonte", falha)
+    assert len(chamadas) == 6
+
+    with pytest.raises(FonteIndisponivel):
+        resiliencia.chamar("fonte", falha)
+    assert len(chamadas) == 6
+
+
+def test_cada_nome_tem_o_proprio_disjuntor():
+    def falha():
+        raise ConnectionError("fora")
+
+    resiliencia = _resiliencia(tentativas=1, limite_falhas=1)
+    with pytest.raises(ConnectionError):
+        resiliencia.chamar("a", falha)
+
+    assert resiliencia.chamar("b", lambda: "ok") == "ok"
+    with pytest.raises(FonteIndisponivel):
+        resiliencia.chamar("a", lambda: "ok")
+
+
+def test_disjuntor_testa_de_novo_depois_da_espera():
+    relogio = Relogio()
+    resiliencia = _resiliencia(tentativas=1, limite_falhas=1, espera_disjuntor=60, relogio=relogio)
+
+    def falha():
+        raise ConnectionError("fora")
+
+    with pytest.raises(ConnectionError):
+        resiliencia.chamar("a", falha)
+    relogio.agora = 61
+
+    assert resiliencia.chamar("a", lambda: "ok") == "ok"
+
+
+def test_retorno_atrasado_vira_tempo_limite_excedido():
+    relogio = Relogio()
+
+    def lenta():
+        relogio.agora += TEMPO_LIMITE_INTEGRACAO_S + 1
+        return "tarde"
+
+    with pytest.raises(TempoLimiteExcedido):
+        _resiliencia(tentativas=1, relogio=relogio).chamar("a", lenta)
+
+
+def test_erro_permanente_nao_repete_nem_abre_o_disjuntor():
+    chamadas = []
+
+    def falha():
+        chamadas.append(1)
+        raise ValueError("permanente")
+
+    resiliencia = _resiliencia(limite_falhas=1)
+    with pytest.raises(ValueError):
+        resiliencia.chamar("a", falha)
+
+    assert len(chamadas) == 1
+    assert resiliencia.chamar("a", lambda: "ok") == "ok"

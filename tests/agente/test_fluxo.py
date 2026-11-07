@@ -45,6 +45,7 @@ from backend.contratos.modelos import (
     Candidato,
     Decisao,
     Evidencia,
+    PacoteContexto,
     Requisito,
     RespostaCandidato,
     TipoDecisao,
@@ -58,6 +59,7 @@ from backend.contratos.simulacoes import (
     FonteSimulada,
     MensageiroSimulado,
 )
+from backend.modelos.resiliencia import TEMPO_LIMITE_INTEGRACAO_S, Resiliencia
 from tests.agente.apoio import (
     PERFIL_EXEMPLO,
     AnalisadorComEvidencias,
@@ -347,6 +349,7 @@ class Montagem:
         self.revisor = pecas.pop("revisor", RevisorSemRessalva())
         self.mensageiro = pecas.pop("mensageiro", MensageiroSimulado())
         self.destino = pecas.pop("destino", ClienteNaraSimulado())
+        pecas.setdefault("resiliencia", Resiliencia(dormir=lambda _: None))
         self.extras = pecas
 
     def fluxo(self, **pecas) -> FluxoVaga:
@@ -2448,3 +2451,214 @@ def test_rastro_de_uma_vaga_nao_aparece_para_outra_empresa(tmp_path: Path) -> No
 
     with pytest.raises(ExplicacaoInexistente):
         Auditoria(m.repo).explicar_candidato("empresa-b", "c1", "v1")
+
+
+# Ligação com a resiliência
+
+
+class RelogioDeChamadas:
+    def __init__(self) -> None:
+        self.agora = 0.0
+
+    def __call__(self) -> float:
+        return self.agora
+
+
+class FonteInstavel(FonteSimulada):
+    """Levanta os erros dados, em ordem, e depois responde. `antes` simula a demora."""
+
+    def __init__(self, candidatos, erros=(), antes=lambda: None) -> None:
+        super().__init__(candidatos)
+        self.erros = list(erros)
+        self.antes = antes
+        self.chamadas = 0
+
+    def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+        self.chamadas += 1
+        self.antes()
+        if self.erros:
+            raise self.erros.pop(0)
+        return super().buscar(empresa_id, consulta, pagina)
+
+
+class NaraInstavel(ClienteNaraSimulado):
+    def __init__(self, erros=(), antes=lambda: None) -> None:
+        super().__init__()
+        self.erros = list(erros)
+        self.antes = antes
+        self.chamadas = 0
+        self.chaves: list[str] = []
+
+    def entregar(self, pacote: PacoteContexto) -> bool:
+        self.chamadas += 1
+        self.chaves.append(pacote.chave_idempotencia)
+        self.antes()
+        if self.erros:
+            raise self.erros.pop(0)
+        return super().entregar(pacote)
+
+
+def test_fonte_instavel_e_repetida_e_a_cobertura_fica_completa(tmp_path: Path) -> None:
+    fonte = FonteInstavel(
+        _dois_candidatos(), erros=[ConnectionError("rede"), TimeoutError("lenta")]
+    )
+    m = Montagem(tmp_path, [], fontes=[fonte])
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fonte.chamadas == 3
+    assert m.analisador.analisados == ["c1", "c2"]
+    assert not [e for e in fluxo.eventos if e.etapa == "cobertura"]
+
+
+def test_fonte_que_passa_do_tempo_limite_reduz_a_cobertura(tmp_path: Path) -> None:
+    relogio = RelogioDeChamadas()
+
+    def demorar() -> None:
+        relogio.agora += TEMPO_LIMITE_INTEGRACAO_S + 1
+
+    lenta = FonteInstavel(_dois_candidatos(), antes=demorar)
+    outra = FonteSimulada(_dois_candidatos())
+    m = Montagem(
+        tmp_path,
+        [],
+        fontes=[lenta, outra],
+        resiliencia=Resiliencia(dormir=lambda _: None, relogio=relogio),
+    )
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert lenta.chamadas == 3
+    assert fluxo.estado is E.CONVIDANDO
+    assert m.analisador.analisados == ["c1", "c2"]
+    cobertura = [e for e in fluxo.eventos if e.etapa == "cobertura"]
+    assert "parcial" in cobertura[0].mensagem
+    assert any(e.etapa == "fonte" and "TempoLimiteExcedido" in e.mensagem for e in fluxo.eventos)
+
+
+def test_todas_as_fontes_passando_do_tempo_pausam_e_retomam(tmp_path: Path) -> None:
+    relogio = RelogioDeChamadas()
+
+    class Lenta(FonteInstavel):
+        ativa = True
+
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            if Lenta.ativa:
+                relogio.agora += TEMPO_LIMITE_INTEGRACAO_S + 1
+            return super().buscar(empresa_id, consulta, pagina)
+
+    class BancoLento(BancoTalentosSimulado):
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            if Lenta.ativa:
+                relogio.agora += TEMPO_LIMITE_INTEGRACAO_S + 1
+            return super().buscar(empresa_id, consulta, pagina)
+
+    m = Montagem(
+        tmp_path,
+        [],
+        banco=BancoLento(),
+        fontes=[Lenta(_dois_candidatos())],
+        resiliencia=Resiliencia(dormir=lambda _: None, relogio=relogio),
+    )
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+    assert _execucao(m).motivo == MotivoPausa.FONTES_INDISPONIVEIS
+
+    Lenta.ativa = False
+    fluxo.retomar()
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_disjuntor_de_fonte_vale_entre_execucoes_de_vagas_diferentes(tmp_path: Path) -> None:
+    fonte = FonteInstavel([], erros=[ConnectionError("rede")] * 10)
+    resiliencia = Resiliencia(dormir=lambda _: None, tentativas=1, limite_falhas=2)
+    m = Montagem(tmp_path, [], fontes=[fonte], resiliencia=resiliencia)
+
+    for numero in range(3):
+        fluxo = m.fluxo(vaga=vaga_exemplo(id=f"v{numero}"))
+        _assinar_fluxo(fluxo)
+
+    assert fonte.chamadas == 2
+
+
+def test_duas_fontes_do_mesmo_tipo_nao_dividem_o_disjuntor(tmp_path: Path) -> None:
+    ruim = FonteInstavel([], erros=[ConnectionError("rede")] * 10)
+    boa = FonteInstavel(_dois_candidatos())
+    resiliencia = Resiliencia(dormir=lambda _: None, tentativas=1, limite_falhas=1)
+    m = Montagem(tmp_path, [], fontes=[ruim, boa], resiliencia=resiliencia)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert m.analisador.analisados == ["c1", "c2"]
+
+
+def test_destino_instavel_e_repetido_com_a_mesma_chave(tmp_path: Path) -> None:
+    destino = NaraInstavel(erros=[ConnectionError("rede")])
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], destino=destino)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert destino.chamadas == 2
+    assert len(set(destino.chaves)) == 1
+    assert [p.candidato_id for p in destino.entregues.values()] == ["c1"]
+
+
+def test_destino_que_passa_do_tempo_limite_pausa_e_entrega_uma_vez(tmp_path: Path) -> None:
+    relogio = RelogioDeChamadas()
+    demora = {"s": TEMPO_LIMITE_INTEGRACAO_S + 1}
+
+    def demorar() -> None:
+        relogio.agora += demora["s"]
+
+    destino = NaraInstavel(antes=demorar)
+    m = Montagem(
+        tmp_path,
+        [candidato_exemplo("c1")],
+        destino=destino,
+        resiliencia=Resiliencia(dormir=lambda _: None, relogio=relogio),
+    )
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+
+    assert _execucao(m).motivo == MotivoPausa.DESTINO_INDISPONIVEL
+    assert any("TempoLimiteExcedido" in e.mensagem for e in fluxo.eventos)
+    assert destino.chamadas == 3
+
+    demora["s"] = 0
+    fluxo.retomar()
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert len(destino.entregues) == 1
+    assert len(set(destino.chaves)) == 1
+
+
+def test_disjuntor_aberto_do_destino_pausa_sem_chamar(tmp_path: Path) -> None:
+    destino = NaraInstavel(erros=[ConnectionError("rede")] * 5)
+    resiliencia = Resiliencia(dormir=lambda _: None, tentativas=1, limite_falhas=1)
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], destino=destino, resiliencia=resiliencia)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+    assert destino.chamadas == 1
+
+    fluxo.retomar()
+
+    assert destino.chamadas == 1
+    assert _execucao(m).motivo == MotivoPausa.DESTINO_INDISPONIVEL
+
+
+def test_recusa_do_destino_nao_conta_como_falha_temporaria(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos(), destino=NaraFalhaDepoisDeAceitar(falhas=1))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+
+    assert m.destino.chamadas == 1
+    assert _execucao(m).motivo == MotivoPausa.DESTINO_INDISPONIVEL
