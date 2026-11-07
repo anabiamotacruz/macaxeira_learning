@@ -8,12 +8,17 @@ from backend.contratos.modelos import (
     Candidato,
     Convite,
     Decisao,
+    DestinoPessoa,
     EstadoBanco,
     EventoFluxo,
     PacoteContexto,
     ResultadoEntrevista,
+    ResumoExecucao,
+    SaidaPersonalizada,
+    TaxaMedida,
     TipoConvite,
     TipoDecisao,
+    TipoErro,
     Vaga,
 )
 
@@ -204,3 +209,151 @@ def test_convite_pode_nao_ter_link_de_agendamento():
     sem_link = _convite()
     del sem_link["link_agendamento"]
     assert Convite(**sem_link).link_agendamento is None
+
+
+def _taxa(**extra) -> dict:
+    dados = {"valor": 0.8, "casos": 20, "wilson_inferior": 0.584, "wilson_superior": 0.919}
+    dados.update(extra)
+    return dados
+
+
+def test_destino_pessoa_so_aceita_banco_talent_garden_e_contratada():
+    assert {destino.value for destino in DestinoPessoa} == {
+        "banco",
+        "talent_garden",
+        "contratada",
+    }
+    with pytest.raises(ValueError):
+        DestinoPessoa("entrevista")
+
+
+def test_tipo_erro_lista_os_seis_tipos_medidos():
+    assert {tipo.value for tipo in TipoErro} == {
+        "indicacao_errada",
+        "descarte_errado",
+        "violacao_eliminatoria",
+        "contato_opt_out",
+        "mudanca_nome_genero",
+        "afirmacao_sem_evidencia",
+    }
+
+
+def test_taxa_medida_guarda_valor_casos_e_intervalo():
+    taxa = TaxaMedida(**_taxa())
+    assert (taxa.valor, taxa.casos) == (0.8, 20)
+    assert (taxa.wilson_inferior, taxa.wilson_superior) == (0.584, 0.919)
+
+
+def test_taxa_nao_medida_tem_valor_e_intervalo_nulos():
+    taxa = TaxaMedida(valor=None, casos=0, wilson_inferior=None, wilson_superior=None)
+    assert taxa.valor is None
+
+
+def test_taxa_sem_casos_nao_vira_zero():
+    with pytest.raises(ValidationError):
+        TaxaMedida(valor=0.0, casos=0, wilson_inferior=0.0, wilson_superior=0.0)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"valor": None},
+        {"wilson_inferior": None},
+        {"wilson_superior": None},
+        {"valor": 1.2, "wilson_superior": 1.3},
+        {"valor": -0.1, "wilson_inferior": -0.2},
+        {"valor": float("nan")},
+        {"casos": -1},
+        {"wilson_inferior": 0.85},
+        {"wilson_superior": 0.75},
+    ],
+)
+def test_taxa_incoerente_e_recusada(extra):
+    with pytest.raises(ValidationError):
+        TaxaMedida(**_taxa(**extra))
+
+
+def test_taxa_nao_medida_com_casos_e_recusada():
+    with pytest.raises(ValidationError):
+        TaxaMedida(valor=None, casos=3, wilson_inferior=None, wilson_superior=None)
+
+
+def _resumo(**extra) -> dict:
+    dados = {
+        "empresa_id": "empresa-a",
+        "vaga_id": "v1",
+        "estado": "decidindo",
+        "analisados": 3,
+        "indicados": 1,
+        "descartados": 1,
+        "na_fila_humana": 1,
+        "revertidos": 0,
+        "gasto_usd": 0.42,
+        "limite_gasto_usd": 5.0,
+        "simulado": True,
+        "momento": datetime(2026, 11, 7, 12, 0, tzinfo=UTC),
+    }
+    dados.update(extra)
+    return dados
+
+
+def test_resumo_execucao_exige_identificar_simulacao_e_empresa():
+    assert ResumoExecucao(**_resumo()).simulado is True
+    for campo in ("simulado", "empresa_id"):
+        dados = _resumo()
+        del dados[campo]
+        with pytest.raises(ValidationError):
+            ResumoExecucao(**dados)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"analisados": -1},
+        {"gasto_usd": -0.01},
+        {"gasto_usd": float("inf")},
+        {"limite_gasto_usd": 0},
+        {"momento": datetime(2026, 11, 7, 12, 0)},
+        {"campo_novo": 1},
+    ],
+)
+def test_resumo_execucao_recusa_dado_invalido(extra):
+    with pytest.raises(ValidationError):
+        ResumoExecucao(**_resumo(**extra))
+
+
+def _saida(**extra) -> dict:
+    dados = {
+        "empresa_id": "empresa-a",
+        "vaga_id": "v1",
+        "pacotes": [PacoteContexto(**_pacote())],
+        "simulado": True,
+        "momento": datetime(2026, 11, 7, 12, 0, tzinfo=UTC),
+    }
+    dados.update(extra)
+    return dados
+
+
+def test_saida_personalizada_traz_pacotes_identificados():
+    saida = SaidaPersonalizada(**_saida())
+    assert saida.simulado is True
+    assert saida.pacotes[0].candidato_id == "c1"
+
+
+def test_saida_personalizada_pode_vir_sem_indicados():
+    assert SaidaPersonalizada(**_saida(pacotes=[])).pacotes == []
+
+
+def test_saida_nao_mistura_pacote_de_outra_empresa():
+    with pytest.raises(ValidationError):
+        SaidaPersonalizada(**_saida(pacotes=[PacoteContexto(**_pacote(empresa_id="empresa-b"))]))
+
+
+def test_saida_nao_mistura_pacote_de_outra_vaga():
+    with pytest.raises(ValidationError):
+        SaidaPersonalizada(**_saida(pacotes=[PacoteContexto(**_pacote(vaga_id="v2"))]))
+
+
+def test_saida_com_pacote_simulado_precisa_estar_identificada():
+    with pytest.raises(ValidationError):
+        SaidaPersonalizada(**_saida(simulado=False))
