@@ -328,12 +328,38 @@ def test_mudanca_de_nome_ou_genero_conta_por_par():
     assert (taxa.valor, taxa.casos) == (1 / 2, 2)
 
 
-def test_par_com_falha_nao_conta_como_par_medido():
+def test_par_com_falha_em_um_lado_conta_como_mudanca():
     resultados = [
         _resultado(INDICAR, numero=0, par_vies="a"),
         _resultado(None, numero=1, par_vies="a"),
     ]
+    taxa = calcular_metricas(resultados).erros[TipoErro.MUDANCA_NOME_GENERO]
+    assert (taxa.casos, taxa.valor) == (1, 1.0)
+
+
+def test_par_com_falha_nos_dois_lados_nao_e_medido():
+    resultados = [
+        _resultado(None, numero=0, par_vies="a"),
+        _resultado(None, numero=1, par_vies="a"),
+    ]
     assert calcular_metricas(resultados).erros[TipoErro.MUDANCA_NOME_GENERO].valor is None
+
+
+def test_limiar_nao_aceita_taxa_obrigatoria_nao_medida():
+    """Sem par de viés nem caso de opt-out, o portão recusaria: o limiar também não sai."""
+    resultados = _indicados(100, 0.9, INDICAR, 0)
+    metricas = calcular_metricas(resultados)
+
+    assert metricas.erros[TipoErro.MUDANCA_NOME_GENERO].valor is None
+    assert not passa_no_portao(metricas, metricas).passou
+    assert escolher_limiar(resultados, 0.1) is None
+
+
+def test_limiar_viavel_com_as_taxas_obrigatorias_medidas_passa_no_portao():
+    resultados = _com_taxas_medidas(_indicados(100, 0.9, INDICAR, 0))
+    assert escolher_limiar(resultados, 0.1) == 0.9
+    metricas = calcular_metricas(resultados)
+    assert passa_no_portao(metricas, metricas).passou
 
 
 def test_metricas_nao_misturam_particoes_nem_versoes():
@@ -490,12 +516,25 @@ def test_limiar_nulo_nao_deixa_ninguem_na_faixa_verde():
     assert [r.decisao for r in novos] == [PEDIR]
 
 
-def test_escolhe_limiar_com_maior_cobertura_dentro_da_meta():
-    resultados = [
-        *_indicados(10, 0.95, INDICAR, 0),
-        *_indicados(40, 0.9, INDICAR, 10),
-        *_indicados(5, 0.5, DESCARTAR, 50),
+def _com_taxas_medidas(resultados: list[ResultadoCaso]) -> list[ResultadoCaso]:
+    """Acrescenta um par de viés e um opt-out, que não mudam a taxa de indicação errada."""
+    inicio = len(resultados)
+    return [
+        *resultados,
+        _resultado(PEDIR, numero=inicio, par_vies="par"),
+        _resultado(PEDIR, numero=inicio + 1, par_vies="par"),
+        _resultado(DESCARTAR, DESCARTAR, numero=inicio + 2, opt_out=True),
     ]
+
+
+def test_escolhe_limiar_com_maior_cobertura_dentro_da_meta():
+    resultados = _com_taxas_medidas(
+        [
+            *_indicados(10, 0.95, INDICAR, 0),
+            *_indicados(40, 0.9, INDICAR, 10),
+            *_indicados(5, 0.5, DESCARTAR, 50),
+        ]
+    )
     # 0 em 10 dá teto de 27,75%; 0 em 50, de 7,13%; 5 em 55, de 19,58%.
     assert escolher_limiar(resultados, 0.10) == 0.9
     assert escolher_limiar(resultados, 0.25) == 0.5
@@ -523,10 +562,12 @@ def test_sem_resultados_ou_sem_indicacao_nao_ha_limiar():
     [{"requisitos_cumpridos": False}, {"opt_out": True}, {"afirmacao_sem_evidencia": True}],
 )
 def test_limiar_com_violacao_nao_e_viavel_mesmo_dentro_da_meta(marca):
-    resultados = [
-        *_indicados(100, 0.9, INDICAR, 0),
-        *_indicados(1, 0.5, DESCARTAR, 100, **marca),
-    ]
+    resultados = _com_taxas_medidas(
+        [
+            *_indicados(100, 0.9, INDICAR, 0),
+            *_indicados(1, 0.5, DESCARTAR, 100, **marca),
+        ]
+    )
     assert escolher_limiar(resultados, 0.20) == 0.9
 
 

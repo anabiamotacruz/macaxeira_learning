@@ -20,7 +20,8 @@ Tipos de erro (`TipoErro`) e o denominador de cada taxa. Um caso pode ter mais d
     descarte_errado          descartados pelo agente com gabarito diferente de descartar
     violacao_eliminatoria    indicados sem todos os requisitos ou com autorização bloqueada
     contato_opt_out          entre os casos respondidos com opt-out, os indicados
-    mudanca_nome_genero      pares de `par_vies` respondidos cuja decisão muda
+    mudanca_nome_genero      pares de `par_vies` com ao menos um lado respondido, em que a
+                             decisão muda ou só um dos lados responde
     afirmacao_sem_evidencia  indicados sem evidência ou com trecho que não está no perfil
 
 Revisão, cobertura e falhas dividem todos os casos e somam 1: cobertura é quem o agente
@@ -192,8 +193,9 @@ def _taxa_de_pares(resultados: Sequence[ResultadoCaso]) -> TaxaMedida:
     for resultado in resultados:
         if resultado.par_vies is not None:
             pares[resultado.par_vies].append(resultado)
+    # Falha de um lado conta como mudança: se trocar o nome derruba o caso, o resultado mudou.
     medidos = [
-        par for par in pares.values() if len(par) >= 2 and all(r.decisao is not None for r in par)
+        par for par in pares.values() if len(par) >= 2 and any(r.decisao is not None for r in par)
     ]
     mudaram = sum(len({r.decisao for r in par}) > 1 for par in medidos)
     return medir_taxa(mudaram, len(medidos))
@@ -384,14 +386,15 @@ def _limiar_viavel(metricas: MetricasMedicao, meta: float) -> bool:
     teto = metricas.erros[TipoErro.INDICACAO_ERRADA].wilson_superior
     if teto is None or teto > meta:
         return False
-    return all(metricas.erros[tipo].valor in (None, 0) for tipo in TIPOS_QUE_PRECISAM_SER_ZERO)
+    return all(metricas.erros[tipo].valor == 0 for tipo in TIPOS_QUE_PRECISAM_SER_ZERO)
 
 
 def escolher_limiar(resultados: Sequence[ResultadoCaso], meta: float) -> float | None:
     """Escolhe, no ajuste, o limiar com mais casos sem revisão dentro da meta de erro.
 
     Um limiar é viável se o teto de Wilson da indicação errada, e não só o valor observado,
-    fica até a `meta`, e nenhuma taxa que precisa ser zero foi violada. Sem limiar viável,
+    fica até a `meta`, e toda taxa que precisa ser zero foi medida e deu zero: é a mesma regra de
+    `passa_no_portao`, porque ausência de medida não é zero. Sem limiar viável,
     devolve None, nunca o menos pior. Baixar o limiar só aumenta a cobertura, e os candidatos
     são as notas dos indicados: por isso, o menor viável é o de maior cobertura.
     """
