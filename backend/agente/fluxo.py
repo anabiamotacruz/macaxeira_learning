@@ -97,7 +97,7 @@ def _transitar(
         raise TransicaoInvalida(
             f"retomada só volta ao estado anterior: {destino} != {estado_anterior}"
         )
-    if destino in ESTADOS_ATIVOS and (mandato is None or not mandato_valido(mandato, vaga)):
+    if destino in ESTADOS_ATIVOS and (mandato is None or not mandato_valido(mandato, vaga, agora)):
         raise TransicaoInvalida(f"{estado} -> {destino} exige mandato válido para a vaga")
 
     novo = EstadoFluxo(destino)
