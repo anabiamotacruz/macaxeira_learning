@@ -319,3 +319,10 @@ def test_experiencia_tambem_passa_pela_limpeza_de_texto_externo():
 def test_email_malformado_nao_vira_contato(email):
     p, _ = provedor(sucesso(work_email=email))
     assert p.consultar(POR_EMAIL).itens[0].contatos == []
+
+
+def test_json_aninhado_demais_e_resposta_invalida():
+    p, _ = provedor(RespostaHttp(status=200, corpo=b"[" * 200_000))
+    with pytest.raises(ErroProvedor) as erro:
+        p.consultar(POR_EMAIL)
+    assert erro.value.motivo == MotivoTroca.RESPOSTA_INVALIDA

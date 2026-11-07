@@ -227,7 +227,6 @@ class ProvedorPeopleDataLabs:
                     **parametros,
                     "min_likelihood": self._min_likelihood,
                     "data_include": ",".join(CAMPOS_PEDIDOS),
-                    "titlecase": False,
                 },
             )
         )
@@ -251,7 +250,7 @@ class ProvedorPeopleDataLabs:
         """Toda resposta 200 consome crédito, mesmo quando o conteúdo não for aproveitado."""
         try:
             corpo = json.loads(resposta.corpo)
-        except ValueError:
+        except (ValueError, RecursionError):
             raise ErroProvedor(MotivoTroca.RESPOSTA_INVALIDA, self._custo) from None
         likelihood = corpo.get("likelihood") if isinstance(corpo, dict) else None
         dados = corpo.get("data") if isinstance(corpo, dict) else None

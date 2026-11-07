@@ -397,3 +397,18 @@ def test_cada_chamada_gera_rastro_sem_dado_pessoal_nem_chave(rastro):
 def test_repr_do_provedor_nao_expoe_o_token():
     p, _ = provedor()
     assert TOKEN_BRIGHT not in repr(p)
+
+
+@pytest.mark.parametrize("html", ["<![foo bar]>texto", "<![if", "<!DOCTYPE [<![x]>"])
+def test_marcacao_que_derruba_o_leitor_de_html_conta_como_nao_encontrada(html):
+    p, _ = provedor(envelope(html))
+    resposta = ler(p)
+    assert isinstance(resposta.custo_usd, float)
+    assert all("foo" not in i.texto for i in resposta.itens)
+
+
+def test_json_aninhado_demais_e_resposta_invalida():
+    p, _ = provedor(RespostaHttp(status=200, corpo=b"[" * 200_000))
+    with pytest.raises(ErroProvedor) as erro:
+        ler(p)
+    assert erro.value.motivo == MotivoTroca.RESPOSTA_INVALIDA

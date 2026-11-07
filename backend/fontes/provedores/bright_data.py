@@ -103,7 +103,7 @@ class _LeitorHtml(HTMLParser):
 def _texto_em_json(resposta: RespostaHttp) -> Any:
     try:
         return json.loads(resposta.corpo)
-    except ValueError:
+    except (ValueError, RecursionError):
         raise ErroProvedor(MotivoTroca.RESPOSTA_INVALIDA) from None
 
 
@@ -247,8 +247,11 @@ class ProvedorBrightData:
             return RespostaProvedor(custo_usd=custo)
 
         leitor = _LeitorHtml()
-        leitor.feed(corpo)
-        leitor.close()
+        try:
+            leitor.feed(corpo)
+            leitor.close()
+        except AssertionError:  # a biblioteca padrão levanta isso em marcação malformada
+            return RespostaProvedor(custo_usd=custo)
         self._recusar_se_for_de_dominio_proibido(url, leitor.destinos, custo)
         texto = " ".join(leitor.partes)
         if leitor.pede_senha or not texto:
