@@ -6,7 +6,7 @@ Campos seguem `specs/001-agente-recrutador/plan.md`.
 
 from datetime import date
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -337,3 +337,181 @@ class TaxaMedida(Contrato):
         if not self.wilson_inferior <= self.valor <= self.wilson_superior:
             raise ValueError("o valor precisa estar dentro do intervalo de Wilson")
         return self
+
+
+class Particao(StrEnum):
+    AJUSTE = "ajuste"
+    VALIDACAO = "validacao"
+    PROVA = "prova"
+
+
+class CasoAvaliacao(Contrato):
+    """Um caso sintético de avaliação. Só `perfil` e `vaga` chegam ao agente.
+
+    `gabarito` nunca vem do modelo avaliado. `requisitos_atendidos` lista só o que tem estado
+    `atende`: requisito negado ou desconhecido fica de fora. `dificuldade` fica nula quando
+    o conjunto não a informa.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: Texto
+    perfil: Candidato
+    vaga: Vaga
+    gabarito: TipoDecisao
+    motivo_gabarito: Texto
+    requisitos_atendidos: list[str]
+    autorizacao_bloqueada: bool = False
+    particao: Particao
+    armadilha: str | None = None
+    dificuldade: str | None = None
+    par_vies: str | None = None
+    semente: int
+    versao_gerador: Texto
+
+    @model_validator(mode="after")
+    def _caso_coerente(self) -> Self:
+        if not self.perfil.simulado:
+            raise ValueError("caso de avaliação usa somente perfil sintético")
+        if self.perfil.empresa_id != self.vaga.empresa_id:
+            raise ValueError("perfil e vaga precisam ser da mesma empresa")
+        da_vaga = {requisito.id for requisito in self.vaga.requisitos}
+        if not set(self.requisitos_atendidos) <= da_vaga:
+            raise ValueError("requisito atendido que a vaga não tem")
+        if self.gabarito == TipoDecisao.INDICAR and (
+            self.autorizacao_bloqueada or set(self.requisitos_atendidos) != da_vaga
+        ):
+            raise ValueError("gabarito indicar exige autorização e todos os requisitos")
+        return self
+
+
+class RespostaAgente(Contrato):
+    """O que o agente avaliado devolve para um perfil e uma vaga.
+
+    `nota` vem da regra determinística, nunca da confiança declarada pelo modelo.
+    """
+
+    decisao: TipoDecisao
+    regra: Texto
+    nota: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
+    evidencias: list[Evidencia] = []
+
+
+class ResultadoCaso(Contrato):
+    """Resposta do agente ao lado do gabarito. Sem decisão, `falha` diz por quê."""
+
+    model_config = ConfigDict(frozen=True)
+
+    caso_id: Texto
+    particao: Particao
+    versao_hash: Texto
+    gabarito: TipoDecisao
+    decisao: TipoDecisao | None
+    regra: Texto | None = None
+    nota: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
+    evidencias: list[Evidencia] = []
+    falha: Texto | None = None
+    requisitos_cumpridos: bool = True
+    autorizacao_bloqueada: bool = False
+    opt_out: bool = False
+    afirmacao_sem_evidencia: bool = False
+    armadilha: str | None = None
+    par_vies: str | None = None
+    rastro_id: str | None = None
+
+    @model_validator(mode="after")
+    def _resultado_coerente(self) -> Self:
+        if (self.decisao is None) != (self.falha is not None):
+            raise ValueError("resultado tem decisão ou falha, nunca as duas nem nenhuma")
+        if self.decisao is not None and self.regra is None:
+            raise ValueError("decisão precisa da regra aplicada")
+        return self
+
+
+class MetricasMedicao(Contrato):
+    """Só agregados de uma rodada: nenhum dado caso a caso. Taxa nula significa não medida."""
+
+    particao: Particao | None
+    versao_hash: str | None
+    conjunto_hash: str | None
+    casos: Annotated[int, Field(ge=0)]
+    erros: dict[TipoErro, TaxaMedida]
+    revisao: TaxaMedida
+    cobertura: TaxaMedida
+    falhas: TaxaMedida
+
+    @model_validator(mode="after")
+    def _todos_os_tipos(self) -> Self:
+        if set(self.erros) != set(TipoErro):
+            raise ValueError("métricas precisam trazer todo tipo de erro, medido ou não")
+        return self
+
+
+class VersaoPrompt(Contrato):
+    """Versão imutável de um prompt: o hash cobre o texto e o modelo."""
+
+    model_config = ConfigDict(frozen=True)
+
+    etapa: Texto
+    modelo: Texto
+    hash: Texto
+
+
+class DecisaoPortao(Contrato):
+    """Resultado do portão. Passar significa não piorar nas réguas, não melhora comprovada."""
+
+    passou: bool
+    motivos: list[str]
+
+    @model_validator(mode="after")
+    def _motivos_coerentes(self) -> Self:
+        if self.passou == bool(self.motivos):
+            raise ValueError("o portão barra se, e somente se, houver motivo")
+        return self
+
+
+class ResultadoProva(Contrato):
+    """Uma abertura da prova: só agregados, nada caso a caso.
+
+    `aberturas_do_conjunto` conta quantas versões já olharam estes casos. Acima de 1, o
+    resultado vale menos, porque cada olhada aumenta a chance de um prompt ruim passar.
+    """
+
+    versao: VersaoPrompt
+    limiar: Annotated[float, Field(ge=0, le=1)] | None
+    metricas: MetricasMedicao
+    aberta_em: AwareDatetime
+    aberturas_do_conjunto: Annotated[int, Field(ge=1)]
+
+
+class ResumoConjunto(Contrato):
+    """Quantos casos um conjunto tem e quantos deles são de fato diferentes.
+
+    `casos_independentes` conta entradas distintas ao ignorar empresa, pessoa, fonte e nome
+    de projeto. É um teto: cenários repetidos também não são independentes entre si.
+    """
+
+    particao: Particao | None
+    registros: Annotated[int, Field(ge=0)]
+    pares_pessoa_vaga: Annotated[int, Field(ge=0)]
+    casos_independentes: Annotated[int, Field(ge=0)]
+    textos_distintos: Annotated[int, Field(ge=0)]
+    cenarios: Annotated[int, Field(ge=0)]
+    vagas: Annotated[int, Field(ge=0)]
+    composicao_gabarito: dict[TipoDecisao, Annotated[int, Field(ge=0)]]
+
+
+class RelatorioMedicao(Contrato):
+    """Relatório para o painel: só agregados, sempre identificado como dado sintético."""
+
+    simulado: Literal[True] = True
+    dados_sinteticos: Literal[True] = True
+    gabarito_validado_por_recrutador: bool
+    regra_gabarito: Texto
+    versao: VersaoPrompt
+    limiar: Annotated[float, Field(ge=0, le=1)] | None
+    meta: Annotated[float, Field(gt=0, lt=1)] | None
+    metricas: MetricasMedicao
+    conjunto: ResumoConjunto
+    aberturas_do_conjunto: Annotated[int, Field(ge=1)] | None = None
+    limites: Annotated[list[str], Field(min_length=1)]
