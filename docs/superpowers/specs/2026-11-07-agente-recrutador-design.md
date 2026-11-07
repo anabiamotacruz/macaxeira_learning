@@ -9,7 +9,7 @@ Neste documento, "decidido" vem do time. "Decisão de design" é uma proposta do
 
 Hoje existe um gargalo em encontrar pessoas capacitadas para cada vaga (decidido). O produto é um digital worker que recebe uma vaga, encontra e analisa candidatos, explica cada escolha, faz o primeiro contato e entrega a pessoa à Nara com o contexto. A Nara agenda e conduz a entrevista como já faz hoje (decidido).
 
-A proposta para a Tako: a Nara entrevista quem chega, e este agente traz para ela pessoas mais adequadas, com contexto para uma entrevista melhor.
+Este é um produto próprio, que a Tako pode usar, e não um produto feito para ela (decidido). Para uma empresa como a Tako, a Nara entrevista quem chega, e este agente traz para ela pessoas mais adequadas, com contexto para uma entrevista melhor.
 
 Essa dor ainda precisa ser confirmada com recrutadores e com a Tako.
 
@@ -278,7 +278,7 @@ Tudo aqui é hipótese até haver validação:
 - **Quem paga:** empresas com alto volume de vagas ou dificuldade de preenchê-las, por meio do RH ou recrutamento.
 - **Modelo:** cobrança por candidato qualificado entregue à entrevista, a validar.
 - **Caminho de crescimento:** começar pelo banco de talentos e por fontes autorizadas, depois adicionar novos canais e parcerias.
-- **Relação com a Tako:** complemento da Nara, com uma camada de conectores que permite atender outros sistemas.
+- **Relação com a Tako:** ela é uma possível usuária, não a dona do produto. A Nara é a primeira integração, e a camada de conectores permite atender outros sistemas.
 - **Diferencial:** evidência, contexto para a entrevista e aprendizado com o resultado. Concorrentes como hireEZ, GoPerfect, Juicebox e Paradox atuam perto disso, e falta comparar melhor.
 
 Nenhum número de mercado ou economia entra no pitch sem fonte.

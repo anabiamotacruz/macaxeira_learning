@@ -1,6 +1,6 @@
 # AGENTS.md: macaxeira_learning
 
-Digital worker de sourcing para RH: encontra candidatos, explica cada escolha, faz o primeiro contato e entrega o contexto à Nara, que agenda e entrevista.
+Digital worker de sourcing para RH: encontra candidatos, explica cada escolha, faz o primeiro contato e entrega o contexto à Nara, que agenda e entrevista. É um produto próprio que a Tako pode usar, não um produto feito para ela.
 
 **Leia antes de qualquer tarefa:**
 

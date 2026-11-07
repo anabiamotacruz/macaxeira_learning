@@ -6,6 +6,8 @@ Este documento garante que as quatro frentes gerem com a mesma qualidade, em qua
 
 Um digital worker recebe uma vaga, encontra e analisa candidatos, explica cada escolha, faz o primeiro contato e envia o link de agendamento da Nara. A Nara agenda e entrevista como já faz hoje. O resultado volta para melhorar a busca, com aprovação humana.
 
+É um produto próprio, que a Tako pode usar. Não é um produto feito para a Tako nem uma extensão interna dela. A Nara é a primeira integração.
+
 **Não fazemos:** agendar ou conduzir entrevistas, avaliar candidatos no lugar da Nara, decidir contratações, integrações reais no hackathon ou scraping do LinkedIn.
 
 ## 2. Onde está cada decisão
