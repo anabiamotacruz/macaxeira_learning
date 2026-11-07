@@ -204,10 +204,12 @@ def _descrever_validacao(erro: ValidationError) -> str:
 
 
 def _texto_da_resposta(resposta: Any) -> str | None:
+    """O SDK não valida o corpo, e o provedor pode devolver 200 com outro formato."""
     opcoes = getattr(resposta, "choices", None)
-    if not opcoes:
+    if not opcoes or not isinstance(opcoes, list):
         return None
-    return opcoes[0].message.content
+    conteudo = getattr(getattr(opcoes[0], "message", None), "content", None)
+    return conteudo if isinstance(conteudo, str) else None
 
 
 def _validar(texto: str | None, esquema: type[BaseModel]) -> tuple[BaseModel | None, str]:

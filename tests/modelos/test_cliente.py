@@ -689,3 +689,30 @@ def test_sem_langfuse_configurado_a_chamada_funciona_com_rastro_local():
     assert completar(cliente).nota == 0.8
     assert isinstance(cliente.rastro, RastroLocal)
     assert len(cliente.rastro.registros) == 1
+
+
+@pytest.mark.parametrize(
+    "resposta",
+    [
+        {"choices": [{"index": 0}]},
+        {"choices": [{"index": 0, "message": {"role": "assistant", "content": ["a"]}}]},
+        {"choices": "nada"},
+    ],
+)
+def test_resposta_com_formato_inesperado_e_recusada(resposta):
+    transporte = Transporte(
+        httpx2.Response(200, json=resposta), httpx2.Response(200, json=resposta)
+    )
+
+    with pytest.raises(RespostaInvalida):
+        completar(cliente_com(transporte))
+
+
+def test_corpo_que_nao_e_json_nao_quebra():
+    transporte = Transporte(
+        httpx2.Response(200, text="<html>erro</html>"),
+        httpx2.Response(200, text="<html>erro</html>"),
+    )
+
+    with pytest.raises((RespostaInvalida, ModeloIndisponivel)):
+        completar(cliente_com(transporte))
