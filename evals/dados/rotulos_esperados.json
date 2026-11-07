@@ -1,0 +1,35 @@
+{
+  "metadados": {
+    "tipo": "gabarito_manual",
+    "simulado": true,
+    "observacao": "Não entregar este arquivo ao componente avaliado; ele contém os rótulos esperados escritos à mão."
+  },
+  "rotulos": [
+    {"vaga_id": "v-001", "candidato_id": "c-001", "rotulo": "qualificado"},
+    {"vaga_id": "v-001", "candidato_id": "c-002", "rotulo": "não qualificado"},
+    {"vaga_id": "v-001", "candidato_id": "c-003", "rotulo": "não qualificado"},
+    {"vaga_id": "v-001", "candidato_id": "c-004", "rotulo": "qualificado"},
+    {"vaga_id": "v-002", "candidato_id": "c-005", "rotulo": "qualificado"},
+    {"vaga_id": "v-002", "candidato_id": "c-006", "rotulo": "não qualificado"},
+    {"vaga_id": "v-003", "candidato_id": "c-007", "rotulo": "qualificado"},
+    {"vaga_id": "v-003", "candidato_id": "c-008", "rotulo": "não qualificado"},
+    {"vaga_id": "v-004", "candidato_id": "c-009", "rotulo": "qualificado"},
+    {"vaga_id": "v-004", "candidato_id": "c-010", "rotulo": "não qualificado"},
+    {"vaga_id": "v-005", "candidato_id": "c-011", "rotulo": "qualificado"},
+    {"vaga_id": "v-005", "candidato_id": "c-012", "rotulo": "não qualificado"},
+    {"vaga_id": "v-006", "candidato_id": "c-013", "rotulo": "qualificado"},
+    {"vaga_id": "v-006", "candidato_id": "c-014", "rotulo": "revisão necessária"},
+    {"vaga_id": "v-007", "candidato_id": "c-015", "rotulo": "qualificado"},
+    {"vaga_id": "v-007", "candidato_id": "c-016", "rotulo": "não qualificado"},
+    {"vaga_id": "v-008", "candidato_id": "c-017", "rotulo": "qualificado"},
+    {"vaga_id": "v-008", "candidato_id": "c-018", "rotulo": "não qualificado"},
+    {"vaga_id": "v-009", "candidato_id": "c-019", "rotulo": "qualificado"},
+    {"vaga_id": "v-009", "candidato_id": "c-020", "rotulo": "não qualificado"},
+    {"vaga_id": "v-010", "candidato_id": "c-021", "rotulo": "qualificado"},
+    {"vaga_id": "v-010", "candidato_id": "c-022", "rotulo": "qualificado"},
+    {"vaga_id": "v-010", "candidato_id": "c-023", "rotulo": "qualificado"},
+    {"vaga_id": "v-010", "candidato_id": "c-024", "rotulo": "qualificado"},
+    {"vaga_id": "v-010", "candidato_id": "c-025", "rotulo": "qualificado"},
+    {"vaga_id": "v-010", "candidato_id": "c-026", "rotulo": "qualificado"}
+  ]
+}
