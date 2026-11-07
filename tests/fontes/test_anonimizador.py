@@ -233,6 +233,7 @@ def test_detecta_formatos(texto, marcador):
         "Implementei APIs REST em Python.",
         "Liderei times de produto.",
         "Atuo em Kubernetes.",
+        "Linguagem: Jupyter Notebook.",
     ],
 )
 def test_nao_troca_o_que_nao_identifica(texto):
@@ -243,8 +244,8 @@ def test_nao_troca_o_que_nao_identifica(texto):
 
 def test_nome_em_outras_formas_sai_e_vira_um_marcador():
     candidato = _candidato(
-        nome="João Vitor da Silva",
-        perfil_texto="Assino J. V. da Silva, ou JOAO VITOR, ou joão silva. Fiz APIs.",
+        nome="Otávio Belmiro da Silva",
+        perfil_texto="Assino O. B. da Silva, ou OTAVIO BELMIRO, ou otávio silva. Fiz APIs.",
         atributos={},
         historico=[],
     )

@@ -243,7 +243,8 @@ def _chave_do_valor(categoria: Categoria, valor: str) -> str:
 
 TERMOS_TECNICOS = frozenset(
     """
-    academica academico brasil agile ai ajax amazon analise analista android angular ansible apache
+    academica academico brasil jupyter notebook dockerfile makefile agile ai ajax amazon
+    analise analista android angular ansible apache
     api apis application arquitetura asp assistente aws azure backend bash big bigquery boot
     bootstrap business carreira cassandra certificacao certificado ciencia ciencias cloud
     cobol code computacao computer computing container coordenador coordenadora core css
