@@ -29,7 +29,7 @@ from backend.fontes.provedores.modelos import (
     limpar_texto_externo,
 )
 from backend.fontes.provedores.transporte import PedidoHttp, RespostaHttp, Transporte
-from backend.fontes.provedores.url_segura import validar_forma
+from backend.fontes.provedores.url_segura import validar_forma, validar_perfil
 
 NOME = "people_data_labs"
 ETAPA_PDL = "provedor_people_data_labs"
@@ -217,7 +217,7 @@ class ProvedorPeopleDataLabs:
         if parametros is None:
             raise ErroProvedor(MotivoTroca.CONSULTA_NAO_SUPORTADA)
         for perfil in parametros.get("profile", []):
-            validar_forma(perfil if "://" in perfil else f"https://{perfil}")
+            validar_perfil(perfil)
         resposta = self._transporte.enviar(
             PedidoHttp(
                 metodo="POST",

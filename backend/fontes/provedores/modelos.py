@@ -211,3 +211,4 @@ class ResultadoCadeia(Contrato):
     custo_usd: float = 0.0
     suprimidos: int = 0
     cobertura_parcial: bool = False
+    motivo_recusa: MotivoTroca | None = None

@@ -61,6 +61,7 @@ _LINK_PROIBIDO = re.compile(
     re.IGNORECASE,
 )
 _MARCA_LINK_REMOVIDO = "[link removido]"
+_TEXTO_PEDE_LINKEDIN = re.compile(r"linkedin|lnkd\.in|licdn", re.IGNORECASE)
 _DECODIFICACOES = 3
 
 type Resolvedor = Callable[[str], list[str]]
@@ -122,6 +123,20 @@ def validar_forma(url: str) -> str:
     if _host_e_ip_ou_interno(host):
         raise UrlRecusada(MotivoTroca.ENDERECO_NAO_PUBLICO)
     return url
+
+
+def validar_perfil(perfil: str) -> str:
+    """Valida um perfil social, que muitas fontes escrevem sem esquema."""
+    texto = perfil.strip()
+    validar_forma(texto if "://" in texto else f"https://{texto}")
+    return texto
+
+
+def validar_texto_de_busca(texto: str) -> str:
+    """Uma busca não pode pedir páginas do LinkedIn."""
+    if _TEXTO_PEDE_LINKEDIN.search(texto):
+        raise UrlRecusada(MotivoTroca.DOMINIO_RECUSADO)
+    return texto
 
 
 def _endereco_publico(endereco: str) -> bool:

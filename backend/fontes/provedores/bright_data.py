@@ -35,6 +35,7 @@ from backend.fontes.provedores.url_segura import (
     Resolvedor,
     resolver_dns,
     validar_forma,
+    validar_texto_de_busca,
     validar_url_publica,
 )
 
@@ -50,7 +51,6 @@ RESULTADOS_POR_PAGINA = 10
 EXCLUSAO_NA_BUSCA = "-site:linkedin.com"
 TIPOS_DE_TEXTO = ("text/html", "text/plain", "application/xhtml+xml")
 ETIQUETAS_IGNORADAS = frozenset({"script", "style", "noscript", "template", "svg", "iframe"})
-_PEDIDO_DE_LINKEDIN = re.compile(r"linkedin|lnkd\.in|licdn", re.IGNORECASE)
 _CAMINHO_DE_LOGIN = re.compile(
     r"/(?:login|logon|signin|sign-in|sign_in|entrar|auth|sso|oauth)\b", re.IGNORECASE
 )
@@ -280,8 +280,7 @@ class ProvedorBrightData:
                 continue
 
     def _buscar(self, texto: str, pagina: int) -> RespostaProvedor:
-        if _PEDIDO_DE_LINKEDIN.search(texto):
-            raise UrlRecusada(MotivoTroca.DOMINIO_RECUSADO)
+        validar_texto_de_busca(texto)
         if not self._zona_busca:
             raise ErroProvedor(MotivoTroca.CONFIGURACAO_INCOMPLETA)
         parametros = urlencode(
