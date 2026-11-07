@@ -4,10 +4,12 @@ O esquema inteiro fica em `ESQUEMA`, neste arquivo. Toda leitura e escrita é
 escopada por `empresa_id`, e o que entra passa de novo pelos contratos.
 """
 
+import hashlib
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import closing, contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from pydantic import NonNegativeInt
@@ -71,6 +73,19 @@ CREATE TABLE IF NOT EXISTS vagas (
     UNIQUE (empresa_id, vaga_id)
 );
 
+CREATE TABLE IF NOT EXISTS bloqueios_opt_out (
+    empresa_id TEXT NOT NULL,
+    resumo TEXT NOT NULL,
+    PRIMARY KEY (empresa_id, resumo)
+);
+
+CREATE TABLE IF NOT EXISTS reservas_chave (
+    empresa_id TEXT NOT NULL,
+    chave TEXT NOT NULL,
+    valida_ate TEXT NOT NULL,
+    PRIMARY KEY (empresa_id, chave)
+);
+
 CREATE TABLE IF NOT EXISTS respostas_idempotentes (
     empresa_id TEXT NOT NULL,
     escopo TEXT NOT NULL,
@@ -88,9 +103,15 @@ TABELAS_DA_EMPRESA = (
     "mandatos",
     "progressos",
     "vagas",
+    "bloqueios_opt_out",
+    "reservas_chave",
     "respostas_idempotentes",
 )
 """Nomes fixos, nunca vindos de fora: toda tabela com dados de uma empresa entra aqui."""
+
+
+TEMPO_DE_ESPERA_S = 30
+"""Respostas chegam durante a execução: uma escrita espera a outra, sem falhar."""
 
 
 class EstadoExecucao(Contrato):
@@ -110,6 +131,15 @@ def _exigir_texto(valor: str, campo: str) -> str:
     return valor.strip()
 
 
+def resumos_da_pessoa(empresa_id: str, candidato_id: str, email: str | None) -> list[str]:
+    """Resumos irreversíveis do id e do e-mail: identificam a pessoa sem guardar o dado."""
+    valores = [f"id:{candidato_id}"]
+    email_normalizado = (email or "").strip().casefold()
+    if email_normalizado:
+        valores.append(f"email:{email_normalizado}")
+    return [hashlib.sha256(f"{empresa_id}:{v}".encode()).hexdigest() for v in valores]
+
+
 def _revalidar[M: Contrato](modelo: M) -> M:
     """`model_copy` não valida: o banco não aceita o que o contrato recusaria."""
     return type(modelo).model_validate(modelo.model_dump())
@@ -125,7 +155,7 @@ class Repositorio:
 
     @contextmanager
     def _transacao(self) -> Iterator[sqlite3.Connection]:
-        with closing(sqlite3.connect(self._caminho)) as conexao, conexao:
+        with closing(sqlite3.connect(self._caminho, timeout=TEMPO_DE_ESPERA_S)) as conexao, conexao:
             yield conexao
 
     def salvar_estado(
@@ -287,6 +317,59 @@ class Repositorio:
             if cursor.rowcount != 1:
                 raise ValueError("chave ainda não foi registrada nesta empresa")
 
+    def reservar_chave(
+        self, empresa_id: str, chave: str, agora: datetime, validade: timedelta
+    ) -> bool:
+        """Só uma execução faz a ação por vez. Reserva vencida, de quem caiu, pode ser tomada."""
+        empresa_id = _exigir_texto(empresa_id, "empresa_id")
+        chave = _exigir_texto(chave, "chave")
+        with self._transacao() as conexao:
+            conexao.execute("BEGIN IMMEDIATE")
+            linha = conexao.execute(
+                "SELECT valida_ate FROM reservas_chave WHERE empresa_id = ? AND chave = ?",
+                (empresa_id, chave),
+            ).fetchone()
+            if linha is not None and datetime.fromisoformat(linha[0]) > agora:
+                return False
+            conexao.execute(
+                """
+                INSERT INTO reservas_chave (empresa_id, chave, valida_ate) VALUES (?, ?, ?)
+                ON CONFLICT (empresa_id, chave) DO UPDATE SET valida_ate = excluded.valida_ate
+                """,
+                (empresa_id, chave, (agora + validade).isoformat()),
+            )
+            return True
+
+    def liberar_chave(self, empresa_id: str, chave: str) -> None:
+        with self._transacao() as conexao:
+            conexao.execute(
+                "DELETE FROM reservas_chave WHERE empresa_id = ? AND chave = ?",
+                (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(chave, "chave")),
+            )
+
+    def registrar_bloqueios(self, empresa_id: str, resumos: Iterable[str]) -> None:
+        """Opt-out vale para a empresa inteira e não se apaga: só acrescenta resumos."""
+        empresa_id = _exigir_texto(empresa_id, "empresa_id")
+        with self._transacao() as conexao:
+            conexao.executemany(
+                """
+                INSERT INTO bloqueios_opt_out (empresa_id, resumo) VALUES (?, ?)
+                ON CONFLICT (empresa_id, resumo) DO NOTHING
+                """,
+                [(empresa_id, resumo) for resumo in resumos],
+            )
+
+    def tem_bloqueio(self, empresa_id: str, resumos: Iterable[str]) -> bool:
+        empresa_id = _exigir_texto(empresa_id, "empresa_id")
+        with self._transacao() as conexao:
+            return any(
+                conexao.execute(
+                    "SELECT 1 FROM bloqueios_opt_out WHERE empresa_id = ? AND resumo = ?",
+                    (empresa_id, resumo),
+                ).fetchone()
+                for resumo in resumos
+            )
+
     def chave_concluida(self, empresa_id: str, chave: str) -> bool:
         with self._transacao() as conexao:
             linha = conexao.execute(
@@ -374,6 +457,31 @@ class Repositorio:
                 ON CONFLICT (empresa_id, vaga_id) DO UPDATE SET dados = excluded.dados
                 """,
                 (empresa_id, vaga_id, progresso_json),
+            )
+
+    def atualizar_progresso(
+        self, empresa_id: str, vaga_id: str, mudanca: Callable[[str], str]
+    ) -> None:
+        """Aplica a mudança sobre o progresso mais recente, numa transação só.
+
+        Quem escreve ao mesmo tempo espera, e uma escrita não apaga a outra. `mudanca` não pode
+        acessar o banco: isso a faria esperar por si mesma.
+        """
+        empresa_id = _exigir_texto(empresa_id, "empresa_id")
+        vaga_id = _exigir_texto(vaga_id, "vaga_id")
+        with self._transacao() as conexao:
+            conexao.execute("BEGIN IMMEDIATE")
+            linha = conexao.execute(
+                "SELECT dados FROM progressos WHERE empresa_id = ? AND vaga_id = ?",
+                (empresa_id, vaga_id),
+            ).fetchone()
+            if linha is None:
+                raise ValueError("a vaga ainda não tem progresso salvo")
+            novo = mudanca(linha[0])
+            json.loads(novo)
+            conexao.execute(
+                "UPDATE progressos SET dados = ? WHERE empresa_id = ? AND vaga_id = ?",
+                (novo, empresa_id, vaga_id),
             )
 
     def carregar_progresso(self, empresa_id: str, vaga_id: str) -> str | None:

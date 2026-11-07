@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.agente.persistencia import EstadoExecucao, Repositorio
+from backend.agente.persistencia import EstadoExecucao, Repositorio, resumos_da_pessoa
 from backend.contratos.modelos import Decisao, EventoFluxo, Evidencia, TipoDecisao, Vaga
 
 FUSO_BRASILIA = timezone(timedelta(hours=-3))
@@ -541,3 +541,71 @@ def test_apagar_empresa_nao_toca_nas_outras(tmp_path) -> None:
 def test_apagar_empresa_exige_empresa(tmp_path) -> None:
     with pytest.raises(ValueError):
         Repositorio(tmp_path / "agente.db").apagar_empresa("  ")
+
+
+def test_atualizar_progresso_nao_perde_escrita_concorrente(repo: Repositorio) -> None:
+    repo.salvar_progresso("empresa-a", "v1", json.dumps({"n": 0}))
+
+    def somar(dados: str) -> str:
+        return json.dumps({"n": json.loads(dados)["n"] + 1})
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(lambda _: repo.atualizar_progresso("empresa-a", "v1", somar), range(40)))
+
+    assert json.loads(repo.carregar_progresso("empresa-a", "v1")) == {"n": 40}
+
+
+def test_atualizar_progresso_de_vaga_sem_progresso_e_recusado(repo: Repositorio) -> None:
+    with pytest.raises(ValueError, match="progresso"):
+        repo.atualizar_progresso("empresa-a", "v1", lambda dados: dados)
+
+
+def test_atualizar_progresso_nao_cruza_empresas(repo: Repositorio) -> None:
+    repo.salvar_progresso("empresa-a", "v1", json.dumps({"n": 1}))
+
+    with pytest.raises(ValueError, match="progresso"):
+        repo.atualizar_progresso("empresa-b", "v1", lambda dados: dados)
+
+
+def test_reserva_de_chave_e_de_uma_execucao_por_vez(repo: Repositorio) -> None:
+    agora = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+    validade = timedelta(minutes=5)
+
+    assert repo.reservar_chave("empresa-a", "c", agora, validade) is True
+    assert repo.reservar_chave("empresa-a", "c", agora, validade) is False
+    assert repo.reservar_chave("empresa-b", "c", agora, validade) is True
+
+    repo.liberar_chave("empresa-a", "c")
+    assert repo.reservar_chave("empresa-a", "c", agora, validade) is True
+
+
+def test_reserva_vencida_pode_ser_tomada(repo: Repositorio) -> None:
+    agora = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+    repo.reservar_chave("empresa-a", "c", agora, timedelta(minutes=5))
+
+    assert repo.reservar_chave("empresa-a", "c", agora + timedelta(minutes=6), timedelta(minutes=5))
+
+
+def test_bloqueio_de_opt_out_vale_por_empresa_e_guarda_so_resumo(repo: Repositorio) -> None:
+    resumos = resumos_da_pessoa("empresa-a", "pessoa-1", " Pessoa@Exemplo.invalid ")
+
+    repo.registrar_bloqueios("empresa-a", resumos)
+
+    assert repo.tem_bloqueio("empresa-a", resumos_da_pessoa("empresa-a", "pessoa-1", None))
+    assert repo.tem_bloqueio(
+        "empresa-a", resumos_da_pessoa("empresa-a", "outro-id", "pessoa@exemplo.invalid")
+    )
+    assert not repo.tem_bloqueio("empresa-b", resumos_da_pessoa("empresa-b", "pessoa-1", None))
+    assert all(len(resumo) == 64 and "pessoa" not in resumo for resumo in resumos)
+
+
+def test_apagar_empresa_leva_bloqueios_e_reservas(repo: Repositorio) -> None:
+    agora = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+    resumos = resumos_da_pessoa("empresa-a", "pessoa-1", None)
+    repo.registrar_bloqueios("empresa-a", resumos)
+    repo.reservar_chave("empresa-a", "c", agora, timedelta(minutes=5))
+
+    repo.apagar_empresa("empresa-a")
+
+    assert not repo.tem_bloqueio("empresa-a", resumos)
+    assert repo.reservar_chave("empresa-a", "c", agora, timedelta(minutes=5))
