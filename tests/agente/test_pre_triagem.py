@@ -1028,3 +1028,30 @@ def test_pacote_leva_pontos_a_explorar_e_respostas() -> None:
     outra = pacote.model_copy(update={"candidato_id": "outra"})
     with pytest.raises(ValueError):
         pacote_com_pre_triagem(outra, decisao, vaga, [])
+
+
+@pytest.mark.parametrize(
+    "mensagens",
+    [
+        (
+            "Sou Maria Sintética, engenheira, e uso Python.",
+            "Sou João Sintético, engenheiro, e uso Python.",
+        )
+    ],
+)
+def test_modelo_recebe_o_mesmo_texto_para_nomes_e_generos_diferentes(mensagens: tuple) -> None:
+    vaga = _vaga_completa()
+    _, roteiro = _roteiro_liberado()
+    enviados = []
+    for nome, mensagem in zip(("Maria Sintética", "João Sintético"), mensagens, strict=True):
+        cliente = _cliente()
+        extrair_respostas(
+            roteiro,
+            mensagem,
+            candidato_teste(nome=nome),
+            cliente,
+            pseudonimizador_de_resposta(Pseudonimizador(), vaga),
+            HOJE,
+        )
+        enviados.append(cliente.chamadas[0]["usuario"])
+    assert enviados[0] == enviados[1]

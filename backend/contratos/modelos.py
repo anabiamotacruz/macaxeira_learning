@@ -1043,7 +1043,11 @@ class StatusFeedback(StrEnum):
 
 
 class FeedbackCandidato(Contrato):
-    """Vai para a pessoa. Não tem nota, faixa, ranking nem menção a outros candidatos."""
+    """Não tem nota, faixa, ranking nem menção a outros candidatos.
+
+    `responsavel` e `encaminhado_por` só orientam o canal a acionar quem responde: não são
+    mostrados à pessoa.
+    """
 
     status: StatusFeedback
     saudacao: str
