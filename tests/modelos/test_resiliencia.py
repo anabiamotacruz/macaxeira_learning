@@ -8,7 +8,13 @@ from backend.contratos.erros import (
     ModeloIndisponivel,
     RespostaInvalida,
 )
-from backend.modelos.resiliencia import TEMPO_LIMITE_PADRAO_S, TempoLimiteExcedido, com_tentativas
+from backend.modelos.resiliencia import (
+    TEMPO_LIMITE_PADRAO_S,
+    DisjuntorFonte,
+    EstadoDisjuntor,
+    TempoLimiteExcedido,
+    com_tentativas,
+)
 
 
 class Instavel:
@@ -177,3 +183,133 @@ def test_tempo_esgotado_repete_mesmo_fora_da_lista_de_temporarios():
     funcao, espera = Instavel(TimeoutError()), Espera()
 
     assert com_tentativas(funcao, temporarios=(ErroDaFonte,), dormir=espera) == "ok"
+
+
+def disjuntor_com(relogio: Relogio, limite_falhas: int = 2, espera: float = 60.0) -> DisjuntorFonte:
+    return DisjuntorFonte("github", limite_falhas=limite_falhas, espera=espera, relogio=relogio)
+
+
+def derrubar(disjuntor: DisjuntorFonte, vezes: int = 2) -> None:
+    for _ in range(vezes):
+        with pytest.raises(ConnectionError):
+            disjuntor.chamar(Instavel(ConnectionError("queda")))
+
+
+def test_disjuntor_abre_e_fecha():
+    relogio = Relogio()
+    disjuntor = disjuntor_com(relogio)
+    assert disjuntor.estado is EstadoDisjuntor.FECHADO
+
+    derrubar(disjuntor, vezes=1)
+    assert disjuntor.estado is EstadoDisjuntor.FECHADO
+
+    derrubar(disjuntor, vezes=1)
+    assert disjuntor.estado is EstadoDisjuntor.ABERTO
+
+    relogio.agora += 60.0
+    assert disjuntor.estado is EstadoDisjuntor.MEIO_ABERTO
+
+    assert disjuntor.chamar(Instavel()) == "ok"
+    assert disjuntor.estado is EstadoDisjuntor.FECHADO
+
+
+def test_disjuntor_aberto_nao_chama_a_fonte():
+    relogio = Relogio()
+    disjuntor = disjuntor_com(relogio)
+    derrubar(disjuntor)
+    funcao = Instavel()
+
+    with pytest.raises(FonteIndisponivel) as erro:
+        disjuntor.chamar(funcao)
+
+    assert funcao.chamadas == 0
+    assert "github" in str(erro.value)
+
+
+def test_falha_no_meio_aberto_reabre_e_recomeca_a_espera():
+    relogio = Relogio()
+    disjuntor = disjuntor_com(relogio, limite_falhas=3)
+    derrubar(disjuntor, vezes=3)
+    relogio.agora += 60.0
+
+    derrubar(disjuntor, vezes=1)
+
+    assert disjuntor.estado is EstadoDisjuntor.ABERTO
+    relogio.agora += 59.0
+    assert disjuntor.estado is EstadoDisjuntor.ABERTO
+    relogio.agora += 1.0
+    assert disjuntor.estado is EstadoDisjuntor.MEIO_ABERTO
+
+
+def test_meio_aberto_deixa_passar_um_teste_por_vez():
+    relogio = Relogio()
+    disjuntor = disjuntor_com(relogio)
+    derrubar(disjuntor)
+    relogio.agora += 60.0
+    outra = Instavel()
+
+    def teste_em_andamento() -> str:
+        with pytest.raises(FonteIndisponivel):
+            disjuntor.chamar(outra)
+        return "ok"
+
+    assert disjuntor.chamar(teste_em_andamento) == "ok"
+    assert outra.chamadas == 0
+
+
+def test_sucesso_zera_as_falhas_seguidas():
+    disjuntor = disjuntor_com(Relogio())
+
+    derrubar(disjuntor, vezes=1)
+    disjuntor.chamar(Instavel())
+    derrubar(disjuntor, vezes=1)
+
+    assert disjuntor.estado is EstadoDisjuntor.FECHADO
+
+
+def test_erro_permanente_nao_abre_o_disjuntor():
+    disjuntor = disjuntor_com(Relogio(), limite_falhas=1)
+
+    with pytest.raises(ValueError):
+        disjuntor.chamar(Instavel(ValueError("dado errado")))
+
+    assert disjuntor.estado is EstadoDisjuntor.FECHADO
+
+
+def test_erro_permanente_no_meio_aberto_libera_novo_teste():
+    relogio = Relogio()
+    disjuntor = disjuntor_com(relogio)
+    derrubar(disjuntor)
+    relogio.agora += 60.0
+
+    with pytest.raises(ValueError):
+        disjuntor.chamar(Instavel(ValueError("dado errado")))
+
+    assert disjuntor.estado is EstadoDisjuntor.MEIO_ABERTO
+    assert disjuntor.chamar(Instavel()) == "ok"
+    assert disjuntor.estado is EstadoDisjuntor.FECHADO
+
+
+def test_tempo_limite_conta_como_falha_e_repeticoes_contam_uma_vez():
+    relogio, espera = Relogio(), Espera()
+    disjuntor = disjuntor_com(relogio)
+
+    def chamar(funcao: Instavel) -> str:
+        return disjuntor.chamar(lambda: com_tentativas(funcao, tentativas=2, dormir=espera))
+
+    with pytest.raises(TempoLimiteExcedido):
+        chamar(Instavel(TimeoutError(), TimeoutError()))
+    assert disjuntor.estado is EstadoDisjuntor.FECHADO
+
+    with pytest.raises(TempoLimiteExcedido):
+        chamar(Instavel(TimeoutError(), TimeoutError()))
+    assert disjuntor.estado is EstadoDisjuntor.ABERTO
+
+
+@pytest.mark.parametrize(
+    "opcoes",
+    [{"limite_falhas": 0}, {"espera": 0.0}, {"fonte": " "}],
+)
+def test_disjuntor_recusa_parametros_invalidos(opcoes):
+    with pytest.raises(ValueError):
+        DisjuntorFonte(**{"fonte": "github", **opcoes})
