@@ -394,10 +394,13 @@ def test_limite_conta_o_pior_caso_da_saida():
     transporte = Transporte(VALIDA)
 
     with pytest.raises(LimiteGastoAtingido):
-        completar(cliente_com(transporte, limite_gasto_usd=0.0088))
+        completar(cliente_com(transporte, limite_gasto_usd=0.0088, max_tokens=2000))
 
     assert transporte.pedidos == []
-    assert completar(cliente_com(Transporte(VALIDA), limite_gasto_usd=0.02)).nota == 0.8
+    assert (
+        completar(cliente_com(Transporte(VALIDA), limite_gasto_usd=0.02, max_tokens=2000)).nota
+        == 0.8
+    )
 
 
 def test_limite_vale_para_a_alternativa_e_nao_vira_indisponivel():
@@ -408,6 +411,7 @@ def test_limite_vale_para_a_alternativa_e_nao_vira_indisponivel():
         modelo="zai-org/GLM-4.7-Flash",
         modelo_alternativo=MODELO_PADRAO,
         limite_gasto_usd=0.002,
+        max_tokens=2000,
     )
 
     with pytest.raises(LimiteGastoAtingido):
@@ -609,7 +613,7 @@ def test_falha_do_provedor_conta_como_falha_sem_custo():
 
 def test_limite_considera_o_gasto_acumulado():
     transporte = Transporte(resposta_com(usage={**USO, "cost": 0.015}), VALIDA)
-    cliente = cliente_com(transporte, limite_gasto_usd=0.02)
+    cliente = cliente_com(transporte, limite_gasto_usd=0.02, max_tokens=2000)
 
     completar(cliente)
     with pytest.raises(LimiteGastoAtingido):
