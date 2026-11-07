@@ -9,11 +9,17 @@ Respostas podem chegar durante uma execução. Por isso o progresso nunca é reg
 contato ou entrega: `_candidato_atual` consulta o banco e os opt-outs da empresa antes de cada um.
 """
 
+import contextvars
 import hashlib
+import logging
+import os
 import threading
 import uuid
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
@@ -99,6 +105,8 @@ from backend.contratos.modelos import (
 )
 from backend.modelos.resiliencia import ERROS_TEMPORARIOS, Resiliencia
 
+logger = logging.getLogger(__name__)
+
 ProvedorConsultas = Callable[[Vaga, int, Sequence[str]], list[str]]
 """Recebe a vaga, a rodada e as consultas já usadas. Devolve as consultas desta rodada."""
 
@@ -180,6 +188,57 @@ _PALAVRAS_DE_NAO_PESSOA = frozenset(
 )
 
 
+CONCORRENCIA_PADRAO = 1
+
+
+def concorrencia_do_ambiente() -> int:
+    """Quantas análises ou revisões seguem juntas. `CONCORRENCIA_MODELO` ajusta sem mudar o código.
+
+    O provedor limita chamadas simultâneas conforme o plano, por isso o padrão é uma de cada vez.
+    """
+    texto = (os.environ.get("CONCORRENCIA_MODELO") or "").strip()
+    if not texto:
+        return CONCORRENCIA_PADRAO
+    try:
+        valor = int(texto)
+    except ValueError:
+        valor = 0
+    if valor < 1:
+        raise ValueError("CONCORRENCIA_MODELO precisa ser um inteiro de pelo menos 1")
+    return valor
+
+
+class _ChamadorNaLinha:
+    """Uma chamada de cada vez, na thread de quem pediu: sem threads quando a concorrência é 1."""
+
+    def submit[T](self, funcao: Callable[..., T], *argumentos: object) -> Future[T]:
+        futuro: Future[T] = Future()
+        try:
+            futuro.set_result(funcao(*argumentos))
+        except Exception as erro:
+            futuro.set_exception(erro)
+        return futuro
+
+    def shutdown(self, wait: bool = True) -> None:
+        return None
+
+
+@dataclass(frozen=True)
+class _Percurso:
+    """O que muda entre a análise e a revisão ao passar pelos candidatos de uma etapa.
+
+    `chamar` roda fora da thread principal e só fala com o modelo. Tudo o que grava fica na thread
+    principal, em ordem: `pular`, `concluir` e `falhar`. `guardar` recebe o que já foi pago e
+    terminou depois do ponto de parada, sem mexer no cursor.
+    """
+
+    pular: Callable[[Candidato], bool]
+    chamar: Callable[[Candidato], Analise]
+    concluir: Callable[[Analise, int], None]
+    falhar: Callable[[Candidato, int], None]
+    guardar: Callable[[Analise], None]
+
+
 class MotivoPausa(StrEnum):
     LIMITE_GASTO = "LIMITE_GASTO"
     MODELO_INDISPONIVEL = "MODELO_INDISPONIVEL"
@@ -259,6 +318,7 @@ class ProgressoFluxo(Contrato):
     dono_execucao: str | None = None
     opt_outs_a_propagar: list[str] = []
     analises: dict[str, Analise] = {}
+    revisadas: list[str] = []
     invalidas_seguidas: int = 0
     versao_mandato_na_pausa: int | None = None
     convites: list[RegistroConvite] = []
@@ -382,9 +442,13 @@ class FluxoVaga:
         medidor_gasto: Callable[[], float],
         auditoria: Auditoria | None = None,
         resiliencia: Resiliencia | None = None,
+        concorrencia: int = CONCORRENCIA_PADRAO,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
+        if concorrencia < 1:
+            raise ValueError("concorrencia precisa ser de pelo menos 1")
+        self._concorrencia = concorrencia
         self._repo = repositorio
         self._execucao_local = threading.local()
         self._auditoria = Auditoria(repositorio) if auditoria is None else auditoria
@@ -1367,54 +1431,148 @@ class FluxoVaga:
                 if candidato.id not in {c.id for c in progresso.cortados}:
                     progresso.cortados.append(candidato)
 
+    def _percorrer(self, progresso: ProgressoFluxo, percurso: _Percurso) -> None:
+        """Passa pelos candidatos da etapa, com até `concorrencia` chamadas ao modelo juntas.
+
+        As chamadas saem em paralelo, mas cada resultado é gravado na ordem da lista, e o cursor só
+        anda sobre quem já foi gravado. Assim uma queda retoma do mesmo ponto, e a sequência de
+        decisões, eventos e pausas não depende de quem respondeu primeiro. O gasto é conferido
+        antes de cada chamada; o limite rígido é do cliente, que reserva o pior caso de cada uma.
+        """
+        concorrencia = self._concorrencia
+        chamador = _ChamadorNaLinha() if concorrencia == 1 else ThreadPoolExecutor(concorrencia)
+        janela: deque[tuple[int, Candidato, Future[Analise] | None]] = deque()
+
+        def gravar_o_mais_antigo() -> None:
+            indice, candidato, futuro = janela.popleft()
+            if futuro is None:
+                self._concluir_candidato(indice)
+                return
+            try:
+                analise = futuro.result()
+                self._exigir_coerencia(analise, candidato)
+            except RespostaInvalida:
+                percurso.falhar(candidato, indice)
+            else:
+                percurso.concluir(analise, indice)
+
+        try:
+            for indice in range(self._cursor(), len(progresso.candidatos)):
+                self._conferir_execucao()
+                candidato = progresso.candidatos[indice]
+                futuro = None
+                if not percurso.pular(candidato):
+                    self._conferir_gasto()
+                    chamada = partial(percurso.chamar, candidato)
+                    futuro = chamador.submit(contextvars.copy_context().run, chamada)
+                janela.append((indice, candidato, futuro))
+                while janela and (len(janela) >= concorrencia or janela[0][2] is None):
+                    gravar_o_mais_antigo()
+            while janela:
+                gravar_o_mais_antigo()
+        finally:
+            self._guardar_o_que_ja_foi_pago(janela, percurso, chamador)
+
+    def _guardar_o_que_ja_foi_pago(
+        self,
+        janela: deque[tuple[int, Candidato, Future[Analise] | None]],
+        percurso: _Percurso,
+        chamador: _ChamadorNaLinha | ThreadPoolExecutor,
+    ) -> None:
+        """Ao parar antes do fim, espera as chamadas em curso e guarda as que deram certo.
+
+        Retomar não paga de novo por elas. Uma falha aqui é só registrada: o que interrompeu a
+        etapa é o que precisa chegar a quem chamou.
+        """
+        for _, _, futuro in janela:
+            if futuro is not None:
+                futuro.cancel()
+        chamador.shutdown(wait=True)
+        try:
+            if not janela or self._perdeu_a_vez():
+                return
+            for _, candidato, futuro in janela:
+                if futuro is None or futuro.cancelled() or futuro.exception() is not None:
+                    continue
+                analise = futuro.result()
+                self._exigir_coerencia(analise, candidato)
+                percurso.guardar(analise)
+        except Exception as erro:
+            logger.warning("resultado em curso não foi guardado: %s", type(erro).__name__)
+
     def _passo_analisar(self) -> bool:
         progresso = self._progresso()
         hoje = self._relogio().date()
-        for indice in range(self._cursor(), len(progresso.candidatos)):
-            self._conferir_execucao()
-            candidato = progresso.candidatos[indice]
+
+        def pular(candidato: Candidato) -> bool:
             atual = self._candidato_atual(candidato, progresso)
-            if candidato.id in progresso.analises or corte_de_autorizacao(atual, hoje):
-                self._concluir_candidato(indice)
-                continue
-            self._conferir_gasto()
-            try:
-                with self._contexto(progresso, candidato.id):
-                    analise = _analisar(self._analisador, self.vaga, candidato)
-                self._exigir_coerencia(analise, candidato)
-            except RespostaInvalida:
-                self._contar_invalida(progresso, candidato, indice, "análise inválida")
-                continue
-            self._gravar_analise(progresso, analise, indice)
+            ja_analisada = candidato.id in progresso.analises
+            return ja_analisada or corte_de_autorizacao(atual, hoje) is not None
+
+        def chamar(candidato: Candidato) -> Analise:
+            with self._contexto(progresso, candidato.id):
+                return _analisar(self._analisador, self.vaga, candidato)
+
+        def falhar(candidato: Candidato, indice: int) -> None:
+            self._contar_invalida(progresso, candidato, indice, "análise inválida")
+
+        def guardar(analise: Analise) -> None:
+            def gravar(atual: ProgressoFluxo) -> None:
+                atual.analises[analise.candidato_id] = analise
+
+            self._mudar(gravar)
+
+        self._percorrer(
+            progresso,
+            _Percurso(
+                pular=pular,
+                chamar=chamar,
+                concluir=partial(self._gravar_analise, progresso),
+                falhar=falhar,
+                guardar=guardar,
+            ),
+        )
         self._avancar(EstadoFluxo.REVISANDO, cursor=progresso.inicio_rodada)
         return True
 
     def _passo_revisar(self) -> bool:
         progresso = self._progresso()
-        for indice in range(self._cursor(), len(progresso.candidatos)):
-            self._conferir_execucao()
-            candidato = progresso.candidatos[indice]
-            analise = progresso.analises.get(candidato.id)
-            if analise is None:
-                self._concluir_candidato(indice)
-                continue
-            self._conferir_gasto()
-            try:
-                with self._contexto(progresso, candidato.id):
-                    revisada = _revisar(self._revisor, self.vaga, candidato, analise)
-                self._exigir_coerencia(revisada, candidato)
-            except RespostaInvalida:
-                ressalvas = [*analise.ressalvas_revisor, RESSALVA_REVISOR_INVALIDO]
-                com_ressalva = analise.model_copy(update={"ressalvas_revisor": ressalvas})
-                self._contar_invalida(
-                    progresso, candidato, indice, "revisão inválida", com_ressalva
-                )
-                continue
-            self._gravar_analise(progresso, revisada, indice)
+
+        def pular(candidato: Candidato) -> bool:
+            return candidato.id not in progresso.analises or candidato.id in progresso.revisadas
+
+        def chamar(candidato: Candidato) -> Analise:
+            analise = progresso.analises[candidato.id]
+            with self._contexto(progresso, candidato.id):
+                return _revisar(self._revisor, self.vaga, candidato, analise)
+
+        def concluir(revisada: Analise, indice: int) -> None:
+            progresso.revisadas.append(revisada.candidato_id)
+            self._gravar_analise(progresso, revisada, indice, revisada=True)
+
+        def falhar(candidato: Candidato, indice: int) -> None:
+            analise = progresso.analises[candidato.id]
+            ressalvas = [*analise.ressalvas_revisor, RESSALVA_REVISOR_INVALIDO]
+            com_ressalva = analise.model_copy(update={"ressalvas_revisor": ressalvas})
+            self._contar_invalida(progresso, candidato, indice, "revisão inválida", com_ressalva)
+
+        def guardar(revisada: Analise) -> None:
+            def gravar(atual: ProgressoFluxo) -> None:
+                atual.analises[revisada.candidato_id] = revisada
+                atual.revisadas.append(revisada.candidato_id)
+
+            self._mudar(gravar)
+
+        self._percorrer(
+            progresso,
+            _Percurso(pular, chamar, concluir, falhar, guardar),
+        )
         self._avancar(EstadoFluxo.DECIDINDO)
         return True
 
-    def _gravar_analise(self, progresso: ProgressoFluxo, analise: Analise, indice: int) -> None:
+    def _gravar_analise(
+        self, progresso: ProgressoFluxo, analise: Analise, indice: int, *, revisada: bool = False
+    ) -> None:
         """Depois do modelo, confere a vez: quem perdeu a vaga sai sem escrever."""
         if self._perdeu_a_vez():
             raise _VagaInterrompida
@@ -1424,6 +1582,8 @@ class FluxoVaga:
         def gravar(atual: ProgressoFluxo) -> None:
             atual.analises[analise.candidato_id] = analise
             atual.invalidas_seguidas = 0
+            if revisada:
+                atual.revisadas.append(analise.candidato_id)
 
         self._mudar(gravar)
         self._concluir_candidato(indice)
@@ -1450,11 +1610,13 @@ class FluxoVaga:
         progresso.invalidas_seguidas += 1
         if analise is not None:
             progresso.analises[candidato.id] = analise
+            progresso.revisadas.append(candidato.id)
 
         def gravar(atual: ProgressoFluxo) -> None:
             atual.invalidas_seguidas = progresso.invalidas_seguidas
             if analise is not None:
                 atual.analises[candidato.id] = analise
+                atual.revisadas.append(candidato.id)
 
         self._mudar(gravar)
         self._evento("falha_individual", mensagem, candidato.id)
