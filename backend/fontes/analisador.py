@@ -29,6 +29,7 @@ from backend.fontes.anonimizador import (
     PerfilPseudonimizado,
     Pseudonimizador,
     SessaoPseudonimizacao,
+    forma_canonica,
     termos_preservados_da_vaga,
 )
 from backend.fontes.consultas import tem_termo_sensivel
@@ -59,8 +60,20 @@ INSTRUCAO = re.compile(
     r" (me|this (candidate|person|profile|resume)|the candidate)\b"
     r"|\b(system prompt|prompt do sistema|voce agora|you are now"
     r"|as an ai (model|assistant|language)|como modelo de ia,)\b"
+    r"|\b(est[ea]|this) (perfil|candidat\w+|pessoa|curriculo|profile|person|resume)\b"
+    r".{0,30}\b(deve|precisa|merece|tem que|should|must|deserves)\b"
+    r".{0,40}\b(nota|score|rating|pontuacao)\b"
+    r"|\b(rate|rank|avalie|classifique|pontue|score (this|the|me))\b"
+    r".{0,15}\b(me|candidat\w+|candidate|applicant|perfil|pessoa|curriculo|profile|person|resume)\b"
+    r".{0,30}(\b\d+([.,]\d+)?\b|\b(max\w*|highest)\b)"
+    r"|\b(system|sistema|assistant|assistente|developer) ?:"
+    r".{0,60}\b(nota|score|rating|aprov\w+|approve\w*|indique|recommend\w*|ignore\w*)\b"
 )
 """Sobre texto sem acento nem caixa. Basta sozinho: quase não aparece em frase de trabalho."""
+
+_LETRAS_SEPARADAS = re.compile(r"(?<![^\W\d_])[^\W\d_](?:[ .*_-][^\W\d_]){3,}(?![^\W\d_])")
+_PALAVRA_COM_SIMBOLO = re.compile(r"(?=[\w@$]*[^\W\d_])(?=[\w@$]*[\d@$])[\w@$]+")
+_LETRA_DISFARCADA = str.maketrans("013457@$", "oieastas")
 
 _QUEM_AVALIA = (
     r"avaliador\w*|recrutador\w*|analista\w*|leitor\w*|revisor\w*"
@@ -109,6 +122,18 @@ def normalizar(texto: str) -> str:
     return " ".join(visivel.casefold().split())
 
 
+def _sem_disfarce(normalizado: str) -> str:
+    """`i g n o r e` e `Ign0re` voltam a ser a palavra. Só serve para procurar instrução."""
+    junto = _LETRAS_SEPARADAS.sub(lambda m: re.sub(r"[ .*_-]", "", m.group()), normalizado)
+    return _PALAVRA_COM_SIMBOLO.sub(lambda m: m.group().translate(_LETRA_DISFARCADA), junto)
+
+
+def tem_instrucao(texto: str) -> bool:
+    """Procura instrução ao avaliador no texto, sem caracteres invisíveis nem disfarces."""
+    normalizado = normalizar(forma_canonica(texto))
+    return bool(INSTRUCAO.search(normalizado) or INSTRUCAO.search(_sem_disfarce(normalizado)))
+
+
 def texto_permitido(texto: str) -> bool:
     """Diz se o texto não fala de dado sensível nem de período sem trabalho."""
     normalizado = _RACE_CONDITION.sub(" ", normalizar(texto))
@@ -152,26 +177,24 @@ def preparar_texto(sessao: SessaoPseudonimizacao, retirar: Iterable[str] = ()) -
     retirados = [normalizar(trecho) for trecho in retirar]
     frases = []
     originais = []
-    tem_instrucao = False
+    achou_instrucao = False
     for inicio, fim in _posicoes_das_frases(sessao.fonte):
         frase = sessao.fonte[inicio:fim]
-        if INSTRUCAO.search(normalizar(frase)):
-            tem_instrucao = True
+        if tem_instrucao(frase):
+            achou_instrucao = True
             continue
         if not texto_permitido(frase):
             continue
         pseudonimizada = sessao.frase(inicio, fim)
         normalizada = normalizar(pseudonimizada.texto)
         apontada = any(trecho in normalizada or normalizada in trecho for trecho in retirados)
-        if INSTRUCAO.search(normalizada) or (
-            apontada and _DIRIGIDO_AO_AVALIADOR.search(normalizada)
-        ):
-            tem_instrucao = True
+        if tem_instrucao(normalizada) or (apontada and _DIRIGIDO_AO_AVALIADOR.search(normalizada)):
+            achou_instrucao = True
         elif texto_permitido(pseudonimizada.texto):
             frases.append(pseudonimizada)
             originais.append(" ".join(frase.split()))
     perfil = sessao.montar(frases)
-    return PerfilPreparado(perfil.texto, tem_instrucao, perfil, tuple(originais))
+    return PerfilPreparado(perfil.texto, achou_instrucao, perfil, tuple(originais))
 
 
 def _posicoes_das_frases(texto: str) -> Iterable[tuple[int, int]]:
