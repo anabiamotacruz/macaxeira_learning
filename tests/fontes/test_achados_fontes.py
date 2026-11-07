@@ -20,6 +20,7 @@ from backend.contratos.modelos import (
 )
 from backend.fontes.analisador import AnalisadorPorModelo, preparar_perfil
 from backend.fontes.anonimizador import Pseudonimizador, reidentificar_pacote
+from backend.fontes.perfis import combina_com_consulta
 from backend.fontes.revisor import RevisorIndependente
 from tests.agente.apoio import AGORA, vaga_exemplo
 
@@ -475,3 +476,15 @@ def test_Q3_mesmo_cofre_nao_troca_um_empregador_por_outro():
         momento=AGORA,
     )
     assert "Beta" in saida.lacunas[0], saida.lacunas[0]
+
+
+# ---------- M-4 ----------
+def test_Q1_genero_da_palavra_nao_muda_a_busca_nas_fontes_reais():
+    ela = cand("Desenvolvedora Python em APIs")
+    ele = cand("Desenvolvedor Python em APIs")
+    consulta = "Desenvolvedor Python"
+    assert combina_com_consulta(ela, consulta) == combina_com_consulta(ele, consulta)
+    assert combina_com_consulta(ela, consulta)
+    assert combina_com_consulta(ele, "Desenvolvedora Python")
+    assert combina_com_consulta(ela, "Desenvolvedor(a) Python")
+    assert not combina_com_consulta(ela, "Desenvolvedor Java")

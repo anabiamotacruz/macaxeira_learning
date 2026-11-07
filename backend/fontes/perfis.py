@@ -4,6 +4,7 @@ import re
 from datetime import date
 
 from backend.agente.regras import FONTES_VERIFICAVEIS
+from backend.contratos.criterios import sem_genero
 from backend.contratos.modelos import (
     Candidato,
     ContatoColetado,
@@ -21,6 +22,7 @@ ATRIBUTO_POR_TIPO = {
     TipoContato.PERFIL: "perfis",
 }
 _PALAVRA = re.compile(r"\w+")
+_MARCA_DE_GENERO = re.compile(r"\((?:a|as|o|os)\)")
 
 
 def _atributos_de_contato(contatos: list[ContatoColetado]) -> dict[str, str]:
@@ -75,7 +77,19 @@ def candidato_de_perfil(
     )
 
 
-def combina_com_consulta(candidato: Candidato, consulta: str, *extras: str) -> bool:
-    """Todas as palavras da consulta aparecem no perfil. Nome e contato ficam de fora."""
-    termos = set(_PALAVRA.findall(normalizar(consulta)))
-    return termos <= set(_PALAVRA.findall(normalizar(" ".join([candidato.perfil_texto, *extras]))))
+def _termos(texto: str) -> set[str]:
+    """Palavras inteiras, sem acento, caixa nem gênero: a mesma comparação do banco de talentos."""
+    sem_marca = _MARCA_DE_GENERO.sub("", normalizar(texto))
+    return {sem_genero(termo) for termo in _PALAVRA.findall(sem_marca)}
+
+
+def combina_com_consulta(
+    candidato: Candidato, consulta: str, *extras: str, ignorar: frozenset[str] = frozenset()
+) -> bool:
+    """Todas as palavras da consulta aparecem no perfil. Nome e contato ficam de fora.
+
+    `extras` só serve para achar a pessoa: bio e tópicos ajudam a busca sem virar fato comprovado.
+    `ignorar` tira da consulta o que a fonte não tem como responder, como o cargo no GitHub.
+    """
+    termos = _termos(consulta)
+    return (termos - ignorar or termos) <= _termos(" ".join([candidato.perfil_texto, *extras]))

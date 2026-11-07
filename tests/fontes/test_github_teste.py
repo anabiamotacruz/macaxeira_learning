@@ -10,6 +10,8 @@ from backend.contratos.interfaces import FonteCandidatos
 from backend.contratos.modelos import EstadoBanco, TipoFato
 from backend.fontes.github_teste import (
     ALERTA_INSTRUCAO_GITHUB,
+    MAX_CARACTERES_POR_CAMPO,
+    VALIDADE_DO_CACHE_S,
     ColetaRealDesligada,
     ConfiguracaoGitHub,
     ContaForaDaListaDeConsentimento,
@@ -327,3 +329,105 @@ def test_empresa_local_e_rede_da_conta_servem_para_pseudonimizar_a_bio():
         assert valor not in texto, valor
     assert "Python" in texto
     assert "empresa" in candidato.atributos
+
+
+def test_titulo_da_vaga_acha_a_conta_sem_contar_a_bio_como_comprovada():
+    achados = _fonte().buscar("empresa-a", "Desenvolvedora Python")
+
+    assert len(achados) == 1
+    assert "Faço APIs" not in achados[0].perfil_texto
+    assert "Fila em Python" not in achados[0].perfil_texto
+
+
+def test_bio_e_topico_ajudam_a_achar_sem_virar_fato():
+    achados = _fonte().buscar("empresa-a", "filas")
+
+    assert len(achados) == 1
+    assert "filas" not in achados[0].perfil_texto.casefold()
+
+
+def test_consulta_sem_resposta_na_conta_nao_acha_ninguem():
+    assert _fonte().buscar("empresa-a", "Engenheira de Dados Scala") == []
+
+
+def test_consulta_so_com_cargo_nao_traz_todas_as_contas():
+    assert _fonte().buscar("empresa-a", "Desenvolvedor") == []
+
+
+def test_varias_consultas_da_execucao_leem_a_conta_uma_vez():
+    servidor = Servidor()
+    fonte = _fonte(servidor)
+
+    fonte.buscar("empresa-a", "python")
+    fonte.buscar("empresa-a", "cobol")
+    fonte.buscar("empresa-a", "Desenvolvedor Python")
+
+    assert len(servidor.pedidos) == 2
+
+
+def test_cache_nao_se_mistura_entre_empresas():
+    servidor = Servidor()
+    fonte = _fonte(servidor)
+
+    a = fonte.buscar("empresa-a", "python")[0]
+    b = fonte.buscar("empresa-b", "python")[0]
+
+    assert a.empresa_id == "empresa-a"
+    assert b.empresa_id == "empresa-b"
+    assert len(servidor.pedidos) == 4
+
+
+def test_cache_vence_e_pode_ser_limpo():
+    servidor = Servidor()
+    agora = {"valor": AGORA}
+    fonte = _fonte(servidor, agora=lambda: agora["valor"])
+
+    fonte.buscar("empresa-a", "python")
+    agora["valor"] = AGORA + timedelta(seconds=VALIDADE_DO_CACHE_S + 1)
+    fonte.buscar("empresa-a", "python")
+    assert len(servidor.pedidos) == 4
+
+    fonte.limpar_cache()
+    fonte.buscar("empresa-a", "python")
+    assert len(servidor.pedidos) == 6
+
+
+def test_falha_da_api_nao_fica_guardada():
+    servidor = Servidor(status=500)
+    fonte = _fonte(servidor)
+
+    with pytest.raises(FonteIndisponivel):
+        fonte.buscar("empresa-a", "python")
+    servidor.status = 200
+
+    assert len(fonte.buscar("empresa-a", "python")) == 1
+
+
+def test_token_vai_em_cabecalho_e_nao_aparece_em_repr(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "token-sintetico")
+    configuracao = ConfiguracaoGitHub.do_ambiente()
+    servidor = Servidor()
+    fonte = _fonte(servidor, token=configuracao.token)
+
+    fonte.perfil_coletado("empresa-a", CONTA)
+
+    assert servidor.pedidos[0].headers["authorization"] == "Bearer token-sintetico"
+    assert "token-sintetico" not in repr(configuracao)
+    assert "token-sintetico" not in str(servidor.pedidos[0].url)
+
+
+def test_sem_token_nao_manda_cabecalho_de_autorizacao():
+    servidor = Servidor()
+
+    _fonte(servidor).perfil_coletado("empresa-a", CONTA)
+
+    assert "authorization" not in servidor.pedidos[0].headers
+
+
+def test_texto_gigante_da_api_e_limitado():
+    bio = "Faço APIs. " * 50_000
+    candidato_perfil = _fonte(Servidor(usuario={**USUARIO, "bio": bio})).perfil_coletado(
+        "empresa-a", CONTA
+    )
+
+    assert sum(len(f.texto) for f in candidato_perfil.fatos) < 2 * MAX_CARACTERES_POR_CAMPO
