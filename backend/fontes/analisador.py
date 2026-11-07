@@ -149,7 +149,8 @@ def trecho_confere(trecho: str, candidato: Candidato, perfil: PerfilPreparado) -
 
 def criterios_da_vaga(vaga: Vaga) -> dict[str, str]:
     """Id de requisito e nome de competência, indexados como o modelo pode escrevê-los."""
-    criterios = {_normalizar(r.id): r.id for r in vaga.requisitos}
+    criterios = {_normalizar(r.descricao): r.id for r in vaga.requisitos}
+    criterios |= {_normalizar(r.id): r.id for r in vaga.requisitos}
     return criterios | {_normalizar(c.nome): c.nome for c in vaga.competencias}
 
 
@@ -159,9 +160,9 @@ def criterio_citado(criterios: dict[str, str], citado: str) -> str | None:
 
 def descrever_vaga(vaga: Vaga) -> str:
     """Título e critérios. Peso e descrição ficam de fora."""
-    linhas = [f"Título: {vaga.titulo}", "Requisitos:"]
-    linhas += [f"- id {r.id}: {r.descricao}" for r in vaga.requisitos]
-    linhas.append("Competências:")
+    linhas = [f"Título: {vaga.titulo}", "Requisitos (identificador: descrição):"]
+    linhas += [f"- {r.id}: {r.descricao}" for r in vaga.requisitos]
+    linhas.append("Competências (nome):")
     linhas += [f"- {c.nome}" for c in vaga.competencias]
     return como_dado("\n".join(linhas))
 

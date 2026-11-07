@@ -172,6 +172,24 @@ def test_criterio_escrito_com_outra_caixa_usa_o_nome_da_vaga():
     assert COMPETENCIA_A in {e.criterio for e in analise.evidencias}
 
 
+def test_vaga_mostra_o_requisito_com_o_identificador_exato():
+    analisador, cliente = _analisador()
+
+    analisador.analisar(_vaga(), _candidato())
+
+    assert "- producao: Experiência em produção" in cliente.chamadas[0]["usuario"]
+
+
+def test_evidencia_citada_pela_descricao_do_requisito_usa_o_identificador():
+    analisador, _ = _analisador(
+        evidencias=[{"criterio": "Experiência em produção", "trecho": TRECHO_PRODUCAO}],
+    )
+
+    analise = analisador.analisar(_vaga(), _candidato())
+
+    assert [e.criterio for e in analise.evidencias] == ["producao"]
+
+
 def test_requisito_vem_das_regras_e_nao_do_modelo():
     analisador, _ = _analisador(requisitos_ok={"producao": True})
 
