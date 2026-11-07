@@ -131,7 +131,7 @@ class Convite(Contrato):
     vaga_id: str | None
     candidato_id: Texto
     mensagem: str
-    link_nara: str
+    link_agendamento: str | None = None
     chave_idempotencia: Texto
     simulado: bool
 
@@ -150,7 +150,7 @@ class RespostaCandidato(Contrato):
     texto: str = ""
 
 
-class PacoteNara(Contrato):
+class PacoteContexto(Contrato):
     empresa_id: Texto
     vaga_id: Texto
     candidato_id: Texto
@@ -167,7 +167,7 @@ class PacoteNara(Contrato):
     simulado: bool
 
 
-class ResultadoNara(Contrato):
+class ResultadoEntrevista(Contrato):
     empresa_id: Texto
     vaga_id: str
     candidato_id: str

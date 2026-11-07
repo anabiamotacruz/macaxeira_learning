@@ -9,8 +9,8 @@ from backend.contratos.modelos import (
     Analise,
     Candidato,
     Convite,
-    PacoteNara,
-    ResultadoNara,
+    PacoteContexto,
+    ResultadoEntrevista,
     Vaga,
 )
 
@@ -53,12 +53,18 @@ class Mensageiro(Protocol):
 
 
 @runtime_checkable
-class ClienteNara(Protocol):
-    def link_agendamento(self, vaga_id: str, candidato_id: str) -> str: ...
+class AgenteRecrutador(Protocol):
+    """Destino do pacote de contexto. A Nara é a primeira integração.
 
-    def entregar(self, pacote: PacoteNara) -> bool: ...
+    `link_agendamento` devolve None e `resultados` devolve lista vazia quando o
+    destino não oferece agendamento ou retorno da entrevista.
+    """
 
-    def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoNara]: ...
+    def link_agendamento(self, vaga_id: str, candidato_id: str) -> str | None: ...
+
+    def entregar(self, pacote: PacoteContexto) -> bool: ...
+
+    def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoEntrevista]: ...
 
 
 @runtime_checkable

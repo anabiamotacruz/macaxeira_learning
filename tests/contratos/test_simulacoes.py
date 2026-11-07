@@ -9,12 +9,13 @@ from backend.contratos.modelos import (
     Competencia,
     Convite,
     EstadoBanco,
-    PacoteNara,
+    PacoteContexto,
     Requisito,
     TipoConvite,
     Vaga,
 )
 from backend.contratos.simulacoes import (
+    AgenteSemAgendaSimulado,
     AnalisadorSimulado,
     BancoTalentosSimulado,
     ClienteModeloSimulado,
@@ -51,14 +52,14 @@ def _convite(chave: str = "empresa-a:v1:c1:vaga:1") -> Convite:
         vaga_id="v1",
         candidato_id="c1",
         mensagem="Olá",
-        link_nara="https://nara.simulada.local/agendar/v1/c1",
+        link_agendamento="https://nara.simulada.local/agendar/v1/c1",
         chave_idempotencia=chave,
         simulado=True,
     )
 
 
-def _pacote(empresa_id: str = "empresa-a") -> PacoteNara:
-    return PacoteNara(
+def _pacote(empresa_id: str = "empresa-a") -> PacoteContexto:
+    return PacoteContexto(
         empresa_id=empresa_id,
         vaga_id="v1",
         candidato_id="c1",
@@ -83,7 +84,8 @@ def test_simulacoes_seguem_as_interfaces():
         (AnalisadorSimulado(), interfaces.Analisador),
         (RevisorSimulado(), interfaces.Revisor),
         (MensageiroSimulado(), interfaces.Mensageiro),
-        (ClienteNaraSimulado(), interfaces.ClienteNara),
+        (ClienteNaraSimulado(), interfaces.AgenteRecrutador),
+        (AgenteSemAgendaSimulado(), interfaces.AgenteRecrutador),
         (ClienteModeloSimulado(), interfaces.ClienteModelo),
     ]
     for simulacao, interface in pares:
@@ -302,3 +304,13 @@ def test_nara_simula_indisponibilidade_sem_perder_a_entrega():
 def test_empresa_so_com_espacos_e_recusada(fonte):
     with pytest.raises(ValueError):
         fonte.buscar("   ", "python")
+
+
+def test_agente_sem_agenda_recebe_pacote_sem_link_nem_resultado():
+    agente = AgenteSemAgendaSimulado()
+
+    assert agente.link_agendamento("v1", "c1") is None
+    assert agente.entregar(_pacote()) is True
+    assert agente.entregar(_pacote()) is True
+    assert len(agente.entregues) == 1
+    assert agente.resultados("empresa-a", "v1") == []

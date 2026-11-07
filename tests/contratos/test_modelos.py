@@ -10,8 +10,8 @@ from backend.contratos.modelos import (
     Decisao,
     EstadoBanco,
     EventoFluxo,
-    PacoteNara,
-    ResultadoNara,
+    PacoteContexto,
+    ResultadoEntrevista,
     TipoConvite,
     TipoDecisao,
     Vaga,
@@ -84,7 +84,7 @@ def _convite(**extra) -> dict:
         "vaga_id": "v1",
         "candidato_id": "c1",
         "mensagem": "Olá",
-        "link_nara": "https://nara.simulada.local/agendar/v1/c1",
+        "link_agendamento": "https://nara.simulada.local/agendar/v1/c1",
         "chave_idempotencia": "empresa-a:v1:c1:vaga:1",
         "simulado": True,
     }
@@ -112,15 +112,15 @@ def test_vaga_nao_aprovada_por_padrao():
 
 
 def test_pacote_exige_chave_idempotencia():
-    assert PacoteNara(**_pacote()).chave_idempotencia
+    assert PacoteContexto(**_pacote()).chave_idempotencia
 
     sem_chave = _pacote()
     del sem_chave["chave_idempotencia"]
     with pytest.raises(ValidationError):
-        PacoteNara(**sem_chave)
+        PacoteContexto(**sem_chave)
 
     with pytest.raises(ValidationError):
-        PacoteNara(**_pacote(chave_idempotencia=""))
+        PacoteContexto(**_pacote(chave_idempotencia=""))
 
 
 def test_convite_identifica_simulacao():
@@ -154,18 +154,20 @@ def test_decisao_guarda_regra_evidencias_e_responsavel():
     assert decisao.regra and decisao.responsavel
 
 
-@pytest.mark.parametrize("modelo", [Decisao, Analise, PacoteNara, ResultadoNara, EventoFluxo])
+@pytest.mark.parametrize(
+    "modelo", [Decisao, Analise, PacoteContexto, ResultadoEntrevista, EventoFluxo]
+)
 def test_contratos_de_dados_por_empresa_exigem_empresa_id(modelo):
     assert modelo.model_fields["empresa_id"].is_required()
 
 
 def test_pacote_identifica_simulacao():
-    assert PacoteNara(**_pacote()).simulado is True
+    assert PacoteContexto(**_pacote()).simulado is True
 
     sem_marcacao = _pacote()
     del sem_marcacao["simulado"]
     with pytest.raises(ValidationError):
-        PacoteNara(**sem_marcacao)
+        PacoteContexto(**sem_marcacao)
 
 
 def test_momento_exige_fuso():
@@ -196,3 +198,9 @@ def test_momento_exige_fuso():
 def test_identificador_so_com_espacos_e_recusado():
     with pytest.raises(ValidationError):
         Candidato(**_candidato(empresa_id="   "))
+
+
+def test_convite_pode_nao_ter_link_de_agendamento():
+    sem_link = _convite()
+    del sem_link["link_agendamento"]
+    assert Convite(**sem_link).link_agendamento is None

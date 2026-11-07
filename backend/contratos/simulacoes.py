@@ -17,8 +17,8 @@ from backend.contratos.modelos import (
     Convite,
     EstadoBanco,
     Evidencia,
-    PacoteNara,
-    ResultadoNara,
+    PacoteContexto,
+    ResultadoEntrevista,
     Vaga,
 )
 
@@ -262,26 +262,26 @@ class ClienteNaraSimulado:
     def __init__(self, semente: int = 0, falhas_restantes: int = 0) -> None:
         self.semente = semente
         self.falhas_restantes = falhas_restantes
-        self.entregues: dict[tuple[str, str], PacoteNara] = {}
+        self.entregues: dict[tuple[str, str], PacoteContexto] = {}
 
     def link_agendamento(self, vaga_id: str, candidato_id: str) -> str:
         return f"{self.BASE_LINK}/{vaga_id}/{candidato_id}"
 
-    def entregar(self, pacote: PacoteNara) -> bool:
+    def entregar(self, pacote: PacoteContexto) -> bool:
         if self.falhas_restantes > 0:
             self.falhas_restantes -= 1
             return False
         self.entregues.setdefault((pacote.empresa_id, pacote.chave_idempotencia), pacote)
         return True
 
-    def resultados_para(self, pacote: PacoteNara) -> ResultadoNara:
+    def resultados_para(self, pacote: PacoteContexto) -> ResultadoEntrevista:
         nota = round(
             _numero_reproduzivel(
                 str(self.semente), pacote.empresa_id, pacote.vaga_id, pacote.candidato_id
             ),
             2,
         )
-        return ResultadoNara(
+        return ResultadoEntrevista(
             empresa_id=pacote.empresa_id,
             vaga_id=pacote.vaga_id,
             candidato_id=pacote.candidato_id,
@@ -290,13 +290,23 @@ class ClienteNaraSimulado:
             simulado=True,
         )
 
-    def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoNara]:
+    def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoEntrevista]:
         _exigir_empresa(empresa_id)
         return [
             self.resultados_para(p)
             for p in self.entregues.values()
             if p.empresa_id == empresa_id and p.vaga_id == vaga_id
         ]
+
+
+class AgenteSemAgendaSimulado(ClienteNaraSimulado):
+    """Destino simulado que recebe o pacote, mas não agenda nem devolve resultados."""
+
+    def link_agendamento(self, vaga_id: str, candidato_id: str) -> str | None:
+        return None
+
+    def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoEntrevista]:
+        return []
 
 
 class ClienteModeloSimulado:
