@@ -1,13 +1,19 @@
-"""Auditoria: rastro, registro e explicação de decisões. Nada aqui usa modelo de IA."""
+"""Auditoria: rastro, registro e explicação de decisões e amostra auditada.
 
+Nada aqui usa modelo de IA.
+"""
+
+import hashlib
 import inspect
+import json
 import logging
+import math
 import os
 import re
 import time
 import uuid
 from collections import deque
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -18,14 +24,27 @@ from typing import NamedTuple, Protocol
 
 from pydantic import AwareDatetime, ValidationError
 
+from backend.agente.fluxo import TRANSICOES, EstadoFluxo
 from backend.agente.persistencia import Repositorio
 from backend.contratos.erros import ErroContrato
-from backend.contratos.modelos import Contrato, Decisao, Mandato, Texto
+from backend.contratos.modelos import (
+    Contrato,
+    Decisao,
+    EventoFluxo,
+    Mandato,
+    Texto,
+    TipoDecisao,
+)
 
 logger = logging.getLogger(__name__)
 
 PREFIXO_HUMANO = "humano:"
+PREFIXO_AGENTE = "agente:"
 SEM_CONTEXTO = "sem-contexto"
+ETAPA_AUDITORIA = "auditoria_amostra"
+ETAPA_LIBERACAO = "auditoria_liberada"
+MOTIVO_AUDITORIA_REPROVADA = "auditoria_reprovada"
+TIPOS_AUTOMATICOS = frozenset({TipoDecisao.INDICAR, TipoDecisao.DESCARTAR})
 _RESPONSAVEL_AGENTE = re.compile(
     r"agente:mandato:(?P<id>[^:]+):v(?P<versao>[1-9]\d*):assinante:(?P<assinante>\S.*)"
 )
@@ -37,6 +56,28 @@ class DecisaoIncompleta(ErroContrato):
 
 class ExplicacaoInexistente(ErroContrato):
     """Nada registrado para o candidato nesta empresa e vaga. Vale também para outra empresa."""
+
+
+class AuditoriaInvalida(ErroContrato):
+    """Auditoria recusada: decisão não registrada, auditor não identificado ou dado inválido."""
+
+
+class DecisoesAutomaticasPausadas(ErroContrato):
+    """Erro na amostra auditada: o agente não decide sozinho até uma pessoa liberar."""
+
+
+class ResultadoAuditoria(Contrato):
+    """Veredito de uma pessoa sobre uma decisão automática. Modelo local: não cruza frentes."""
+
+    empresa_id: Texto
+    vaga_id: Texto
+    candidato_id: Texto
+    decisao_chave: Texto
+    tipo_decisao: TipoDecisao
+    correta: bool
+    auditor: Texto
+    comentario: str = ""
+    momento: AwareDatetime
 
 
 class RegistroRastro(Contrato):
@@ -316,6 +357,63 @@ def _campos_faltando(decisao: Decisao) -> list[str]:
     return faltando
 
 
+def decisao_automatica(decisao: Decisao) -> bool:
+    """Indicação ou descarte que o agente fez sozinho, sem revisão prévia."""
+    return decisao.responsavel.startswith(PREFIXO_AGENTE) and decisao.tipo in TIPOS_AUTOMATICOS
+
+
+def chave_decisao(decisao: Decisao) -> str:
+    """Identidade estável da decisão, que não tem `id`. Inclui a empresa."""
+    conteudo = [
+        decisao.empresa_id,
+        decisao.vaga_id,
+        decisao.candidato_id,
+        decisao.tipo,
+        decisao.regra,
+        decisao.momento.astimezone(UTC).isoformat(),
+    ]
+    return hashlib.sha256(json.dumps(conteudo).encode()).hexdigest()
+
+
+def _exigir_uma_empresa(decisoes: Iterable[Decisao]) -> None:
+    if len({decisao.empresa_id for decisao in decisoes}) > 1:
+        raise ValueError("a auditoria não mistura decisões de empresas diferentes")
+
+
+def selecionar_amostra(
+    decisoes: Iterable[Decisao], percentual: float, *, semente: str
+) -> list[Decisao]:
+    """Sorteia por hash as decisões automáticas a auditar, de forma reproduzível.
+
+    O sorteio é separado por vaga e por tipo, com pelo menos uma decisão em cada grupo:
+    sem amostrar descartes, o erro de descartar uma pessoa boa nunca seria visto.
+    Use uma semente que fique registrada, como o id do mandato.
+    """
+    if not 0 < percentual <= 1:
+        raise ValueError("percentual precisa ser maior que 0 e no máximo 1")
+    lista = list(decisoes)
+    _exigir_uma_empresa(lista)
+
+    grupos: dict[tuple[str, TipoDecisao], list[tuple[str, Decisao]]] = {}
+    for decisao in filter(decisao_automatica, lista):
+        ordem = hashlib.sha256(f"{semente}:{chave_decisao(decisao)}".encode()).hexdigest()
+        grupos.setdefault((decisao.vaga_id, decisao.tipo), []).append((ordem, decisao))
+
+    amostra = []
+    for _grupo, membros in sorted(grupos.items()):
+        # Arredonda antes do teto: 0.07 * 100 dá 7.000000000000001, que viraria 8.
+        quantidade = max(1, math.ceil(round(percentual * len(membros), 9)))
+        membros.sort(key=lambda membro: membro[0])
+        amostra.extend(decisao for _ordem, decisao in membros[:quantidade])
+    return amostra
+
+
+def _e_pessoa(responsavel: str) -> bool:
+    return responsavel.startswith(PREFIXO_HUMANO) and bool(
+        responsavel[len(PREFIXO_HUMANO) :].strip()
+    )
+
+
 class Auditoria:
     """Registra e explica decisões, sempre dentro da empresa informada."""
 
@@ -330,13 +428,16 @@ class Auditoria:
         if faltando:
             raise DecisaoIncompleta(f"decisão sem: {', '.join(faltando)}")
         self._conferir_responsavel(valida)
+        if decisao_automatica(valida) and self.decisoes_automaticas_pausadas(
+            valida.empresa_id, valida.vaga_id
+        ):
+            raise DecisoesAutomaticasPausadas("erro na amostra auditada: aguardando uma pessoa")
         self._repositorio.salvar_decisao(valida)
 
     def _conferir_responsavel(self, decisao: Decisao) -> None:
-        responsavel = decisao.responsavel
-        if responsavel.startswith(PREFIXO_HUMANO) and responsavel[len(PREFIXO_HUMANO) :].strip():
+        if _e_pessoa(decisao.responsavel):
             return
-        citado = _mandato_citado(responsavel)
+        citado = _mandato_citado(decisao.responsavel)
         if citado is None:
             raise DecisaoIncompleta(
                 "responsavel precisa identificar o mandato assinado ou a pessoa"
@@ -387,3 +488,111 @@ class Auditoria:
             "rastro_ids": rastro_ids,
             "rastro": [registro.model_dump(mode="json") for registro in rastro],
         }
+
+    def registrar_auditoria(
+        self,
+        decisao: Decisao,
+        *,
+        correta: bool,
+        auditor: str,
+        momento: datetime,
+        comentario: str = "",
+    ) -> ResultadoAuditoria:
+        """Guarda o veredito de uma pessoa. Um erro pausa as decisões automáticas da vaga.
+
+        O veredito fica na tabela de eventos, que o `Repositorio` já isola por empresa.
+        """
+        if not _e_pessoa(auditor):
+            raise AuditoriaInvalida("auditor precisa ser uma pessoa identificada")
+        chave = chave_decisao(decisao)
+        registradas = self._repositorio.listar_decisoes(decisao.empresa_id, decisao.vaga_id)
+        if not decisao_automatica(decisao) or chave not in map(chave_decisao, registradas):
+            raise AuditoriaInvalida("só se audita decisão automática já registrada")
+        try:
+            resultado = ResultadoAuditoria(
+                empresa_id=decisao.empresa_id,
+                vaga_id=decisao.vaga_id,
+                candidato_id=decisao.candidato_id,
+                decisao_chave=chave,
+                tipo_decisao=decisao.tipo,
+                correta=correta,
+                auditor=auditor,
+                comentario=comentario,
+                momento=momento,
+            )
+        except ValidationError as erro:
+            campos = sorted({str(detalhe["loc"][0]) for detalhe in erro.errors()})
+            raise AuditoriaInvalida(f"campos recusados: {', '.join(campos)}") from None
+
+        self._repositorio.registrar_evento(
+            EventoFluxo(
+                empresa_id=resultado.empresa_id,
+                vaga_id=resultado.vaga_id,
+                candidato_id=resultado.candidato_id,
+                etapa=ETAPA_AUDITORIA,
+                mensagem=resultado.model_dump_json(),
+                momento=resultado.momento,
+            )
+        )
+        if not correta:
+            self._pausar_execucao(resultado)
+        return resultado
+
+    def _pausar_execucao(self, resultado: ResultadoAuditoria) -> None:
+        """Pausa a execução, se ela puder pausar. A barreira já vale pelo evento gravado antes."""
+        empresa_id, vaga_id = resultado.empresa_id, resultado.vaga_id
+        atual = self._repositorio.carregar_estado(empresa_id, vaga_id)
+        if atual is None or EstadoFluxo.PAUSADA not in TRANSICOES.get(atual.estado, ()):
+            return
+        self._repositorio.salvar_estado(
+            empresa_id,
+            vaga_id,
+            EstadoFluxo.PAUSADA,
+            atual.cursor,
+            motivo=MOTIVO_AUDITORIA_REPROVADA,
+            estado_anterior=atual.estado,
+        )
+        self._repositorio.registrar_evento(
+            EventoFluxo(
+                empresa_id=empresa_id,
+                vaga_id=vaga_id,
+                etapa=EstadoFluxo.PAUSADA,
+                mensagem=f"{atual.estado} -> pausada: {MOTIVO_AUDITORIA_REPROVADA}",
+                momento=resultado.momento,
+            )
+        )
+
+    def listar_auditorias(self, empresa_id: str, vaga_id: str) -> list[ResultadoAuditoria]:
+        return [
+            ResultadoAuditoria.model_validate_json(evento.mensagem)
+            for evento in self._repositorio.listar_eventos(empresa_id, vaga_id)
+            if evento.etapa == ETAPA_AUDITORIA
+        ]
+
+    def decisoes_automaticas_pausadas(self, empresa_id: str, vaga_id: str) -> bool:
+        """Verdadeiro desde um erro na amostra até uma pessoa liberar, na ordem dos eventos."""
+        pausadas = False
+        for evento in self._repositorio.listar_eventos(empresa_id, vaga_id):
+            if evento.etapa == ETAPA_LIBERACAO:
+                pausadas = False
+            elif evento.etapa == ETAPA_AUDITORIA:
+                pausadas = pausadas or not (
+                    ResultadoAuditoria.model_validate_json(evento.mensagem).correta
+                )
+        return pausadas
+
+    def liberar_decisoes_automaticas(
+        self, empresa_id: str, vaga_id: str, responsavel: str, motivo: str, momento: datetime
+    ) -> None:
+        """Tira a barreira depois da revisão humana. Retomar a execução fica com o fluxo."""
+        if not _e_pessoa(responsavel):
+            raise AuditoriaInvalida("responsavel pela liberação precisa ser uma pessoa")
+        self._repositorio.registrar_evento(
+            EventoFluxo(
+                empresa_id=empresa_id,
+                vaga_id=vaga_id,
+                etapa=ETAPA_LIBERACAO,
+                mensagem=f"{responsavel}: {motivo}",
+                momento=momento,
+            )
+        )

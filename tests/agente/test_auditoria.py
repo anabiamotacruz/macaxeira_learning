@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import random
 import sys
 import types
 from datetime import datetime, timedelta, timezone
@@ -10,9 +11,12 @@ import pytest
 
 from backend.agente import auditoria as modulo_auditoria
 from backend.agente.auditoria import (
+    MOTIVO_AUDITORIA_REPROVADA,
     RASTRO_LOCAL,
     Auditoria,
+    AuditoriaInvalida,
     DecisaoIncompleta,
+    DecisoesAutomaticasPausadas,
     ExplicacaoInexistente,
     RastroLangfuse,
     RastroLocal,
@@ -22,7 +26,9 @@ from backend.agente.auditoria import (
     destino_do_ambiente,
     rastreado,
     responsavel_do_mandato,
+    selecionar_amostra,
 )
+from backend.agente.fluxo import EstadoFluxo
 from backend.agente.mandato import Mandato, Politica
 from backend.agente.persistencia import Repositorio
 from backend.contratos.erros import ModeloIndisponivel
@@ -588,3 +594,242 @@ def test_falha_ao_criar_o_langfuse_vira_rastro_local(monkeypatch, caplog):
     assert len(_listar_local()) == 1
     assert "RuntimeError" in caplog.text
     assert CHAVE not in caplog.text
+
+
+def _automaticas(indicar: int, descartar: int = 0, vaga_id: str = "vaga-1") -> list[Decisao]:
+    tipos = [TipoDecisao.INDICAR] * indicar + [TipoDecisao.DESCARTAR] * descartar
+    return [
+        _decisao(tipo=tipo, candidato_id=f"cand-{i}", vaga_id=vaga_id, rastro_id=f"r-{i}")
+        for i, tipo in enumerate(tipos)
+    ]
+
+
+def test_amostra_auditada_e_reproduzivel():
+    decisoes = _automaticas(150, 50)
+    embaralhadas = random.Random(7).sample(decisoes, len(decisoes))
+
+    amostra = selecionar_amostra(decisoes, 0.1, semente="mandato-1")
+
+    assert amostra == selecionar_amostra(embaralhadas, 0.1, semente="mandato-1")
+    assert len(amostra) == 20
+    assert amostra != selecionar_amostra(decisoes, 0.1, semente="mandato-2")
+
+
+def test_amostra_tem_pelo_menos_uma_decisao():
+    assert len(selecionar_amostra(_automaticas(1), 0.01, semente="s")) == 1
+
+
+def test_amostra_inclui_descartes_mesmo_raros():
+    amostra = selecionar_amostra(_automaticas(99, 1), 0.01, semente="s")
+
+    assert sorted(decisao.tipo for decisao in amostra) == [
+        TipoDecisao.DESCARTAR,
+        TipoDecisao.INDICAR,
+    ]
+
+
+def test_amostra_e_proporcional_em_cada_grupo():
+    amostra = selecionar_amostra(_automaticas(100, 200), 0.07, semente="s")
+
+    assert sum(d.tipo == TipoDecisao.INDICAR for d in amostra) == 7
+    assert sum(d.tipo == TipoDecisao.DESCARTAR for d in amostra) == 14
+
+
+def test_amostra_cobre_cada_vaga():
+    decisoes = _automaticas(50, vaga_id="vaga-1") + _automaticas(1, vaga_id="vaga-2")
+
+    amostra = selecionar_amostra(decisoes, 0.01, semente="s")
+
+    assert sorted(decisao.vaga_id for decisao in amostra) == ["vaga-1", "vaga-2"]
+
+
+def test_amostra_so_considera_decisoes_automaticas():
+    fora = [
+        _decisao(tipo=TipoDecisao.PEDIR_HUMANO),
+        _decisao(tipo=TipoDecisao.DESCARTAR, responsavel="humano:Carla Lima"),
+    ]
+
+    assert selecionar_amostra(fora, 1, semente="s") == []
+    assert selecionar_amostra([], 0.5, semente="s") == []
+
+
+@pytest.mark.parametrize("percentual", [0, -0.1, 1.5, float("nan")])
+def test_percentual_invalido_nao_desliga_a_auditoria(percentual):
+    with pytest.raises(ValueError, match="percentual"):
+        selecionar_amostra(_automaticas(3), percentual, semente="s")
+
+
+def test_amostra_nao_mistura_empresas():
+    decisoes = [_decisao(), _decisao(empresa_id="empresa-b")]
+
+    with pytest.raises(ValueError, match="empresa"):
+        selecionar_amostra(decisoes, 0.5, semente="s")
+
+
+def _auditar(auditoria: Auditoria, decisao: Decisao, correta: bool = False, **campos):
+    dados = {"correta": correta, "auditor": "humano:Carla Lima", "momento": MOMENTO}
+    dados.update(campos)
+    return auditoria.registrar_auditoria(decisao, **dados)
+
+
+def test_erro_na_amostra_pausa_decisoes_automaticas(auditoria, repo):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    repo.salvar_estado("empresa-a", "vaga-1", EstadoFluxo.DECIDINDO, 7)
+
+    _auditar(auditoria, decisao, comentario="trecho não sustenta o requisito")
+
+    estado = repo.carregar_estado("empresa-a", "vaga-1")
+    assert estado.estado == EstadoFluxo.PAUSADA
+    assert estado.cursor == 7
+    assert estado.estado_anterior == EstadoFluxo.DECIDINDO
+    assert estado.motivo == MOTIVO_AUDITORIA_REPROVADA
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is True
+    with pytest.raises(DecisoesAutomaticasPausadas):
+        auditoria.registrar_decisao(_decisao(candidato_id="cand-2"))
+    with pytest.raises(DecisoesAutomaticasPausadas):
+        auditoria.registrar_decisao(_decisao(candidato_id="cand-3", tipo=TipoDecisao.DESCARTAR))
+    assert [d.candidato_id for d in repo.listar_decisoes("empresa-a", "vaga-1")] == ["cand-1"]
+    assert any(
+        evento.etapa == EstadoFluxo.PAUSADA for evento in repo.listar_eventos("empresa-a", "vaga-1")
+    )
+
+
+def test_pausa_nao_impede_mandar_para_humano(auditoria, repo):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    _auditar(auditoria, decisao)
+
+    auditoria.registrar_decisao(_decisao(candidato_id="cand-2", tipo=TipoDecisao.PEDIR_HUMANO))
+    auditoria.registrar_decisao(
+        _decisao(candidato_id="cand-3", tipo=TipoDecisao.DESCARTAR, responsavel="humano:Carla Lima")
+    )
+
+    assert len(repo.listar_decisoes("empresa-a", "vaga-1")) == 3
+
+
+def test_auditoria_correta_nao_pausa(auditoria, repo):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    repo.salvar_estado("empresa-a", "vaga-1", EstadoFluxo.DECIDINDO, 7)
+
+    resultado = _auditar(auditoria, decisao, correta=True)
+
+    assert auditoria.listar_auditorias("empresa-a", "vaga-1") == [resultado]
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is False
+    assert repo.carregar_estado("empresa-a", "vaga-1").estado == EstadoFluxo.DECIDINDO
+
+
+def test_pausa_anterior_mantem_estado_e_motivo_e_a_barreira_vale(auditoria, repo):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    repo.salvar_estado(
+        "empresa-a",
+        "vaga-1",
+        EstadoFluxo.PAUSADA,
+        3,
+        motivo="limite_gasto",
+        estado_anterior=EstadoFluxo.ANALISANDO,
+    )
+
+    _auditar(auditoria, decisao)
+
+    estado = repo.carregar_estado("empresa-a", "vaga-1")
+    assert estado.motivo == "limite_gasto"
+    assert estado.estado_anterior == EstadoFluxo.ANALISANDO
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is True
+
+
+@pytest.mark.parametrize("com_estado", [True, False])
+def test_vaga_concluida_ou_sem_execucao_nao_muda_de_estado_mas_a_barreira_vale(
+    auditoria, repo, com_estado
+):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    if com_estado:
+        repo.salvar_estado("empresa-a", "vaga-1", EstadoFluxo.CONCLUIDA, 9)
+
+    _auditar(auditoria, decisao)
+
+    estado = repo.carregar_estado("empresa-a", "vaga-1")
+    assert (estado.estado if estado else None) == (EstadoFluxo.CONCLUIDA if com_estado else None)
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is True
+
+
+def test_so_uma_pessoa_libera_e_novo_erro_pausa_de_novo(auditoria, repo):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    _auditar(auditoria, decisao)
+
+    with pytest.raises(AuditoriaInvalida, match="responsavel"):
+        auditoria.liberar_decisoes_automaticas(
+            "empresa-a", "vaga-1", "agente:mandato:m:v1:assinante:A", "revisto", MOMENTO
+        )
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is True
+
+    auditoria.liberar_decisoes_automaticas(
+        "empresa-a", "vaga-1", "humano:Ana Souza", "faixa verde revista", MOMENTO
+    )
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is False
+    outra = _decisao(candidato_id="cand-2")
+    auditoria.registrar_decisao(outra)
+
+    _auditar(auditoria, outra)
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is True
+
+
+def test_pausa_vale_so_para_a_vaga_e_a_empresa_auditadas(auditoria, repo):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    repo.salvar_mandato("empresa-a", "vaga-2", _mandato(vaga_id="vaga-2").model_dump_json())
+    repo.salvar_mandato("empresa-b", "vaga-1", _mandato(empresa_id="empresa-b").model_dump_json())
+
+    _auditar(auditoria, decisao)
+
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-2") is False
+    assert auditoria.decisoes_automaticas_pausadas("empresa-b", "vaga-1") is False
+    auditoria.registrar_decisao(_decisao(vaga_id="vaga-2"))
+    auditoria.registrar_decisao(_decisao(empresa_id="empresa-b"))
+
+
+def test_auditoria_exige_decisao_automatica_registrada(auditoria):
+    automatica = _decisao()
+    para_humano = _decisao(candidato_id="cand-2", tipo=TipoDecisao.PEDIR_HUMANO)
+    humana = _decisao(candidato_id="cand-3", responsavel="humano:Carla Lima")
+    auditoria.registrar_decisao(para_humano)
+    auditoria.registrar_decisao(humana)
+
+    for decisao in (automatica, para_humano, humana):
+        with pytest.raises(AuditoriaInvalida, match="decisão"):
+            _auditar(auditoria, decisao)
+
+    assert auditoria.listar_auditorias("empresa-a", "vaga-1") == []
+
+
+@pytest.mark.parametrize("auditor", ["", "agente:mandato:m:v1:assinante:A", "humano: ", "Carla"])
+def test_auditoria_exige_pessoa_identificada(auditoria, auditor):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+
+    with pytest.raises(AuditoriaInvalida, match="auditor"):
+        _auditar(auditoria, decisao, auditor=auditor)
+
+    assert auditoria.decisoes_automaticas_pausadas("empresa-a", "vaga-1") is False
+
+
+def test_auditoria_recusa_momento_sem_fuso(auditoria):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+
+    with pytest.raises(AuditoriaInvalida, match="momento"):
+        _auditar(auditoria, decisao, momento=datetime(2026, 11, 7, 12, 0))
+
+
+def test_explicacao_mostra_a_auditoria_do_candidato(auditoria):
+    decisao = _decisao()
+    auditoria.registrar_decisao(decisao)
+    _auditar(auditoria, decisao, correta=True)
+
+    explicacao = auditoria.explicar_candidato("empresa-a", "cand-1", "vaga-1")
+
+    assert [e["etapa"] for e in explicacao["eventos"]] == ["auditoria_amostra"]
