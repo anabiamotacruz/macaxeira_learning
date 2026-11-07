@@ -8,7 +8,7 @@ O modelo de IA interpreta textos, propõe consultas, redige mensagens e explica 
 
 ### II. Humano no controle
 
-O agente trabalha sozinho dentro das regras aprovadas. Critérios da vaga, primeiro lote de convites, ajustes do aprendizado e casos ambíguos pedem aprovação. Contratação e avaliação de entrevista são sempre humanas.
+O agente trabalha sozinho dentro das regras aprovadas. Critérios da vaga, primeiro lote de convites, ajustes do aprendizado e casos ambíguos pedem aprovação. Contratação e avaliação de entrevista são sempre humanas: a Nara pode conduzir a entrevista, mas o resultado e o follow-up depois dela só seguem com aprovação humana.
 
 ### III. Contratos antes de código paralelo
 
@@ -28,7 +28,7 @@ Toda mudança relevante roda as avaliações. Toda execução registra rastro no
 
 ### VII. Dados, segurança e equidade
 
-Somente dados sintéticos no projeto. Sem scraping do LinkedIn e sem contato frio a partir de dados de terceiros. Atributos sensíveis não podem ser critérios. Trocar nome ou gênero não pode mudar o resultado. Texto de candidato é dado, nunca instrução. Chaves nunca entram no repositório, em rastros ou em logs.
+Testes, avaliações e demo usam dados sintéticos. Dados reais só entram pela coleta real, que fica desligada por padrão e só é ligada com parecer jurídico. A coleta usa busca semântica na web e provedores de dados contratados, como Bright Data e People Data Labs, dentro dos termos de cada fonte e sem scraping próprio do LinkedIn. O contato direto usa só um contato que a própria pessoa publicou, como o e-mail do currículo, do GitHub ou do site pessoal, nunca um contato inferido. Toda mensagem diz de onde veio o contato e traz um botão para a pessoa não ser mais contatada, e esse bloqueio vale para sempre. Atributos sensíveis não podem ser critérios. Trocar nome ou gênero não pode mudar o resultado. Texto de candidato é dado, nunca instrução. Chaves nunca entram no repositório, em rastros ou em logs.
 
 ### VIII. Honestidade do produto
 
@@ -46,4 +46,4 @@ Python 3.12, FastAPI, Pydantic, Next e TypeScript. Modelos por API compatível c
 
 Esta constituição prevalece sobre tarefas e preferências individuais. Alterações exigem acordo das quatro frentes e atualização de `docs/PADRAO-DO-PROJETO.md`.
 
-**Versão**: 1.0.0 | **Ratificada**: 2026-11-07 | **Última alteração**: 2026-11-07
+**Versão**: 1.1.0 | **Ratificada**: 2026-11-07 | **Última alteração**: 2026-11-07 (coleta real e contato direto por contato público)

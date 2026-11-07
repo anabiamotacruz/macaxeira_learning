@@ -1,0 +1,102 @@
+[
+  {
+    "id": "v-001",
+    "titulo": "Pessoa engenheira Python sênior",
+    "descricao": "Desenvolver APIs Python em produção, revisar código e operar serviços.",
+    "requisitos_eliminatorios": [
+      "experiencia_python_producao_anos >= 5"
+    ],
+    "criterios": ["python", "apis", "operacao"],
+    "simulado": true
+  },
+  {
+    "id": "v-002",
+    "titulo": "Pessoa desenvolvedora frontend React",
+    "descricao": "Construir interfaces React acessíveis, testadas e responsivas.",
+    "requisitos_eliminatorios": [
+      "experiencia_react_producao_anos >= 2"
+    ],
+    "criterios": ["react", "acessibilidade", "testes_frontend"],
+    "simulado": true
+  },
+  {
+    "id": "v-003",
+    "titulo": "Pessoa engenheira de dados",
+    "descricao": "Criar pipelines confiáveis com Python e SQL em ambiente de dados.",
+    "requisitos_eliminatorios": [
+      "experiencia_pipelines_producao_anos >= 3"
+    ],
+    "criterios": ["python", "sql", "pipelines"],
+    "simulado": true
+  },
+  {
+    "id": "v-004",
+    "titulo": "Pessoa engenheira DevOps",
+    "descricao": "Automatizar infraestrutura, observabilidade e entregas contínuas.",
+    "requisitos_eliminatorios": [
+      "experiencia_cloud_producao_anos >= 3"
+    ],
+    "criterios": ["cloud", "ci_cd", "observabilidade"],
+    "simulado": true
+  },
+  {
+    "id": "v-005",
+    "titulo": "Pessoa analista de segurança",
+    "descricao": "Investigar alertas, fortalecer aplicações e documentar incidentes.",
+    "requisitos_eliminatorios": [
+      "experiencia_seguranca_anos >= 2"
+    ],
+    "criterios": ["seguranca_app", "incidentes", "documentacao"],
+    "simulado": true
+  },
+  {
+    "id": "v-006",
+    "titulo": "Pessoa cientista de dados",
+    "descricao": "Experimentar modelos preditivos reproduzíveis e comunicar resultados.",
+    "requisitos_eliminatorios": [
+      "experiencia_modelagem_anos >= 2"
+    ],
+    "criterios": ["modelagem", "python", "comunicacao"],
+    "simulado": true
+  },
+  {
+    "id": "v-007",
+    "titulo": "Pessoa engenheira mobile Android",
+    "descricao": "Evoluir aplicativo Android nativo com qualidade e monitoramento.",
+    "requisitos_eliminatorios": [
+      "experiencia_android_producao_anos >= 3"
+    ],
+    "criterios": ["kotlin", "android", "testes_mobile"],
+    "simulado": true
+  },
+  {
+    "id": "v-008",
+    "titulo": "Pessoa engenheira QA",
+    "descricao": "Definir estratégia de testes automatizados para produtos web.",
+    "requisitos_eliminatorios": [
+      "experiencia_qa_anos >= 2"
+    ],
+    "criterios": ["pytest", "testes_e2e", "qualidade"],
+    "simulado": true
+  },
+  {
+    "id": "v-009",
+    "titulo": "Pessoa engenheira de machine learning",
+    "descricao": "Colocar modelos em produção com monitoramento e versionamento.",
+    "requisitos_eliminatorios": [
+      "experiencia_ml_producao_anos >= 3"
+    ],
+    "criterios": ["mlops", "modelos", "monitoramento"],
+    "simulado": true
+  },
+  {
+    "id": "v-010",
+    "titulo": "Pessoa desenvolvedora backend Go",
+    "descricao": "Implementar serviços concorrentes Go com APIs observáveis.",
+    "requisitos_eliminatorios": [
+      "experiencia_go_producao_anos >= 2"
+    ],
+    "criterios": ["go", "apis", "concorrencia"],
+    "simulado": true
+  }
+]

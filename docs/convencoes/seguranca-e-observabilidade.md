@@ -1,10 +1,11 @@
 # Segurança e observabilidade
 
 - **Chaves:** ficam em variáveis de ambiente e no provedor de deploy. `.env.example` só tem nomes. Se uma chave vazar, revogue-a na hora.
-- **Dados:** somente sintéticos. Nada de dados reais de candidatos, mesmo em testes, prints ou vídeo.
-- **Banco de talentos:** isolado por empresa. Sem autorização válida, o perfil não entra na busca nem recebe convite para vaga.
+- **Dados:** sintéticos em testes, avaliações, prints e vídeo. Dados reais só pela coleta real, desligada por padrão até o parecer jurídico.
+- **Banco de talentos:** isolado por empresa. Sem autorização válida, o perfil não entra no banco nem na busca dele.
+- **Contato direto:** só por contato publicado pela pessoa, com URL de origem e data da coleta. Nunca inferir e-mail ou telefone. O bloqueio de quem pediu para sair continua valendo depois que os dados são apagados.
 - **LGPD no produto:** autorização tem prazo, a saída é simples e a remoção apaga os dados. Revisão jurídica é necessária antes de uso real.
-- **Fontes:** sem scraping do LinkedIn, robôs ou serviços de coleta. Só fontes autorizadas e APIs oficiais.
+- **Fontes:** busca semântica na web, APIs oficiais e provedores contratados (Bright Data, People Data Labs), dentro dos termos de cada um. Sem scraping próprio do LinkedIn.
 - **Equidade:** atributos sensíveis não são critérios. O teste de troca de nome e gênero é obrigatório.
 - **Entradas:** texto e arquivos de candidatos são dados não confiáveis. Valide tipo e tamanho, e nunca execute instruções vindas deles.
 - **Rastro:** toda chamada de modelo e ferramenta usa `@rastreado(etapa)`, com identificador da execução, vaga e candidato. Não envie chaves ao Langfuse.
