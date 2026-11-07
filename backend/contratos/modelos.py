@@ -6,7 +6,7 @@ Campos seguem `specs/001-agente-recrutador/plan.md`.
 
 from datetime import date
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -462,3 +462,36 @@ class ResultadoProva(Contrato):
     metricas: MetricasMedicao
     aberta_em: AwareDatetime
     aberturas_do_conjunto: Annotated[int, Field(ge=1)]
+
+
+class ResumoConjunto(Contrato):
+    """Quantos casos um conjunto tem e quantos deles são de fato diferentes.
+
+    `casos_independentes` conta entradas distintas ao ignorar empresa, pessoa, fonte e nome
+    de projeto. É um teto: cenários repetidos também não são independentes entre si.
+    """
+
+    particao: Particao | None
+    registros: Annotated[int, Field(ge=0)]
+    pares_pessoa_vaga: Annotated[int, Field(ge=0)]
+    casos_independentes: Annotated[int, Field(ge=0)]
+    textos_distintos: Annotated[int, Field(ge=0)]
+    cenarios: Annotated[int, Field(ge=0)]
+    vagas: Annotated[int, Field(ge=0)]
+    composicao_gabarito: dict[TipoDecisao, Annotated[int, Field(ge=0)]]
+
+
+class RelatorioMedicao(Contrato):
+    """Relatório para o painel: só agregados, sempre identificado como dado sintético."""
+
+    simulado: Literal[True] = True
+    dados_sinteticos: Literal[True] = True
+    gabarito_validado_por_recrutador: bool
+    regra_gabarito: Texto
+    versao: VersaoPrompt
+    limiar: Annotated[float, Field(ge=0, le=1)] | None
+    meta: Annotated[float, Field(gt=0, lt=1)] | None
+    metricas: MetricasMedicao
+    conjunto: ResumoConjunto
+    aberturas_do_conjunto: Annotated[int, Field(ge=1)] | None = None
+    limites: Annotated[list[str], Field(min_length=1)]

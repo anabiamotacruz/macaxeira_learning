@@ -26,19 +26,42 @@ Tipos de erro (`TipoErro`) e o denominador de cada taxa. Um caso pode ter mais d
 Revisão, cobertura e falhas dividem todos os casos e somam 1: cobertura é quem o agente
 resolveu sozinho, revisão é quem foi para uma pessoa, falha é quem ficou sem resposta.
 Falha nunca entra como acerto nem some da conta. Sem casos, a taxa é nula, nunca zero.
+
+Gabarito: `respostas_certas.json` traz estados por requisito e autorização, sem decisão final.
+`derivar_gabarito` deriva a decisão, nesta ordem, sem olhar a resposta do agente:
+
+    1. autorização bloqueada                                     -> descartar
+    2. algum requisito `nao_atende`                              -> descartar
+    3. algum requisito `desconhecido`                            -> pedir_humano
+    4. exagero, instrução no currículo ou perfil desatualizado   -> pedir_humano
+    5. cargo incomum, erro e sinônimo, duplicata ou referência   -> indicar
+
+O passo 4 é premissa nossa: nesses cenários os requisitos estão atendidos, mas o arquivo pede
+uma verificação que o agente não deveria resolver sozinho. Nada disso foi validado por recrutador.
 """
 
 import hashlib
 import json
 import logging
+import random
+import re
 import sqlite3
-from collections import defaultdict
-from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sequence
+from collections import Counter, defaultdict
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    Sequence,
+)
 from contextlib import closing, contextmanager
 from datetime import datetime
 from math import sqrt
 from pathlib import Path
 from statistics import NormalDist
+from typing import NamedTuple
 
 from pydantic import ValidationError
 
@@ -48,13 +71,16 @@ from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import (
     Candidato,
     CasoAvaliacao,
+    Contrato,
     DecisaoPortao,
     Evidencia,
     MetricasMedicao,
     Particao,
+    RelatorioMedicao,
     RespostaAgente,
     ResultadoCaso,
     ResultadoProva,
+    ResumoConjunto,
     TaxaMedida,
     TipoDecisao,
     TipoErro,
@@ -85,8 +111,31 @@ CacheRodada = MutableMapping[tuple[str, str], RespostaAgente]
 """Respostas por (hash da versão, hash da entrada). Nunca guarda gabarito nem falha."""
 
 
+REGRA_GABARITO = "derivar_gabarito_v1"
+SEMENTE_PARTICAO = 42
+"""Fixada antes de qualquer rodada, igual à semente do gerador."""
+PROPORCOES = {Particao.AJUSTE: 0.6, Particao.VALIDACAO: 0.2, Particao.PROVA: 0.2}
+"""Alvo em número de casos. Com poucos grupos, as proporções reais ficam longe dele."""
+AUTORIZACAO_VALIDA = "valida_na_data_referencia"
+AUTORIZACAO_BLOQUEADA = "bloqueada"
+ESTADOS_REQUISITO = frozenset({"atende", "nao_atende", "desconhecido"})
+CENARIOS_INDICAVEIS = frozenset({"cargo_incomum", "erro_e_sinonimo", "duplicata", "referencia"})
+CENARIOS_PEDEM_PESSOA = frozenset({"exagero", "instrucao_no_curriculo", "desatualizado"})
+CENARIOS_RESOLVIDOS_ANTES = frozenset(
+    {"opt_out", "autorizacao_vencida", "sem_autorizacao", "sem_requisito", "informacao_ausente"}
+)
+INDICADOS_PARA_MARGEM_DE_3_PONTOS = 384
+"""n = 1,96² * p * (1 - p) / margem², com p = 10% e margem de 0,03: dá 384,16."""
+_MARCA_DE_PROJETO = re.compile(r"\s*Projeto fictício [^.]*\.\s*$")
+"""O gerador só varia o nome do projeto no fim do texto: fora isso, o texto se repete."""
+
+
 class ProvaJaAberta(ErroContrato):
     """Esta versão já abriu a prova. A tentativa foi recusada e registrada."""
+
+
+class DadosInvalidos(ErroContrato):
+    """Arquivos de avaliação ausentes, incoerentes ou com algo que não sabemos derivar."""
 
 
 def _hash(dados: object) -> str:
@@ -493,4 +542,299 @@ def rodar_prova(
         metricas=calcular_metricas(aplicar_limiar(resultados, limiar)),
         aberta_em=agora,
         aberturas_do_conjunto=aberturas,
+    )
+
+
+class GabaritoDerivado(NamedTuple):
+    decisao: TipoDecisao
+    motivo: str
+
+
+def derivar_gabarito(
+    requisitos: Mapping[str, str], autorizacao: str, cenario: str
+) -> GabaritoDerivado:
+    """Deriva a decisão certa dos estados do arquivo, pela ordem descrita no início do módulo.
+
+    Não recebe a resposta do agente. Recusa o que não sabe derivar, em vez de adivinhar.
+    """
+    conhecidos = CENARIOS_INDICAVEIS | CENARIOS_PEDEM_PESSOA | CENARIOS_RESOLVIDOS_ANTES
+    if cenario not in conhecidos:
+        raise DadosInvalidos(f"cenário sem regra de gabarito: {cenario!r}")
+    if autorizacao not in (AUTORIZACAO_VALIDA, AUTORIZACAO_BLOQUEADA):
+        raise DadosInvalidos(f"autorização desconhecida: {autorizacao!r}")
+    estados = set(requisitos.values())
+    if not estados or not estados <= ESTADOS_REQUISITO:
+        raise DadosInvalidos(f"estados de requisito inválidos: {sorted(map(str, estados))}")
+
+    if autorizacao == AUTORIZACAO_BLOQUEADA:
+        return GabaritoDerivado(TipoDecisao.DESCARTAR, "autorizacao_bloqueada")
+    if "nao_atende" in estados:
+        return GabaritoDerivado(TipoDecisao.DESCARTAR, "requisito_nao_atendido")
+    if "desconhecido" in estados:
+        return GabaritoDerivado(TipoDecisao.PEDIR_HUMANO, "requisito_sem_informacao")
+    if cenario in CENARIOS_PEDEM_PESSOA:
+        return GabaritoDerivado(TipoDecisao.PEDIR_HUMANO, f"verificacao_aberta:{cenario}")
+    if cenario in CENARIOS_INDICAVEIS:
+        return GabaritoDerivado(TipoDecisao.INDICAR, "requisitos_atendidos_sem_ressalva")
+    raise DadosInvalidos(f"cenário {cenario!r} contradiz os estados do arquivo")
+
+
+def particionar(chaves: Sequence[Collection[str]], semente: int) -> list[Particao]:
+    """Sorteia a partição de cada caso, mantendo juntos os que dividem qualquer chave.
+
+    Os grupos são as componentes ligadas por chaves em comum, e o resultado não depende da
+    ordem de entrada. Cada partição recebe um grupo; o restante vai para a mais distante da
+    sua proporção, com empate na ordem de `PROPORCOES`. Sem três grupos, não há como separar.
+    """
+    pais: dict[str, str] = {}
+
+    def raiz(chave: str) -> str:
+        pais.setdefault(chave, chave)
+        while pais[chave] != chave:
+            pais[chave] = pais[pais[chave]]
+            chave = pais[chave]
+        return chave
+
+    for chaves_do_caso in chaves:
+        for chave in chaves_do_caso:
+            # A menor chave fica como raiz: o grupo não depende da ordem de entrada.
+            a, b = sorted((raiz(chave), raiz(min(chaves_do_caso))))
+            pais[b] = a
+
+    raizes = [raiz(min(chaves_do_caso)) for chaves_do_caso in chaves]
+    tamanhos = Counter(raizes)
+    grupos = sorted(tamanhos)
+    if len(grupos) < len(PROPORCOES):
+        raise DadosInvalidos(f"só {len(grupos)} grupos independentes para três partições")
+
+    random.Random(semente).shuffle(grupos)
+    destino: dict[str, Particao] = {}
+    ocupacao = dict.fromkeys(PROPORCOES, 0)
+    obrigatorias = [Particao.PROVA, Particao.VALIDACAO, Particao.AJUSTE]
+    for indice, grupo in enumerate(grupos):
+        if indice < len(obrigatorias):
+            particao = obrigatorias[indice]
+        else:
+            particao = max(PROPORCOES, key=lambda p: PROPORCOES[p] * len(chaves) - ocupacao[p])
+        destino[grupo] = particao
+        ocupacao[particao] += tamanhos[grupo]
+    return [destino[grupo] for grupo in raizes]
+
+
+def _texto_modelo(perfil: Candidato) -> str:
+    return _MARCA_DE_PROJETO.sub("", perfil.perfil_texto)
+
+
+def _chaves_do_caso(perfil: Candidato, vaga: Vaga, par_vies: str | None) -> set[str]:
+    """Pessoa, vaga e par ficam juntos. Texto igual em outra empresa também: seria quase cópia."""
+    chaves = {
+        f"pessoa|{perfil.empresa_id}|{perfil.id}",
+        f"vaga|{vaga.empresa_id}|{vaga.id}",
+        f"texto|{_texto_modelo(perfil)}",
+    }
+    if par_vies is not None:
+        chaves.add(f"par|{par_vies}")
+    return chaves
+
+
+class _RequisitoArquivo(Contrato):
+    estado: str
+    trecho: str
+
+
+class _CasoArquivo(Contrato):
+    indice: int
+    empresa_id: str
+    candidato_id: str
+    fonte: str
+    vaga_id: str
+    cenario: str
+    requisitos: dict[str, _RequisitoArquivo]
+    autorizacao_para_vaga: str
+    verificacoes: list[str]
+    par_vies: str | None = None
+
+
+class _ArquivoGabarito(Contrato):
+    versao: int
+    semente: int
+    quantidade: int
+    data_referencia: str
+    origem: str
+    casos: list[_CasoArquivo]
+
+
+def _ler_json(pasta: Path, nome: str) -> object:
+    try:
+        return json.loads((pasta / nome).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as erro:
+        raise DadosInvalidos(f"não foi possível ler {nome}: {type(erro).__name__}") from None
+
+
+def _montar_caso(
+    registro: _CasoArquivo,
+    perfil: Candidato,
+    vaga: Vaga,
+    particao: Particao,
+    arquivo: _ArquivoGabarito,
+) -> CasoAvaliacao:
+    if {r.id for r in vaga.requisitos} != set(registro.requisitos):
+        raise DadosInvalidos(f"requisitos do registro {registro.indice} diferem dos da vaga")
+    bloqueada = registro.autorizacao_para_vaga == AUTORIZACAO_BLOQUEADA
+    if perfil.opt_out and not bloqueada:
+        raise DadosInvalidos(f"registro {registro.indice} tem opt-out sem bloqueio")
+    derivado = derivar_gabarito(
+        {nome: r.estado for nome, r in registro.requisitos.items()},
+        registro.autorizacao_para_vaga,
+        registro.cenario,
+    )
+    return CasoAvaliacao(
+        id=f"{perfil.empresa_id}:{perfil.id}:{vaga.id}:{perfil.fonte}",
+        perfil=perfil,
+        vaga=vaga,
+        gabarito=derivado.decisao,
+        motivo_gabarito=derivado.motivo,
+        requisitos_atendidos=sorted(
+            nome for nome, r in registro.requisitos.items() if r.estado == "atende"
+        ),
+        autorizacao_bloqueada=bloqueada,
+        particao=particao,
+        armadilha=registro.cenario,
+        par_vies=registro.par_vies,
+        semente=arquivo.semente,
+        versao_gerador=str(arquivo.versao),
+    )
+
+
+def _casos_dos_arquivos(pasta: Path, semente: int) -> list[CasoAvaliacao]:
+    candidatos = _ler_json(pasta, "candidatos.json")
+    vagas = _ler_json(pasta, "vagas.json")
+    arquivo = _ArquivoGabarito.model_validate(_ler_json(pasta, "respostas_certas.json"))
+    perfis = [Candidato.model_validate(c) for c in candidatos]
+    vagas_por_id = {v.id: v for v in map(Vaga.model_validate, vagas)}
+    if not arquivo.quantidade == len(arquivo.casos) == len(perfis):
+        raise DadosInvalidos("candidatos e gabarito têm quantidades diferentes")
+
+    pares = []
+    for perfil, registro in zip(perfis, arquivo.casos, strict=True):
+        vaga = vagas_por_id.get(registro.vaga_id)
+        if vaga is None or vaga.empresa_id != perfil.empresa_id:
+            raise DadosInvalidos(f"registro {registro.indice} cita vaga inexistente")
+        if (perfil.empresa_id, perfil.id, perfil.fonte) != (
+            registro.empresa_id,
+            registro.candidato_id,
+            registro.fonte,
+        ):
+            raise DadosInvalidos(f"registro {registro.indice} não bate com o candidato")
+        pares.append((registro, perfil, vaga))
+
+    particoes = particionar([_chaves_do_caso(p, v, r.par_vies) for r, p, v in pares], semente)
+    casos = [
+        _montar_caso(registro, perfil, vaga, particao, arquivo)
+        for (registro, perfil, vaga), particao in zip(pares, particoes, strict=True)
+    ]
+    if len({caso.id for caso in casos}) != len(casos):
+        raise DadosInvalidos("há casos repetidos no gabarito")
+    return casos
+
+
+def ler_casos(pasta: Path | str, semente: int = SEMENTE_PARTICAO) -> list[CasoAvaliacao]:
+    """Lê os arquivos da Frente 2 e monta os casos, com partições reproduzíveis.
+
+    Lê `candidatos.json`, `vagas.json` e `respostas_certas.json`, alinhados pela posição, e
+    recusa qualquer incoerência. Só monta os casos: quem guarda a prova é `rodar_prova`.
+    """
+    try:
+        return _casos_dos_arquivos(Path(pasta), semente)
+    except (ValidationError, TypeError) as erro:  # sem valores: o perfil não vai para o erro
+        raise DadosInvalidos(f"dados fora do formato: {type(erro).__name__}") from None
+
+
+def _assinatura(caso: CasoAvaliacao) -> str:
+    perfil = caso.perfil
+    return _hash(
+        {
+            "texto": _texto_modelo(perfil),
+            "estado": perfil.estado,
+            "opt_out": perfil.opt_out,
+            "autorizou": perfil.autorizou_contato,
+            "validade": str(perfil.autorizacao_valida_ate),
+            "atualizado": str(perfil.atualizado_em),
+            "bloqueada": caso.autorizacao_bloqueada,
+            "requisitos": sorted((r.id, r.campo, r.valor_esperado) for r in caso.vaga.requisitos),
+        }
+    )
+
+
+def resumir_casos(casos: Sequence[CasoAvaliacao]) -> ResumoConjunto:
+    """Conta registros, pares e casos independentes. Mais de uma partição vira partição nula."""
+    particoes = {caso.particao for caso in casos}
+    composicao: dict[TipoDecisao, int] = defaultdict(int)
+    for caso in casos:
+        composicao[caso.gabarito] += 1
+    return ResumoConjunto(
+        particao=next(iter(particoes)) if len(particoes) == 1 else None,
+        registros=len(casos),
+        pares_pessoa_vaga=len({(c.perfil.empresa_id, c.perfil.id, c.vaga.id) for c in casos}),
+        casos_independentes=len({_assinatura(c) for c in casos}),
+        textos_distintos=len({_texto_modelo(c.perfil) for c in casos}),
+        cenarios=len({c.armadilha for c in casos if c.armadilha is not None}),
+        vagas=len({(c.vaga.empresa_id, c.vaga.id) for c in casos}),
+        composicao_gabarito=dict(composicao),
+    )
+
+
+def _limites(
+    metricas: MetricasMedicao, conjunto: ResumoConjunto, aberturas: int | None
+) -> list[str]:
+    indicados = metricas.erros[TipoErro.INDICACAO_ERRADA].casos
+    limites = [
+        "Dados sintéticos, feitos pelo próprio projeto e com cenários repetidos: "
+        "não são amostra estatística do mercado nem currículos reais.",
+        "Gabarito sintético, derivado por regra e não validado por recrutador: "
+        "acertar aqui não prova acerto no mundo real.",
+        f"{conjunto.registros} registros, {conjunto.pares_pessoa_vaga} pares pessoa e vaga e só "
+        f"{conjunto.casos_independentes} casos independentes, com {conjunto.textos_distintos} "
+        f"textos distintos em {conjunto.cenarios} cenários e {conjunto.vagas} vagas. Os "
+        "intervalos de Wilson contam registros e supõem independência: são otimistas.",
+        f"{indicados} casos indicados: medir 10% com margem de 3 pontos pede cerca de "
+        f"{INDICADOS_PARA_MARGEM_DE_3_PONTOS}.",
+        "Composição enriquecida de propósito: cobertura e revisão não são taxas de produção.",
+    ]
+    if aberturas is not None and aberturas > 1:
+        limites.append(
+            f"{aberturas} versões já abriram esta prova: cada olhada aumenta a chance de um "
+            "prompt ruim passar, e casos novos seriam necessários."
+        )
+    return limites
+
+
+def gerar_relatorio(
+    metricas: MetricasMedicao,
+    versao: VersaoPrompt,
+    conjunto: ResumoConjunto,
+    limiar: float | None,
+    meta: float | None,
+    aberturas_do_conjunto: int | None = None,
+) -> RelatorioMedicao:
+    """Monta o relatório para o painel. `model_dump_json()` dá o JSON, sem nada caso a caso.
+
+    O relatório sempre declara os limites da medição, inclusive quantos casos são independentes.
+    """
+    if metricas.versao_hash is not None and metricas.versao_hash != versao.hash:
+        raise ValueError("métricas de outra versão do prompt")
+    if metricas.particao != conjunto.particao:
+        raise ValueError("métricas e resumo não são da mesma partição")
+    if metricas.casos != conjunto.registros:
+        raise ValueError("métricas e resumo têm números de registros diferentes")
+    return RelatorioMedicao(
+        gabarito_validado_por_recrutador=False,
+        regra_gabarito=REGRA_GABARITO,
+        versao=versao,
+        limiar=limiar,
+        meta=meta,
+        metricas=metricas,
+        conjunto=conjunto,
+        aberturas_do_conjunto=aberturas_do_conjunto,
+        limites=_limites(metricas, conjunto, aberturas_do_conjunto),
     )
