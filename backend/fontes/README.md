@@ -151,3 +151,37 @@ necessária antes da indicação. As notas propostas pelo modelo e a invariânci
 foram verificadas com respostas sintéticas, não com o modelo real. T1.1/T1.3/T1.11
 continuam pendentes para regras centrais, cliente e auditoria completos. Não há
 mudança nos contratos compartilhados.
+
+## T2.4 — revisor independente
+
+`Revisor(cliente_modelo, hoje=...).revisar(vaga, candidato, analise)` confere o
+escopo e a elegibilidade atual antes de qualquer chamada. Faz uma solicitação
+separada, na etapa `revisar_perfil`, recebendo apenas os critérios profissionais,
+o perfil sanitizado e a fonte. Não recebe notas, lacunas, conclusões ou evidências
+do analisador. O cliente é injetado: uma chamada separada não significa outro
+provedor ou outro modelo.
+
+O revisor produz suas próprias evidências e possíveis ressalvas. O código valida
+critério, fonte e trecho literal no perfil original e sanitizado; uma ressalva do
+modelo só entra se citar trecho verificável. Uma proposta inválida gera pedido de
+revisão humana, sem apresentar o motivo inventado como fato. O código também
+confere as evidências e notas da análise original, além do resultado dos requisitos
+estruturados. Ausência de evidência independente é inconclusiva, não reprovação.
+
+A saída é uma cópia de `Analise`: preserva as notas e ressalvas anteriores e
+acrescenta as novas ressalvas em `ressalvas_revisor`. O consumidor deve encaminhar
+análises com ressalvas para revisão humana, conforme as regras da frente 1.
+Nenhum envio, decisão de contratação ou alteração de contrato ocorre aqui.
+
+Resposta fora do esquema ou indisponibilidade admitem até duas solicitações locais;
+a falha final exige revisão humana. Limite de gasto propaga. Não há cache da
+revisão: cada execução revalida autorização e gera nova chamada com registros de
+etapa e ids, sem imprimir currículo ou resposta do modelo.
+
+Validação sintética: 19 testes específicos e 12 avaliações mecânicas com citações
+literais/adulteradas nas seis vagas. Essas avaliações verificam o tratamento de
+citações, não a pertinência semântica ou a calibração das notas. Avaliação com o
+modelo real e validação humana continuam pendentes; uma citação literal pode ser
+interpretada incorretamente pelo modelo. A sanitização compartilha os limites
+conhecidos documentados na T2.3. A integração do fluxo com T1.1/T1.3/T1.11 ainda
+precisa ser validada quando essas tarefas estiverem disponíveis.

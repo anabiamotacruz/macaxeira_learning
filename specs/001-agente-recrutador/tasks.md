@@ -205,11 +205,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** implementação de `BancoTalentos`.
 
-- [ ] Testar `test_importa_base_e_remove_duplicatas`, com a origem registrada.
-- [ ] Testar `test_empresas_nao_veem_dados_uma_da_outra`.
-- [ ] Testar `test_busca_ignora_quem_nao_tem_autorizacao_valida`.
-- [ ] Testar `test_remover_apaga_dados_e_impede_novo_contato`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_importa_base_e_remove_duplicatas`, com a origem registrada.
+- [x] Testar `test_empresas_nao_veem_dados_uma_da_outra`.
+- [x] Testar `test_busca_ignora_quem_nao_tem_autorizacao_valida`.
+- [x] Testar `test_remover_apaga_dados_e_impede_novo_contato`.
+- [x] Implementar e verificar.
 
 ### T2.2 [P] (onda 2): rede de talentos simulada
 
@@ -264,8 +264,8 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** implementação de `Revisor`, em uma chamada separada, sem receber a justificativa do analisador como verdade.
 
-- [ ] Testar `test_aponta_exagero_sem_evidencia`, `test_nao_inventa_problema_em_caso_solido` e `test_resposta_invalida_pede_humano`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_aponta_exagero_sem_evidencia`, `test_nao_inventa_problema_em_caso_solido` e `test_resposta_invalida_pede_humano`.
+- [x] Implementar e verificar.
 
 ### T2.9 (onda 2): documentos enviados pela pessoa
 
