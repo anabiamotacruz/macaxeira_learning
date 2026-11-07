@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+from backend.agente.auditoria import RegistroRastro
 from backend.contratos.modelos import (
     Analise,
     Candidato,
@@ -17,6 +18,16 @@ AGORA = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
 TRECHO_REQUISITO = "Cinco anos com Python"
 TRECHO_COMPETENCIA = "Liderou APIs"
 PERFIL_EXEMPLO = f"{TRECHO_REQUISITO}. {TRECHO_COMPETENCIA} em produção."
+
+
+class CapturaRastro:
+    """Destino externo de rastro: guarda todos os registros, como a auditoria os emite."""
+
+    def __init__(self) -> None:
+        self.registros: list[RegistroRastro] = []
+
+    def registrar(self, registro: RegistroRastro) -> None:
+        self.registros.append(registro)
 
 
 class Relogio:

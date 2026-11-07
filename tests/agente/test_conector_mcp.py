@@ -27,6 +27,7 @@ from backend.agente.fluxo import EstadoFluxo, MotivoPausa
 from backend.contratos.erros import ErroContrato
 from backend.contratos.interfaces import AgenteRecrutador
 from backend.contratos.modelos import PacoteContexto, TipoResposta
+from tests.agente.apoio import CapturaRastro
 from tests.agente.servidor_mcp_sintetico import (
     DestinoSintetico,
     porta_livre,
@@ -47,23 +48,6 @@ ENTREGA = "receber_pacote"
 AGENDA = "pedir_link"
 RESULTADOS = "ler_resultados"
 CHAVE = "entrega:empresa-a:v1:c1"
-
-
-class CapturaRastro:
-    """Destino externo de rastro: guarda todos os registros, como a auditoria os emite."""
-
-    def __init__(self) -> None:
-        self.registros: list[auditoria.RegistroRastro] = []
-
-    def registrar(self, registro: auditoria.RegistroRastro) -> None:
-        self.registros.append(registro)
-
-
-@pytest.fixture
-def rastro(rastro_somente_local: None) -> CapturaRastro:
-    captura = CapturaRastro()
-    auditoria.configurar_destino_externo(captura)
-    return captura
 
 
 def _pacote(**campos: Any) -> PacoteContexto:
