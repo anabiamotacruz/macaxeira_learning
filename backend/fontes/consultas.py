@@ -141,14 +141,14 @@ def _gerar(vaga: Vaga, cliente: ClienteModelo, *, ampliar: bool) -> list[str]:
         for requisito in vaga.requisitos
     ]
     palavras = _palavras_chave(" ".join(termos_requisitos))
-    # A primeira consulta não exige o título literal quando há requisitos.
-    # Os demais cargos são alternativas adicionais, não filtros eliminatórios.
-    if palavras:
-        cargos = ["", *cargos] if regra == "sinonimos_validados" else [""]
+    # Cada termo é uma alternativa de descoberta. Requisitos conjuntos são
+    # verificados depois em código, nunca pela coocorrência literal no currículo.
+    alternativas = palavras.split()
+    if regra == "sinonimos_validados" or not alternativas:
+        alternativas.extend(cargos)
     consultas = []
     vistos = set()
-    for cargo in cargos:
-        consulta = " ".join(parte for parte in [cargo, palavras] if parte)
+    for consulta in alternativas:
         chave = _normalizar(consulta)
         if chave not in vistos:
             consultas.append(consulta)

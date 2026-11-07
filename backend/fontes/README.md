@@ -4,19 +4,23 @@
 
 `gerar_consultas(vaga, cliente_modelo)` devolve consultas de palavras-chave em
 texto simples. Por exemplo, requisitos “Python” e “experiência em produção”
-geram a consulta básica `Python produção`. Palavras de ligação e introduções
+geram consultas independentes `Python` e `produção`. Palavras de ligação e introduções
 genéricas são removidas; termos técnicos e acentos são preservados. Valores
 categóricos explícitos, como “Python” em “Linguagem”, substituem a descrição
 genérica na descoberta. Competências opcionais não viram filtros obrigatórios.
 
-Quando há palavras-chave, a consulta básica dispensa o título literal. Com uma
-resposta válida do modelo, seguem consultas adicionais com o título original
-e até seis sinônimos. Sem requisitos úteis, usa-se o cargo, nunca consulta vazia.
-O banco atual exige todas as palavras de cada consulta (E). Consultas alternativas
-devem ser executadas separadamente e seus resultados reunidos pelo chamador.
-A descoberta não valida requisitos: negações, intervalos e elegibilidade continuam
-nas regras determinísticas. A extração é lexical: não resolve flexões, sinônimos
-de competências ou equivalência semântica entre descrições.
+Cada palavra-chave é uma alternativa de descoberta. Com uma resposta válida do
+modelo, seguem consultas adicionais com o título original e até seis sinônimos,
+sem concatenar todos os requisitos. Sem requisitos úteis, usa-se o cargo, nunca
+consulta vazia. O chamador executa as consultas separadamente, percorre todas as
+páginas e reúne os resultados por empresa e id (OU entre consultas).
+
+A descoberta pode trazer quem só menciona um termo, inclusive em contexto negativo.
+Ela não comprova requisitos: o funil verifica todos os campos estruturados e a
+análise confere as evidências. Negação, intervalos e elegibilidade ficam nas regras
+determinísticas. A extração é lexical, sem equivalência semântica ou stemming.
+O teste integrado percorre as consultas nas seis vagas e nos 250 registros
+sintéticos e exige recuperar ao menos um perfil com todos os requisitos por vaga.
 
 `ampliar_consultas(vaga, anteriores, cliente_modelo)` pede outros sinônimos e
 devolve somente consultas novas. Se não houver novidade, retorna lista vazia;
