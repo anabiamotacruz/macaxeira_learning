@@ -399,12 +399,15 @@ def test_repr_do_provedor_nao_expoe_o_token():
     assert TOKEN_BRIGHT not in repr(p)
 
 
-@pytest.mark.parametrize("html", ["<![foo bar]>texto", "<![if", "<!DOCTYPE [<![x]>"])
-def test_marcacao_que_derruba_o_leitor_de_html_conta_como_nao_encontrada(html):
-    p, _ = provedor(envelope(html))
+def test_erro_do_leitor_de_html_conta_como_nao_encontrada(monkeypatch):
+    def quebrar(_leitor, _texto):
+        raise AssertionError("marcação malformada")
+
+    monkeypatch.setattr("backend.fontes.provedores.bright_data._LeitorHtml.feed", quebrar)
+    p, _ = provedor(envelope())
     resposta = ler(p)
-    assert isinstance(resposta.custo_usd, float)
-    assert all("foo" not in i.texto for i in resposta.itens)
+    assert resposta.itens == []
+    assert resposta.custo_usd == CUSTO_REQUISICAO_USD
 
 
 def test_json_aninhado_demais_e_resposta_invalida():
