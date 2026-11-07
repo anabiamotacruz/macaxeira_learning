@@ -120,3 +120,34 @@ python -m pytest tests/fontes/test_funil_avaliacao.py -m eval -v
 Elas conferem elegibilidade contra os 250 rótulos nas seis vagas e invariância da
 ordem ao alterar nome e gênero. Não medem precisão top 5, qualidade de análise ou
 taxa de contratação e não substituem a avaliação independente da frente 4.
+
+## T2.3 — análise com evidências
+
+`Analisador(cliente_modelo, hoje=..., cache=..., versao_configuracao=...)` implementa
+`analisar(vaga, candidato) -> Analise`. O funil valida empresa, autorização e
+requisitos estruturados antes de qualquer chamada. O cache reutiliza análises
+válidas, com invalidação por mudanças na vaga, perfil ou versão de configuração.
+
+O modelo recebe somente critérios profissionais, fonte e texto delimitado em JSON.
+Nome, atributos arbitrários, contatos estruturados e datas do histórico não são
+enviados. Segmentos reconhecidos como instrução ou critério sensível são retirados,
+preservando as frases profissionais adjacentes; instruções geram alerta.
+
+O código valida o esquema, limita notas a 0–1 e aceita apenas competências da vaga
+com evidência de fonte conhecida e trecho literal presente tanto no perfil original
+quanto no texto enviado. Afirmações sem evidência são removidas. Requisitos são
+verificados em código; lacunas são perguntas e não geram descontos no código.
+
+Há no máximo duas solicitações locais em caso de resposta inválida ou modelo
+indisponível; o cliente central pode ter sua própria política de tentativas. Se
+ambas falham, retorna análise sem notas com alerta de revisão humana, sem cachear
+a falha. Limite de gasto propaga para o fluxo pausar. Cada solicitação, cache e
+resultado registra etapa e ids, sem imprimir o perfil.
+
+Limites: a sanitização reconhece padrões conhecidos, não prova proteção contra
+toda injeção ou atributo pessoal em texto livre. A existência literal de uma citação
+não prova sua interpretação semântica: a revisão independente T2.4 continua
+necessária antes da indicação. As notas propostas pelo modelo e a invariância
+foram verificadas com respostas sintéticas, não com o modelo real. T1.1/T1.3/T1.11
+continuam pendentes para regras centrais, cliente e auditoria completos. Não há
+mudança nos contratos compartilhados.

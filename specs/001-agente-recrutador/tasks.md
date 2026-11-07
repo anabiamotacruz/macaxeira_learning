@@ -252,11 +252,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Consome:** `ClienteModelo`, regras. **Produz:** implementação de `Analisador`.
 
-- [ ] Com o modelo simulado, testar `test_evidencias_citam_trecho_do_perfil`.
-- [ ] Testar `test_remove_afirmacao_sem_trecho`.
-- [ ] Testar `test_instrucao_no_curriculo_vira_alerta`, sem alterar a nota.
-- [ ] Testar `test_lacuna_nao_reduz_nota_sozinha`.
-- [ ] Implementar e verificar.
+- [x] Com o modelo simulado, testar `test_evidencias_citam_trecho_do_perfil`.
+- [x] Testar `test_remove_afirmacao_sem_trecho`.
+- [x] Testar `test_instrucao_no_curriculo_vira_alerta`, sem alterar a nota.
+- [x] Testar `test_lacuna_nao_reduz_nota_sozinha`.
+- [x] Implementar e verificar.
 
 ### T2.4 (onda 2): revisor independente
 
