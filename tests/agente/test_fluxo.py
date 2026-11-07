@@ -2784,6 +2784,21 @@ def test_duas_duplicatas_da_mesma_pessoa_viram_duas_decisoes(tmp_path: Path) -> 
     assert [d.entrada["origem"] for d in duplicatas] == ["csv", "indicacao"]
 
 
+def test_reserva_nao_vira_decisao_nem_analise_e_fica_registrada_no_evento(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(_corte("c2", "reserva"))
+    )
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert "c2" not in _decisoes(m)
+    assert "c2" not in fluxo.resumo().fila_humana
+    assert "c2" not in {c.id for c, _, _ in fluxo.situacao_candidatos()}
+    reservas = [e for e in fluxo.eventos if e.etapa == "reserva" and e.candidato_id == "c2"]
+    assert len(reservas) == 1
+
+
 def test_fora_do_limite_vai_para_a_fila_sem_descarte_nem_analise(tmp_path: Path) -> None:
     m = Montagem(
         tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(_corte("c2", "fora_do_limite"))

@@ -176,19 +176,152 @@ def test_dado_ausente_nao_elimina(atributos):
     assert cortes == []
 
 
-def test_dado_ausente_nao_reduz_prioridade():
+def test_requisito_confirmado_vem_antes_de_requisito_sem_dado_sem_eliminar_ninguem():
     candidatos = [
-        _pessoa("a", atributos={"producao": "sim", "presencial_sp": "sim"}),
-        _pessoa("b", atributos={}),
-    ]
-
-    assert _ids(_priorizar(_vaga(), candidatos)[0]) == ["a", "b"]
-    assert _ids(_priorizar(_vaga(), list(reversed(candidatos)))[0]) == ["a", "b"]
-    invertidos = [
         _pessoa("a", atributos={}),
         _pessoa("b", atributos={"producao": "sim", "presencial_sp": "sim"}),
     ]
-    assert _ids(_priorizar(_vaga(), invertidos)[0]) == ["a", "b"]
+
+    selecionados, cortes = _priorizar(_vaga(), candidatos)
+
+    assert _ids(selecionados) == ["b", "a"]
+    assert cortes == []
+
+
+def test_quem_atende_os_requisitos_nao_fica_atras_de_quem_nem_cita_a_funcao():
+    incomum = _pessoa("z-incomum", "Artífice de oficina. Cuido de plataformas.")
+    outra_funcao = _pessoa(
+        "a-outra",
+        "Consultoria de processos. Sistemas de atendimento, testes de mercado, reviews.",
+        atributos={"presencial_sp": "sim"},
+    )
+
+    selecionados, _ = _priorizar(_vaga(), [outra_funcao, incomum], limite=1)
+
+    assert _ids(selecionados) == ["z-incomum"]
+
+
+def test_perfil_com_outras_palavras_e_requisitos_confirmados_chega_a_analise():
+    pessoas = [_pessoa(f"p{i:02d}", "Texto sem nenhum termo da vaga.") for i in range(3)]
+
+    selecionados, cortes = _priorizar(_vaga(meta_candidatos=1), pessoas)
+
+    assert _ids(selecionados) == ["p00", "p01", "p02"]
+    assert cortes == []
+
+
+def test_outra_funcao_com_requisito_sem_dado_fica_na_reserva_e_nao_gasta_modelo():
+    aderente = _pessoa("a", "Engenharia de software.")
+    outra = _pessoa("b", "Consultoria de processos.", atributos={"presencial_sp": "sim"})
+
+    selecionados, cortes = _priorizar(_vaga(meta_candidatos=1), [aderente, outra])
+
+    assert _ids(selecionados) == ["a"]
+    assert _regras(cortes) == {"b": RegraCorte.RESERVA}
+
+
+def test_requisito_sem_dado_que_cita_a_funcao_chega_a_analise():
+    aderente = _pessoa("a", "Texto qualquer.")
+    sem_dado = _pessoa("b", "Software engineer com perfil incompleto.", atributos={})
+
+    selecionados, cortes = _priorizar(_vaga(meta_candidatos=1), [sem_dado, aderente])
+
+    assert _ids(selecionados) == ["a", "b"]
+    assert cortes == []
+
+
+def test_requisito_sem_dado_que_cita_as_competencias_chega_a_analise():
+    aderente = _pessoa("a", "Texto qualquer.")
+    sem_dado = _pessoa("b", "Sistemas distribuídos, sempre.", atributos={})
+
+    selecionados, _ = _priorizar(_vaga(meta_candidatos=1), [sem_dado, aderente])
+
+    assert _ids(selecionados) == ["a", "b"]
+
+
+def test_a_reserva_completa_a_rodada_quando_os_aderentes_nao_bastam_para_a_meta():
+    aderente = _pessoa("a", "Texto qualquer.")
+    outra = _pessoa("b", "Consultoria de processos.", atributos={"presencial_sp": "sim"})
+
+    selecionados, cortes = _priorizar(_vaga(meta_candidatos=2), [outra, aderente])
+
+    assert _ids(selecionados) == ["a", "b"]
+    assert cortes == []
+
+
+def test_excedente_com_requisito_sem_dado_fica_na_reserva_e_nao_na_fila_humana():
+    confirmado = [_pessoa("a"), _pessoa("b")]
+    sem_dado = _pessoa("c", "Software engineer.", atributos={})
+
+    selecionados, cortes = _priorizar(_vaga(meta_candidatos=1), [*confirmado, sem_dado], limite=1)
+
+    assert _ids(selecionados) == ["a"]
+    assert _regras(cortes) == {"b": RegraCorte.FORA_DO_LIMITE, "c": RegraCorte.RESERVA}
+
+
+def test_flexao_da_palavra_conta_como_a_mesma_competencia():
+    vaga = _vaga(competencias=[Competencia(nome="liderança técnica", peso=1.0)])
+    citou = _pessoa("z", "Liderei decisões técnicas.")
+    nao_citou = _pessoa("a", "Texto qualquer.")
+
+    assert _ids(_priorizar(vaga, [nao_citou, citou])[0]) == ["z", "a"]
+
+
+def test_volume_de_texto_nao_aumenta_prioridade():
+    curto = _pessoa("z", "Sistemas distribuídos.")
+    longo = _pessoa("a", "Sistemas. " + "Atendimento ao público, vendas e logística. " * 200)
+
+    assert _ids(_priorizar(_vaga(), [longo, curto])[0]) == ["z", "a"]
+
+
+def test_texto_sem_relacao_nao_muda_a_ordem_entre_iguais():
+    base = "Sistemas distribuídos."
+    curto = _pessoa("z", base)
+    longo = _pessoa("a", f"{base} " + "Outras palavras sem ligação alguma. " * 100)
+
+    assert _ids(_priorizar(_vaga(), [curto, longo])[0]) == ["a", "z"]
+
+
+@pytest.mark.parametrize(
+    "extra", [{"genero": "feminino"}, {"idade": "60"}, {"foto": "x"}, {"raca": "parda"}]
+)
+def test_atributo_sensivel_e_nome_nao_mudam_quem_fica_na_reserva(extra):
+    base = {"presencial_sp": "sim"}
+    com = _pessoa("b", "Consultoria.", atributos={**base, **extra}, nome="Maria")
+    sem = _pessoa("c", "Consultoria.", atributos=base, nome="João")
+    aderente = _pessoa("a", "Software engineer.")
+
+    selecionados, cortes = _priorizar(_vaga(meta_candidatos=1), [com, sem, aderente])
+
+    assert _ids(selecionados) == ["a"]
+    assert _regras(cortes) == {"b": RegraCorte.RESERVA, "c": RegraCorte.RESERVA}
+
+
+def test_desatualizado_sem_ligacao_com_a_vaga_fica_na_reserva():
+    outra = _pessoa(
+        "b", "Consultoria.", atributos={"presencial_sp": "sim"}, estado=EstadoBanco.DESATUALIZADO
+    )
+
+    _, cortes = _priorizar(_vaga(meta_candidatos=1), [_pessoa("a"), outra])
+
+    assert _regras(cortes) == {"b": RegraCorte.RESERVA}
+
+
+def test_desatualizado_que_cita_a_funcao_continua_com_uma_pessoa():
+    sem_dado = _pessoa("b", "Software engineer.", atributos={}, estado=EstadoBanco.DESATUALIZADO)
+
+    _, cortes = _priorizar(_vaga(meta_candidatos=1), [_pessoa("a"), sem_dado])
+
+    assert _regras(cortes) == {"b": RegraCorte.PERFIL_DESATUALIZADO}
+
+
+def test_corte_da_reserva_nao_traz_dados_do_perfil():
+    outra = _pessoa("b", "Consultoria.", atributos={"presencial_sp": "sim"}, nome="Maria")
+
+    _, cortes = _priorizar(_vaga(meta_candidatos=0), [_pessoa("a", "Software."), outra])
+
+    assert "Maria" not in cortes[0].motivo
+    assert "Consultoria" not in cortes[0].motivo
 
 
 def test_perfil_desatualizado_com_autorizacao_valida_sai_para_uma_pessoa_confirmar():
@@ -260,7 +393,7 @@ def test_falta_de_github_nao_reduz_prioridade(com_github, sem_github):
             com_github,
             "testes. Portfólio no GitHub: github.com/ficticio",
             fonte="github_teste",
-            atributos={"github": "github.com/ficticio", "producao": "sim"},
+            atributos={"github": "github.com/ficticio", "producao": "sim", "presencial_sp": "sim"},
         ),
         _pessoa(sem_github, "testes"),
     ]

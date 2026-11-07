@@ -44,6 +44,7 @@ from backend.agente.maquina import ESTADOS_ATIVOS, TRANSICOES
 from backend.agente.persistencia import Repositorio, resumos_da_pessoa
 from backend.agente.regras import (
     CORTES_POR_AUTORIZACAO,
+    CORTES_SEM_DECISAO,
     CorteFunil,
     StatusRequisito,
     TipoEvidencia,
@@ -157,6 +158,7 @@ def _transitar(
 
 
 CANAL_CONVITE = "email"
+ETAPA_RESERVA = "reserva"
 LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
@@ -1301,14 +1303,22 @@ class FluxoVaga:
         cortes: list[CorteFunil],
         registros: dict[tuple[str, str, str], Candidato],
     ) -> None:
-        """Cada corte vira uma decisão. Refazer a busca depois de uma pausa não a repete."""
+        """Cada corte vira uma decisão. Refazer a busca depois de uma pausa não a repete.
+
+        A reserva não é decisão: fica o evento, e a pessoa pode voltar em outra rodada.
+        """
         mandato = self.mandato
         agora = self._relogio()
         ja_registradas = {
             (d.candidato_id, d.regra, d.entrada.get("fonte"), d.entrada.get("origem"))
             for d in self._repo.listar_decisoes(self.vaga.empresa_id, self.vaga.id)
         }
+        na_reserva = {e.candidato_id for e in self.eventos if e.etapa == ETAPA_RESERVA}
         for corte in cortes:
+            if str(corte.regra) in CORTES_SEM_DECISAO:
+                if corte.candidato_id not in na_reserva:
+                    self._evento(ETAPA_RESERVA, corte.motivo, corte.candidato_id)
+                continue
             decisao = decisao_de_corte(
                 corte, mandato, agora, self._rastro_id(progresso, corte.candidato_id)
             )

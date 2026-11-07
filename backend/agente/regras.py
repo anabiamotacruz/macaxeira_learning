@@ -48,6 +48,10 @@ CORTES_QUE_DESCARTAM = CORTES_POR_AUTORIZACAO | {"duplicata", "requisito_nao_ate
 """Fora do limite não descarta: a pessoa é elegível e só não coube nas análises da rodada.
 Perfil desatualizado também não: a autorização vale, e uma pessoa confirma o perfil."""
 
+CORTES_SEM_DECISAO = frozenset({"reserva"})
+"""Ninguém decidiu sobre a pessoa: ela segue no banco, sem análise, e pode voltar em outra rodada.
+Fica só o evento, para não encher a fila humana com quem não mostrou ligação com a vaga."""
+
 REGRA_PERFIL_DESATUALIZADO = "perfil_desatualizado"
 
 
