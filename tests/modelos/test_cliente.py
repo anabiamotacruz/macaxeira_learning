@@ -761,3 +761,9 @@ def test_env_example_lista_as_variaveis_que_o_cliente_le():
         for linha in (raiz / ".env.example").read_text(encoding="utf-8").splitlines()
         if "=" in linha and not linha.startswith("#")
     )
+
+
+def test_max_tokens_padrao_deixa_espaco_para_o_raciocinio_do_modelo():
+    from backend.modelos.cliente import MAX_TOKENS_PADRAO
+
+    assert MAX_TOKENS_PADRAO >= 6000
