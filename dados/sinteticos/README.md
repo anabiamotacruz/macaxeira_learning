@@ -6,11 +6,11 @@ Endereços `example.invalid` não são canais reais de envio.
 
 ## Arquivos e reprodução
 
-- `candidatos.json`: 200 registros, incluindo duplicatas intencionais.
+- `candidatos.json`: 250 registros, incluindo duplicatas intencionais.
 - `vagas.json`: três funções em cada uma de duas empresas fictícias (seis vagas).
 - `respostas_certas.json`: gabarito de avaliação; **não entregar ao agente**.
 
-O conjunto usa `gerar(42, 200)` em `dados/gerador.py` e a data fixa **2026-11-07**.
+O conjunto usa `gerar(42, 250)` em `dados/gerador.py` e a data fixa **2026-11-07**.
 Para recriar apenas os perfis, na raiz do repositório, com a venv ativada:
 
 ```bash
@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 from dados.gerador import gerar
 
-perfis = [p.model_dump(mode="json") for p in gerar(42, 200)]
+perfis = [p.model_dump(mode="json") for p in gerar(42, 250)]
 Path("dados/sinteticos/candidatos.json").write_text(
     json.dumps(perfis, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
 )
@@ -51,7 +51,7 @@ implementam o isolamento de acesso; isso será responsabilidade da T2.6.
 
 A semente varia o nome de projeto no texto. Os cenários e sua ordem são fixos
 para garantir cobertura. São modelos de perfis deliberadamente simples, não
-uma amostra estatística do mercado nem 200 biografias independentes. Não usar
+uma amostra estatística do mercado nem 250 biografias independentes. Não usar
 este conjunto como único teste de qualidade de um modelo: ele é previsível e
 precisará de casos de avaliação independentes na frente 4.
 
@@ -117,3 +117,16 @@ não são respostas das APIs externas nem comprovam uma integração com elas.
 Os registros pendentes, vencidos e com opt-out são entradas adversas de teste,
 não pessoas autorizadas para importação automática no banco. Consumidores devem
 aplicar as regras de autorização e isolamento antes de usá-los em buscas.
+
+## Cobertura rotulada ampliada
+
+O conjunto tem 250 registros rotulados por candidato e vaga, com 229 pessoas
+identificadas por `(empresa_id, id)` e 21 duplicatas intencionais entre fontes.
+São 12 tipos de cenário distribuídos nas seis vagas; aumentar o volume não cria
+250 comportamentos independentes. Os rótulos são sintéticos, ainda sujeitos à
+validação de RH. Cada rótulo é testado individualmente contra os fatos e os
+trechos do perfil. Não foi usado nenhum modelo ou classificador para rotular.
+
+Os testes adicionais cobrem sete sementes, tamanhos nas fronteiras dos blocos,
+independência das duplicatas, autorização que vence hoje/ontem/amanhã, combinações
+de autorização e opt-out e importação/paginação no banco da frente 2.

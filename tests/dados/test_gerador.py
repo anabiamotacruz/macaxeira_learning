@@ -15,7 +15,7 @@ PASTA = Path(__file__).resolve().parents[2] / "dados" / "sinteticos"
 HOJE = date(2026, 11, 7)
 
 
-def gerar(semente=42, quantidade=200):
+def gerar(semente=42, quantidade=250):
     # Importação tardia permite observar as falhas de cada teste antes do módulo existir.
     return importlib.import_module("dados.gerador").gerar(semente, quantidade)
 
@@ -140,7 +140,7 @@ def test_fixture_corresponde_ao_gerador_e_vagas_validam():
 def test_gabarito_tem_referencias_e_evidencias_validas():
     gabarito = ler("respostas_certas.json")
     assert gabarito["semente"] == 42
-    assert gabarito["quantidade"] == 200
+    assert gabarito["quantidade"] == 250
     assert gabarito["data_referencia"] == HOJE.isoformat()
     perfis = gerar()
     vagas = {v["id"]: v for v in ler("vagas.json")}

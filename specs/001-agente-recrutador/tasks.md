@@ -190,7 +190,7 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Arquivos:** `dados/gerador.py`, `dados/sinteticos/`. **Teste:** `tests/dados/test_gerador.py`.
 
-**Produz:** `gerar(semente: int, quantidade: int) -> list[Candidato]`, cerca de 200 perfis, pelo menos 3 vagas de tech e `respostas_certas.json` separado.
+**Produz:** `gerar(semente: int, quantidade: int) -> list[Candidato]`, 250 registros rotulados (incluindo duplicatas de teste), pelo menos 3 vagas de tech e `respostas_certas.json` separado.
 
 - [x] Testar `test_geracao_reproduzivel_com_mesma_semente`.
 - [x] Testar `test_todos_os_perfis_sao_simulados`.
