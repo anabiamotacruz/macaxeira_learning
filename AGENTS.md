@@ -1,6 +1,6 @@
 # AGENTS.md: macaxeira_learning
 
-Digital worker de sourcing para RH: encontra candidatos, explica cada escolha, faz o primeiro contato e entrega o contexto à Nara, que agenda e entrevista. É um produto próprio que a Tako pode usar, não um produto feito para ela.
+Digital worker de sourcing para RH: constrói e mantém o banco de talentos de cada empresa, encontra candidatos nele, explica cada escolha, faz o primeiro contato e entrega o contexto à Nara, que agenda e entrevista. É um produto próprio que a Tako pode usar, não um produto feito para ela.
 
 **Leia antes de qualquer tarefa:**
 
@@ -20,6 +20,7 @@ Digital worker de sourcing para RH: encontra candidatos, explica cada escolha, f
 - Escreva o teste antes do código e rode os testes antes de declarar pronto.
 - Commits e PRs descrevem a mudança, sem atribuição a assistentes.
 
+- Cada empresa tem o próprio banco. Dados de uma empresa nunca aparecem para outra, e autorização vencida tira a pessoa da busca.
 - O agente não agenda entrevistas, não avalia candidatos no lugar da Nara e não decide contratações.
 - Atributos sensíveis não podem ser critérios. Trocar nome ou gênero não pode mudar o resultado.
 - Pare e pergunte antes de mudar um contrato, o escopo ou uma decisão de produto.

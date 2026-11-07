@@ -12,7 +12,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 
 **Produz:** os contratos de `plan.md`.
 
-- [ ] Escrever `test_vaga_nao_aprovada_por_padrao`, `test_pacote_exige_chave_idempotencia` e `test_convite_identifica_simulacao`.
+- [ ] Escrever `test_candidato_tem_empresa_e_validade_de_autorizacao`, `test_vaga_nao_aprovada_por_padrao`, `test_pacote_exige_chave_idempotencia` e `test_convite_identifica_simulacao`.
 - [ ] Criar `pyproject.toml` com fastapi, uvicorn, pydantic, openai, langfuse, pandas, pytest e ruff, e o marcador `eval`.
 - [ ] Implementar modelos, interfaces e erros de `plan.md`.
 - [ ] Criar `.env.example` só com nomes de variáveis.
@@ -76,6 +76,17 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_nao_aplica_sem_aprovacao`, `test_permite_reverter` e `test_nao_propoe_criterio_sensivel`.
 - [ ] Implementar e verificar.
 
+### T1.7: rotina do banco
+
+**Arquivo:** `backend/agente/rotina_banco.py`. **Teste:** `tests/agente/test_rotina_banco.py`.
+
+**Consome:** `BancoTalentos`, regras. **Produz:** `selecionar_para_contato(empresa_id: str, hoje: date) -> list[Candidato]` e `processar_vencidos(empresa_id: str, hoje: date) -> list[Decisao]`.
+
+- [ ] Testar `test_seleciona_perfis_desatualizados_dentro_do_limite`.
+- [ ] Testar `test_nao_contata_quem_saiu_ou_foi_removido`.
+- [ ] Testar `test_autorizacao_vencida_sai_da_busca`, com decisão registrada.
+- [ ] Implementar e verificar.
+
 ### T1.6 (opcional): adaptador MCP
 
 **Arquivo:** `backend/agente/mcp.py`. Expor `buscar_candidatos`, `explicar_escolha` e `entregar_a_nara` sobre as mesmas funções. Só começar com o fluxo principal integrado.
@@ -91,7 +102,20 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_geracao_reproduzivel_com_mesma_semente`.
 - [ ] Testar `test_todos_os_perfis_sao_simulados`.
 - [ ] Testar `test_contem_armadilhas`: cargo incomum, currículo forte sem requisito, exagero, instrução no currículo e opt-out.
-- [ ] Testar `test_contem_sujeira`: sinônimos, erros, duplicatas e dados faltantes.
+- [ ] Testar `test_contem_sujeira`: sinônimos, erros, duplicatas, dados faltantes, autorizações vencidas e perfis desatualizados.
+- [ ] Testar `test_gera_duas_empresas_separadas`.
+- [ ] Implementar e verificar.
+
+### T2.6 [P]: banco de talentos
+
+**Arquivo:** `backend/fontes/banco_talentos.py`. **Teste:** `tests/fontes/test_banco_talentos.py`.
+
+**Produz:** implementação de `BancoTalentos`.
+
+- [ ] Testar `test_importa_base_e_remove_duplicatas`, com a origem registrada.
+- [ ] Testar `test_empresas_nao_veem_dados_uma_da_outra`.
+- [ ] Testar `test_busca_ignora_quem_nao_tem_autorizacao_valida`.
+- [ ] Testar `test_remover_apaga_dados_e_impede_novo_contato`.
 - [ ] Implementar e verificar.
 
 ### T2.2 [P]: rede de talentos simulada
@@ -155,6 +179,19 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 - [ ] Testar `test_instrucao_na_mensagem_nao_altera_regras`.
 - [ ] Implementar e verificar.
 
+### T3.4 [P]: autorização e atualização por conversa
+
+**Arquivo:** `backend/contato/cadastro.py`. **Teste:** `tests/contato/test_cadastro.py`.
+
+**Consome:** `BancoTalentos`, `Mensageiro`, `ClienteModelo`. **Produz:** `pedir_autorizacao(candidato) -> Convite`, `tratar_resposta_cadastro(candidato, texto: str) -> Candidato` e `extrair_atualizacao(texto: str, cliente_modelo) -> dict[str, str]`.
+
+- [ ] Testar `test_sem_autorizacao_nao_faz_perguntas_do_perfil`.
+- [ ] Testar `test_autorizacao_registra_validade`.
+- [ ] Testar `test_atualizacao_altera_perfil_e_data`.
+- [ ] Testar `test_pedido_de_saida_remove_do_banco`.
+- [ ] Testar `test_texto_com_instrucao_nao_altera_regras`.
+- [ ] Implementar e verificar.
+
 ### T3.3 [P]: pacote e Nara simulada
 
 **Arquivos:** `backend/contato/pacote.py`, `backend/nara_simulada/servico.py`. **Teste:** `tests/contato/test_pacote.py`, `tests/nara_simulada/test_servico.py`.
@@ -175,6 +212,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 
 **Consome:** API de T1.4; começa com dados simulados locais.
 
+- [ ] Criar a tela do banco, com importação, estados, autorizações e cadastro do candidato fictício.
 - [ ] Criar a tela de vaga, com criação, aprovação e meta.
 - [ ] Criar a tela de candidatos, com explicação, evidências, lacunas e decisão.
 - [ ] Mostrar eventos em tempo real, aprovação de lote e resposta do jurado como candidato.
@@ -188,6 +226,7 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 **Produz:** `pytest avaliacoes -m eval` e um relatório JSON para o painel.
 
 - [ ] Criar `test_zero_violacoes_de_requisito` e `test_zero_contato_com_opt_out`.
+- [ ] Criar `test_zero_vazamento_entre_empresas` e `test_zero_busca_sem_autorizacao`.
 - [ ] Criar `test_troca_de_nome_e_genero_nao_muda_resultado`.
 - [ ] Criar `test_armadilhas_tratadas` e `test_precisao_top_5`.
 - [ ] Criar `test_conclui_ou_pausa_com_falhas_injetadas`.
@@ -213,10 +252,11 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 ## Dependências
 
 - T0 antes de tudo.
-- T1.1, T1.3, T2.1, T2.2, T3.1, T3.2, T3.3, T4.1 e T4.2 podem rodar em paralelo depois de T0.
+- T1.1, T1.3, T2.1, T2.2, T2.6, T3.1, T3.2, T3.3, T3.4, T4.1 e T4.2 podem rodar em paralelo depois de T0.
 - T1.2 depende só dos contratos e usa simulações até as demais chegarem.
 - T2.3 e T2.4 usam um `ClienteModelo` simulado até T1.3 chegar.
 - T1.5 depende de `ClienteNara.resultados`, com simulação disponível desde T0.
+- T1.7 usa um `BancoTalentos` simulado até T2.6 chegar.
 - T4.3 e a parte final de T4.4 dependem da integração.
 
 ## Cobertura da spec
@@ -235,3 +275,5 @@ Contratos e estrutura estão em `plan.md`. **`[P]`** indica tarefa que pode roda
 | FR-014 | T1.1, T1.2, T1.4 |
 | FR-015 | T2.2, T3.1, T3.3, T1.4, T4.1 |
 | FR-016 | T1.5 |
+| FR-018, FR-019, FR-021, FR-023, FR-024 | T2.6, T1.2, T1.7 |
+| FR-020, FR-022 | T3.4 |

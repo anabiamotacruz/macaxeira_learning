@@ -2,7 +2,7 @@
 
 > **Para agentes:** execute uma tarefa de `tasks.md` por vez, com teste antes do código. Use subagent-driven-development ou executing-plans quando disponíveis; caso contrário, use `/speckit-implement`.
 
-**Objetivo:** construir um digital worker que encontra candidatos, explica escolhas, faz o primeiro contato e entrega o contexto à Nara simulada.
+**Objetivo:** construir um digital worker que constrói o banco de talentos de cada empresa, encontra candidatos nele, explica escolhas, faz o primeiro contato e entrega o contexto à Nara simulada.
 
 **Arquitetura:** máquina de estados em código, com IA nas decisões abertas. Fontes, mensagens e Nara ficam atrás de interfaces, com simulações trocáveis. API e MCP usam o mesmo núcleo.
 
@@ -14,6 +14,7 @@
 
 - Código do projeto a partir de 7/11/2026, às 10h. Submissão até 8/11/2026, às 13h.
 - Somente dados sintéticos. Sem scraping do LinkedIn.
+- Um banco por empresa. Sem autorização válida, o perfil não entra na busca.
 - O agente não agenda entrevistas nem decide contratações.
 - Regras, autorização, limites de contato e cálculos são determinísticos.
 - Modelo padrão: `zai-org/GLM-5.2`, com `max_tokens` de pelo menos 1000.
@@ -33,10 +34,10 @@
 ```text
 backend/
   contratos/      modelos.py, interfaces.py         (compartilhada)
-  agente/         regras.py, fluxo.py, aprendizado.py, api.py, mcp.py
+  agente/         regras.py, fluxo.py, rotina_banco.py, aprendizado.py, api.py, mcp.py
   modelos/        cliente.py
-  fontes/         rede_simulada.py, analisador.py, revisor.py, github_teste.py
-  contato/        mensageiro.py, conversa.py, pacote.py
+  fontes/         banco_talentos.py, rede_simulada.py, analisador.py, revisor.py, github_teste.py
+  contato/        mensageiro.py, conversa.py, cadastro.py, pacote.py
   nara_simulada/  servico.py
 dados/            gerador.py, sinteticos/
 avaliacoes/       casos/, test_avaliacoes.py, relatorio.py
@@ -53,13 +54,15 @@ Definidos em `backend/contratos/modelos.py` (Pydantic v2):
 class Competencia(BaseModel): nome: str; peso: float
 class Requisito(BaseModel): id: str; descricao: str; campo: str; valor_esperado: str
 class Vaga(BaseModel):
-    id: str; titulo: str; descricao: str
+    id: str; empresa_id: str; titulo: str; descricao: str
     requisitos: list[Requisito]; competencias: list[Competencia]
     meta_candidatos: int; prazo_dias: int; max_tentativas_contato: int
     aprovada: bool = False
 class Experiencia(BaseModel): empresa: str; cargo: str; inicio: date; fim: date | None; descricao: str
+class EstadoBanco(StrEnum): PENDENTE="pendente"; ATIVO="ativo"; DESATUALIZADO="desatualizado"; EXPIRADO="expirado"; REMOVIDO="removido"
 class Candidato(BaseModel):
-    id: str; nome: str; fonte: str; simulado: bool
+    id: str; empresa_id: str; nome: str; fonte: str; simulado: bool
+    origem: str; atualizado_em: date; autorizacao_valida_ate: date | None; estado: EstadoBanco
     perfil_texto: str; atributos: dict[str, str]; historico: list[Experiencia]
     autorizou_contato: bool; opt_out: bool = False
 class Evidencia(BaseModel): criterio: str; trecho: str; fonte: str
@@ -88,6 +91,12 @@ Definidos em `backend/contratos/interfaces.py` (`typing.Protocol`):
 ```python
 class FonteCandidatos(Protocol):
     def buscar(self, consulta: str, pagina: int = 1) -> list[Candidato]: ...
+class BancoTalentos(FonteCandidatos, Protocol):
+    def importar(self, empresa_id: str, registros: list[dict]) -> list[Candidato]: ...
+    def registrar_autorizacao(self, candidato_id: str, valida_ate: date) -> Candidato: ...
+    def atualizar(self, candidato_id: str, dados: dict[str, str]) -> Candidato: ...
+    def remover(self, candidato_id: str) -> None: ...
+    def vencendo(self, empresa_id: str, ate: date) -> list[Candidato]: ...
 class Analisador(Protocol):
     def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise: ...
 class Revisor(Protocol):
@@ -114,5 +123,5 @@ Também existem `PAUSADA` (falha recuperável ou limite de gasto) e `META_EM_RIS
 
 1. T0 é feita em conjunto.
 2. Cada frente usa simulações das interfaces até a integração das demais.
-3. O ponto de encontro é `backend/agente/fluxo.py`, que recebe as interfaces por injeção.
+3. O ponto de encontro é `backend/agente/fluxo.py`, que recebe as interfaces por injeção. A busca usa o `BancoTalentos` antes das fontes externas.
 4. No marco das 13h de sábado, o fluxo roda com implementações simples. No marco das 17h, com as reais.

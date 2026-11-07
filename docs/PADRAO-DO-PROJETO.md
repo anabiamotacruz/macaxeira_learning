@@ -4,7 +4,7 @@ Este documento garante que as quatro frentes gerem com a mesma qualidade, em qua
 
 ## 1. O que estamos construindo
 
-Um digital worker recebe uma vaga, encontra e analisa candidatos, explica cada escolha, faz o primeiro contato e envia o link de agendamento da Nara. A Nara agenda e entrevista como já faz hoje. O resultado volta para melhorar a busca, com aprovação humana.
+Um digital worker constrói e mantém o banco de talentos de cada empresa. Quando recebe uma vaga, encontra e analisa candidatos, explica cada escolha, faz o primeiro contato e envia o link de agendamento da Nara. A Nara agenda e entrevista como já faz hoje. O resultado volta para melhorar a busca, com aprovação humana.
 
 É um produto próprio, que a Tako pode usar. Não é um produto feito para a Tako nem uma extensão interna dela. A Nara é a primeira integração.
 
@@ -158,6 +158,7 @@ Toda chamada usa o Langfuse. Toda decisão guarda entrada, regra, evidências, r
 ## 8. Dados e limites
 
 - **Somente dados sintéticos.** Nada de dados pessoais reais de candidatos.
+- **Banco de talentos:** um por empresa, com isolamento entre empresas. Sem autorização válida, a pessoa não é buscada nem contatada para vagas.
 - **LinkedIn:** sem scraping, robôs ou serviços de coleta. Fontes reais são uma lacuna a pesquisar.
 - **GitHub:** só a API oficial, com contas e repositórios de teste do time, e sem contato frio.
 - **Equidade:** gênero, idade, raça, religião, estado civil e outros dados sensíveis não são critérios.

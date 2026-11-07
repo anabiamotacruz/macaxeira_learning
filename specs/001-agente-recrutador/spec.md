@@ -6,6 +6,18 @@
 
 ## Cenários de usuário
 
+### História 0: construir o banco de talentos (P1)
+
+Como recrutador, quero que o agente organize e mantenha o banco de talentos da minha empresa, para ter candidatos autorizados e atualizados quando uma vaga abrir.
+
+**Teste independente:** importar uma base sintética bagunçada e simular autorizações, atualizações e saídas.
+
+1. **Dada** uma base com duplicatas, **quando** ela é importada, **então** cada pessoa aparece uma vez, com a origem registrada.
+2. **Dado** um perfil sem autorização, **quando** o agente faz contato, **então** só pede autorização, e o perfil não entra na busca de vagas.
+3. **Dada** uma autorização vencida, **quando** a validade termina, **então** a pessoa sai da busca e pode ser convidada a renovar, dentro dos limites.
+4. **Dadas** duas empresas, **quando** uma busca o próprio banco, **então** ela nunca vê dados da outra.
+5. **Dado** que a pessoa pediu remoção, **quando** o pedido é registrado, **então** seus dados são removidos e ela não recebe novo contato.
+
 ### História 1: receber candidatos com contexto (P1)
 
 Como recrutador, quero informar uma vaga e receber candidatos com a explicação da escolha, para reduzir o gargalo de encontrar pessoas capacitadas.
@@ -80,7 +92,17 @@ Como recrutador, quero que os resultados da Nara melhorem a busca, para receber 
 - **FR-016**: Ajustes propostos pelo aprendizado DEVEM exigir aprovação e permitir reversão.
 - **FR-017**: O sistema DEVE respeitar um limite de gasto por sessão.
 
+- **FR-018**: Cada empresa DEVE ter um banco de talentos isolado.
+- **FR-019**: O sistema DEVE importar bases e remover duplicatas, registrando a origem.
+- **FR-020**: O sistema DEVE pedir autorização com validade e oferecer saída fácil.
+- **FR-021**: Perfis sem autorização válida NÃO DEVEM entrar na busca nem receber convite para vaga.
+- **FR-022**: O sistema DEVE atualizar perfis por conversa e registrar a data de atualização.
+- **FR-023**: O sistema DEVE remover dados a pedido e tratar autorizações vencidas.
+- **FR-024**: A busca DEVE consultar o banco da empresa antes de fontes externas.
+
 ### Entidades
+
+- **Banco de talentos:** perfis de uma empresa, com origem, autorização, validade e estado.
 
 - **Vaga**: requisitos, competências com pesos, meta, limites e estado de aprovação.
 - **Candidato**: dados sintéticos, histórico, fonte, autorização e opt-out.
@@ -99,3 +121,4 @@ Como recrutador, quero que os resultados da Nara melhorem a busca, para receber 
 - **SC-005**: O fluxo termina ou pausa de forma recuperável em 100% das falhas injetadas.
 - **SC-006**: Um jurado altera uma vaga e vê o primeiro resultado sem ajuda do time.
 - **SC-007**: A precisão entre os 5 primeiros é medida e aparece no painel. A meta será definida depois da primeira execução.
+- **SC-008**: Zero vazamentos entre empresas e zero perfis sem autorização válida na busca.
