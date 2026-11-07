@@ -234,3 +234,86 @@ class Mandato(Contrato):
     politica: Politica
     assinado_em: AwareDatetime
     valido_ate: AwareDatetime | None = None
+
+
+class DestinoPessoa(StrEnum):
+    """Destino da pessoa depois da vaga, sempre decidido pelo RH, nunca pelo agente."""
+
+    BANCO = "banco"
+    TALENT_GARDEN = "talent_garden"
+    CONTRATADA = "contratada"
+
+
+class SaidaPersonalizada(Contrato):
+    """Pacotes de contexto dos indicados de uma vaga, para leitura na interface.
+
+    O pacote só leva contexto: agendar, entrevistar e contratar ficam fora do agente.
+    """
+
+    empresa_id: Texto
+    vaga_id: Texto
+    pacotes: list[PacoteContexto]
+    simulado: bool
+    momento: AwareDatetime
+
+    @model_validator(mode="after")
+    def _pacotes_coerentes(self) -> Self:
+        for pacote in self.pacotes:
+            if pacote.empresa_id != self.empresa_id or pacote.vaga_id != self.vaga_id:
+                raise ValueError("pacote de outra empresa ou vaga não entra na saída")
+            if pacote.simulado and not self.simulado:
+                raise ValueError("saída com pacote simulado precisa estar identificada")
+        return self
+
+
+class ResumoExecucao(Contrato):
+    """Contagens e gasto de uma vaga, para o controle depois da ação."""
+
+    empresa_id: Texto
+    vaga_id: Texto
+    estado: Texto
+    analisados: Annotated[int, Field(ge=0)]
+    indicados: Annotated[int, Field(ge=0)]
+    descartados: Annotated[int, Field(ge=0)]
+    na_fila_humana: Annotated[int, Field(ge=0)]
+    revertidos: Annotated[int, Field(ge=0)]
+    gasto_usd: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    limite_gasto_usd: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None
+    simulado: bool
+    momento: AwareDatetime
+
+
+class TipoErro(StrEnum):
+    INDICACAO_ERRADA = "indicacao_errada"
+    DESCARTE_ERRADO = "descarte_errado"
+    VIOLACAO_ELIMINATORIA = "violacao_eliminatoria"
+    CONTATO_OPT_OUT = "contato_opt_out"
+    MUDANCA_NOME_GENERO = "mudanca_nome_genero"
+    AFIRMACAO_SEM_EVIDENCIA = "afirmacao_sem_evidencia"
+
+
+class TaxaMedida(Contrato):
+    """Taxa com o tamanho da amostra e o intervalo de Wilson.
+
+    Sem casos, a taxa não foi medida: valor e intervalo ficam nulos, nunca zero.
+    """
+
+    valor: Annotated[float, Field(ge=0, le=1)] | None
+    casos: Annotated[int, Field(ge=0)]
+    wilson_inferior: Annotated[float, Field(ge=0, le=1)] | None
+    wilson_superior: Annotated[float, Field(ge=0, le=1)] | None
+
+    @model_validator(mode="after")
+    def _medida_coerente(self) -> Self:
+        limites = (self.wilson_inferior, self.wilson_superior)
+        if self.valor is None:
+            if self.casos != 0 or limites != (None, None):
+                raise ValueError("taxa não medida não tem casos nem intervalo")
+            return self
+        if self.casos == 0:
+            raise ValueError("taxa sem casos não foi medida e deve ter valor nulo")
+        if self.wilson_inferior is None or self.wilson_superior is None:
+            raise ValueError("taxa medida precisa do intervalo de Wilson")
+        if not self.wilson_inferior <= self.valor <= self.wilson_superior:
+            raise ValueError("o valor precisa estar dentro do intervalo de Wilson")
+        return self
