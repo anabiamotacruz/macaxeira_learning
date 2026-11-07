@@ -4,7 +4,7 @@
 """
 
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -23,11 +23,34 @@ from backend.contratos.simulacoes import (
     RevisorSimulado,
     candidato_simulado,
 )
+from backend.fontes.anonimizador import (
+    Pseudonimizador,
+    identificadores_do_candidato,
+    termos_preservados_da_vaga,
+)
 from backend.fontes.consultas import ETAPA_GERAR, ampliar_consultas, gerar_consultas
 from backend.fontes.funil import priorizar
 
 LIMITE_ANALISES_POR_RODADA = 20
 """Quantas pessoas cada rodada leva às análises por modelo. As demais vão para a fila humana."""
+
+
+def pseudonimizador_de_resposta(
+    pseudonimizador: Pseudonimizador, vaga: Vaga
+) -> Callable[[Candidato, str], str]:
+    """A mensagem da pessoa passa pela mesma pseudonimização do perfil antes de ir ao modelo."""
+    preservar = termos_preservados_da_vaga(vaga)
+
+    def pseudonimizar(candidato: Candidato, texto: str) -> str:
+        return pseudonimizador.pseudonimizar_texto(
+            candidato.empresa_id,
+            candidato.id,
+            texto,
+            identificadores_do_candidato(candidato),
+            preservar,
+        ).texto
+
+    return pseudonimizar
 
 
 def consultas_por_modelo(cliente_modelo: ClienteModelo) -> ProvedorConsultas:
