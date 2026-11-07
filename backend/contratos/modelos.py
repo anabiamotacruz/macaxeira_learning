@@ -435,3 +435,30 @@ class VersaoPrompt(Contrato):
     etapa: Texto
     modelo: Texto
     hash: Texto
+
+
+class DecisaoPortao(Contrato):
+    """Resultado do portão. Passar significa não piorar nas réguas, não melhora comprovada."""
+
+    passou: bool
+    motivos: list[str]
+
+    @model_validator(mode="after")
+    def _motivos_coerentes(self) -> Self:
+        if self.passou == bool(self.motivos):
+            raise ValueError("o portão barra se, e somente se, houver motivo")
+        return self
+
+
+class ResultadoProva(Contrato):
+    """Uma abertura da prova: só agregados, nada caso a caso.
+
+    `aberturas_do_conjunto` conta quantas versões já olharam estes casos. Acima de 1, o
+    resultado vale menos, porque cada olhada aumenta a chance de um prompt ruim passar.
+    """
+
+    versao: VersaoPrompt
+    limiar: Annotated[float, Field(ge=0, le=1)] | None
+    metricas: MetricasMedicao
+    aberta_em: AwareDatetime
+    aberturas_do_conjunto: Annotated[int, Field(ge=1)]

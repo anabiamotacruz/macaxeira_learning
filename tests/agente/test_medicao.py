@@ -1,5 +1,6 @@
 """Ciclo de taxa de erro com casos sintéticos criados aqui. Valores conferidos à mão."""
 
+from datetime import UTC, datetime
 from math import isclose
 
 import pytest
@@ -7,10 +8,16 @@ from pydantic import ValidationError
 
 from backend.agente import auditoria, medicao
 from backend.agente.medicao import (
+    ProvaJaAberta,
+    RegistroProvas,
+    aplicar_limiar,
     calcular_metricas,
+    escolher_limiar,
     intervalo_wilson,
     medir_taxa,
+    passa_no_portao,
     rodar,
+    rodar_prova,
     versionar_prompt,
 )
 from backend.contratos.modelos import (
@@ -435,3 +442,395 @@ def test_rodada_marca_indicacao_sem_trecho_no_perfil():
 
 def test_rodada_sem_casos_devolve_lista_vazia():
     assert rodar([], AgenteEspiao(), VERSAO) == []
+
+
+def test_rodada_recusa_casos_de_prova():
+    agente = AgenteEspiao()
+    with pytest.raises(ValueError, match="prova"):
+        rodar([_caso(particao=Particao.PROVA)], agente, VERSAO)
+    assert agente.chamadas == []
+
+
+# M5: limiar
+
+
+def _indicados(quantidade: int, nota: float, gabarito: TipoDecisao, inicio: int, **campos):
+    return [
+        _resultado(INDICAR, gabarito, numero=inicio + i, nota=nota, **campos)
+        for i in range(quantidade)
+    ]
+
+
+def test_aplicar_limiar_manda_indicacao_abaixo_para_revisao():
+    resultados = [
+        _resultado(INDICAR, numero=0, nota=0.8),
+        _resultado(INDICAR, numero=1, nota=0.79),
+        _resultado(INDICAR, numero=2, nota=None),
+        _resultado(DESCARTAR, DESCARTAR, numero=3, nota=0.1),
+        _resultado(None, numero=4),
+    ]
+    novos = aplicar_limiar(resultados, 0.8)
+    assert [r.decisao for r in novos] == [INDICAR, PEDIR, PEDIR, DESCARTAR, None]
+    assert novos[1].regra == "abaixo_do_limiar"
+    assert resultados[1].decisao == INDICAR
+
+
+def test_limiar_nulo_nao_deixa_ninguem_na_faixa_verde():
+    novos = aplicar_limiar([_resultado(INDICAR, nota=1.0)], None)
+    assert [r.decisao for r in novos] == [PEDIR]
+
+
+def test_escolhe_limiar_com_maior_cobertura_dentro_da_meta():
+    resultados = [
+        *_indicados(10, 0.95, INDICAR, 0),
+        *_indicados(40, 0.9, INDICAR, 10),
+        *_indicados(5, 0.5, DESCARTAR, 50),
+    ]
+    # 0 em 10 dá teto de 27,75%; 0 em 50, de 7,13%; 5 em 55, de 19,58%.
+    assert escolher_limiar(resultados, 0.10) == 0.9
+    assert escolher_limiar(resultados, 0.25) == 0.5
+    assert escolher_limiar(resultados, 0.20) == 0.5
+    assert escolher_limiar(resultados, 0.19) == 0.9
+
+
+def test_sem_limiar_viavel_devolve_nulo_nunca_o_menos_pior():
+    resultados = [*_indicados(9, 0.9, INDICAR, 0), *_indicados(1, 0.9, DESCARTAR, 9)]
+    assert escolher_limiar(resultados, 0.05) is None
+
+
+def test_poucos_casos_sem_erro_nao_bastam_para_a_meta():
+    assert escolher_limiar(_indicados(5, 0.9, INDICAR, 0), 0.10) is None
+
+
+def test_sem_resultados_ou_sem_indicacao_nao_ha_limiar():
+    assert escolher_limiar([], 0.10) is None
+    assert escolher_limiar([_resultado(PEDIR, PEDIR, nota=0.9)], 0.10) is None
+    assert escolher_limiar([_resultado(INDICAR, nota=None)], 0.99) is None
+
+
+@pytest.mark.parametrize(
+    "marca",
+    [{"requisitos_cumpridos": False}, {"opt_out": True}, {"afirmacao_sem_evidencia": True}],
+)
+def test_limiar_com_violacao_nao_e_viavel_mesmo_dentro_da_meta(marca):
+    resultados = [
+        *_indicados(100, 0.9, INDICAR, 0),
+        *_indicados(1, 0.5, DESCARTAR, 100, **marca),
+    ]
+    assert escolher_limiar(resultados, 0.20) == 0.9
+
+
+def test_limiar_com_par_que_muda_nao_e_viavel():
+    resultados = [
+        *_indicados(100, 0.9, INDICAR, 0),
+        _resultado(INDICAR, numero=100, nota=0.9, par_vies="a"),
+        _resultado(PEDIR, numero=101, nota=0.5, par_vies="a"),
+    ]
+    assert escolher_limiar(resultados, 0.20) is None
+
+
+@pytest.mark.parametrize("particao", [Particao.VALIDACAO, Particao.PROVA])
+def test_limiar_so_se_escolhe_no_ajuste(particao):
+    with pytest.raises(ValueError, match="ajuste"):
+        escolher_limiar(_indicados(50, 0.9, INDICAR, 0, particao=particao), 0.10)
+
+
+@pytest.mark.parametrize("meta", [0, 1, -0.1, 1.5])
+def test_meta_precisa_estar_entre_zero_e_um(meta):
+    with pytest.raises(ValueError, match="meta"):
+        escolher_limiar([], meta)
+
+
+# M6: versão do prompt
+
+
+def test_prompt_tem_versao_e_hash():
+    versao = versionar_prompt("analise", "Texto", "modelo-a")
+    assert (versao.etapa, versao.modelo) == ("analise", "modelo-a")
+    assert len(versao.hash) == 64
+    assert versao == versionar_prompt("analise", "Texto", "modelo-a")
+
+
+def test_outro_texto_ou_outro_modelo_geram_outro_hash():
+    base = versionar_prompt("analise", "Texto", "modelo-a").hash
+    assert versionar_prompt("analise", "Texto.", "modelo-a").hash != base
+    assert versionar_prompt("analise", "Texto", "modelo-b").hash != base
+
+
+def test_versao_do_prompt_e_imutavel():
+    with pytest.raises(ValidationError):
+        VERSAO.hash = "outro"
+
+
+def test_prompt_vazio_nao_tem_versao():
+    with pytest.raises(ValueError):
+        versionar_prompt("analise", "  ", "modelo-a")
+
+
+# M7: cache
+
+
+def test_mesma_versao_e_caso_nao_chama_o_modelo_de_novo():
+    agente = AgenteEspiao()
+    cache = {}
+    primeira = rodar([_caso()], agente, VERSAO, cache)
+    segunda = rodar([_caso()], agente, VERSAO, cache)
+    assert len(agente.chamadas) == 1
+    assert primeira == segunda
+
+
+def test_prompt_novo_invalida_o_cache():
+    agente = AgenteEspiao()
+    cache = {}
+    rodar([_caso()], agente, VERSAO, cache)
+    novo = versionar_prompt("analise", "Outro prompt", "modelo-teste")
+    [resultado] = rodar([_caso()], agente, novo, cache)
+    assert len(agente.chamadas) == 2
+    assert resultado.versao_hash == novo.hash
+
+
+def test_entrada_diferente_nao_usa_o_cache():
+    agente = AgenteEspiao()
+    cache = {}
+    rodar([_caso()], agente, VERSAO, cache)
+    alterado = candidato_exemplo("pessoa-0", perfil_texto=f"{PERFIL_EXEMPLO} Mais um fato.")
+    rodar([_caso(perfil=alterado)], agente, VERSAO, cache)
+    assert len(agente.chamadas) == 2
+
+
+def test_cache_vale_pela_entrada_e_nao_guarda_o_gabarito():
+    agente = AgenteEspiao()
+    cache = {}
+    rodar([_caso()], agente, VERSAO, cache)
+    [resultado] = rodar(
+        [_caso(gabarito=PEDIR, motivo_gabarito="outro", requisitos_atendidos=[])],
+        agente,
+        VERSAO,
+        cache,
+    )
+    assert len(agente.chamadas) == 1
+    assert resultado.gabarito == PEDIR
+    assert all(isinstance(valor, RespostaAgente) for valor in cache.values())
+
+
+def test_falha_nao_entra_no_cache():
+    agente = AgenteEspiao(RuntimeError("fora do ar"))
+    cache = {}
+    rodar([_caso()], agente, VERSAO, cache)
+    assert cache == {}
+    agente.resposta = _resposta()
+    [resultado] = rodar([_caso()], agente, VERSAO, cache)
+    assert resultado.falha is None
+    assert len(agente.chamadas) == 2
+
+
+def test_sem_cache_cada_rodada_chama_o_agente():
+    agente = AgenteEspiao()
+    rodar([_caso()], agente, VERSAO)
+    rodar([_caso()], agente, VERSAO)
+    assert len(agente.chamadas) == 2
+
+
+# M8: portão
+
+
+def _base() -> MetricasMedicao:
+    """Oito indicações certas, 1 de 2 erradas no descarte: tudo que precisa ser zero está medido."""
+    return calcular_metricas(
+        [
+            _resultado(INDICAR, numero=0, par_vies="a"),
+            _resultado(INDICAR, numero=1, par_vies="a"),
+            *[_resultado(INDICAR, numero=i) for i in range(2, 8)],
+            _resultado(DESCARTAR, DESCARTAR, numero=8, opt_out=True, autorizacao_bloqueada=True),
+            _resultado(DESCARTAR, PEDIR, numero=9),
+            _resultado(PEDIR, PEDIR, numero=10),
+            _resultado(None, PEDIR, numero=11),
+        ]
+    )
+
+
+def _com_erro(metricas: MetricasMedicao, tipo: TipoErro, erros: int, total: int):
+    return metricas.model_copy(update={"erros": {**metricas.erros, tipo: medir_taxa(erros, total)}})
+
+
+def test_portao_passa_quando_nada_piora():
+    decisao = passa_no_portao(_base(), _base())
+    assert decisao.passou is True
+    assert decisao.motivos == []
+
+
+@pytest.mark.parametrize(
+    "regua",
+    [
+        {"revisao": medir_taxa(2, 12)},
+        {"cobertura": medir_taxa(9, 12)},
+        {"falhas": medir_taxa(2, 12)},
+    ],
+    ids=["revisao", "cobertura", "falhas"],
+)
+def test_portao_barra_piora_em_qualquer_regua(regua):
+    depois = _base().model_copy(update=regua)
+    decisao = passa_no_portao(_base(), depois)
+    assert decisao.passou is False
+    assert next(iter(regua)) in decisao.motivos[0]
+
+
+@pytest.mark.parametrize(
+    ("tipo", "erros", "total"),
+    [(TipoErro.INDICACAO_ERRADA, 1, 8), (TipoErro.DESCARTE_ERRADO, 2, 2)],
+)
+def test_portao_barra_mais_erro(tipo, erros, total):
+    decisao = passa_no_portao(_base(), _com_erro(_base(), tipo, erros, total))
+    assert decisao.passou is False
+    assert tipo.value in decisao.motivos[0]
+
+
+@pytest.mark.parametrize(
+    "tipo",
+    [
+        TipoErro.VIOLACAO_ELIMINATORIA,
+        TipoErro.CONTATO_OPT_OUT,
+        TipoErro.MUDANCA_NOME_GENERO,
+        TipoErro.AFIRMACAO_SEM_EVIDENCIA,
+    ],
+)
+def test_qualquer_violacao_que_precisa_ser_zero_barra(tipo):
+    antes = _com_erro(_base(), tipo, 1, 8)
+    decisao = passa_no_portao(antes, antes)
+    assert decisao.passou is False
+    assert tipo.value in decisao.motivos[0]
+
+
+def test_regua_que_precisa_ser_zero_sem_medida_barra():
+    depois = _com_erro(_base(), TipoErro.MUDANCA_NOME_GENERO, 0, 0)
+    decisao = passa_no_portao(_base(), depois)
+    assert decisao.passou is False
+    assert "não foi medida" in decisao.motivos[0]
+
+
+def test_deixar_de_medir_uma_regua_barra():
+    depois = _com_erro(_base(), TipoErro.INDICACAO_ERRADA, 0, 0)
+    assert passa_no_portao(_base(), depois).passou is False
+
+
+def test_regua_sem_base_so_barra_com_erro():
+    antes = _com_erro(_base(), TipoErro.DESCARTE_ERRADO, 0, 0)
+    assert passa_no_portao(antes, _com_erro(antes, TipoErro.DESCARTE_ERRADO, 0, 3)).passou is True
+    assert passa_no_portao(antes, _com_erro(antes, TipoErro.DESCARTE_ERRADO, 1, 3)).passou is False
+    assert passa_no_portao(antes, antes).passou is True
+
+
+def test_portao_nao_compara_conjuntos_diferentes():
+    depois = _base().model_copy(update={"conjunto_hash": "outro"})
+    decisao = passa_no_portao(_base(), depois)
+    assert decisao.passou is False
+    assert "conjunto" in decisao.motivos[0]
+
+
+def test_portao_lista_todos_os_motivos():
+    depois = _com_erro(_base(), TipoErro.INDICACAO_ERRADA, 1, 8).model_copy(
+        update={"falhas": medir_taxa(2, 12)}
+    )
+    assert len(passa_no_portao(_base(), depois).motivos) == 2
+
+
+def test_melhora_passa_no_portao():
+    antes = _com_erro(_base(), TipoErro.INDICACAO_ERRADA, 1, 8)
+    assert passa_no_portao(antes, _base()).passou is True
+
+
+# M9: prova
+
+
+AGORA_PROVA = datetime(2026, 11, 8, 8, 0, tzinfo=UTC)
+
+
+def _prova(numero: int = 0, **campos) -> CasoAvaliacao:
+    return _caso(numero, particao=Particao.PROVA, **campos)
+
+
+def test_prova_so_abre_uma_vez_por_versao(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    agente = AgenteEspiao()
+
+    resultado = rodar_prova([_prova()], agente, VERSAO, 0.5, registro, AGORA_PROVA)
+    assert resultado.metricas.casos == 1
+    assert resultado.versao == VERSAO
+    assert resultado.limiar == 0.5
+    assert resultado.aberta_em == AGORA_PROVA
+
+    with pytest.raises(ProvaJaAberta):
+        rodar_prova([_prova()], agente, VERSAO, 0.5, registro, AGORA_PROVA)
+    assert len(agente.chamadas) == 1
+
+
+def test_segunda_abertura_e_registrada_e_vale_depois_de_reiniciar(tmp_path):
+    caminho = tmp_path / "provas.sqlite"
+    rodar_prova([_prova()], AgenteEspiao(), VERSAO, 0.5, RegistroProvas(caminho), AGORA_PROVA)
+
+    reaberto = RegistroProvas(caminho)
+    assert reaberto.recusas(VERSAO.hash) == 0
+    with pytest.raises(ProvaJaAberta):
+        rodar_prova([_prova()], AgenteEspiao(), VERSAO, 0.5, reaberto, AGORA_PROVA)
+    assert RegistroProvas(caminho).recusas(VERSAO.hash) == 1
+
+
+def test_prova_nao_abre_de_novo_com_outro_conjunto(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    rodar_prova([_prova(0)], AgenteEspiao(), VERSAO, 0.5, registro, AGORA_PROVA)
+    with pytest.raises(ProvaJaAberta):
+        rodar_prova([_prova(1)], AgenteEspiao(), VERSAO, 0.5, registro, AGORA_PROVA)
+
+
+def test_prova_conta_quantas_versoes_ja_olharam_o_conjunto(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    novo = versionar_prompt("analise", "Outro prompt", "modelo-teste")
+    primeira = rodar_prova([_prova()], AgenteEspiao(), VERSAO, 0.5, registro, AGORA_PROVA)
+    segunda = rodar_prova([_prova()], AgenteEspiao(), novo, 0.5, registro, AGORA_PROVA)
+    assert (primeira.aberturas_do_conjunto, segunda.aberturas_do_conjunto) == (1, 2)
+
+
+def test_prova_so_devolve_agregados(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    resultado = rodar_prova([_prova()], AgenteEspiao(), VERSAO, 0.5, registro, AGORA_PROVA)
+    assert "caso-0" not in resultado.model_dump_json()
+    assert "pessoa-0" not in resultado.model_dump_json()
+
+
+def test_prova_aplica_o_limiar_congelado(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    resultado = rodar_prova([_prova()], AgenteEspiao(), VERSAO, 0.95, registro, AGORA_PROVA)
+    assert resultado.metricas.revisao.valor == 1.0
+    assert resultado.metricas.erros[TipoErro.INDICACAO_ERRADA].valor is None
+
+
+def test_prova_sem_limiar_viavel_nao_indica_ninguem(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    resultado = rodar_prova([_prova()], AgenteEspiao(), VERSAO, None, registro, AGORA_PROVA)
+    assert resultado.limiar is None
+    assert resultado.metricas.revisao.valor == 1.0
+
+
+def test_prova_recusa_outra_particao_sem_gastar_a_abertura(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    agente = AgenteEspiao()
+    with pytest.raises(ValueError, match="prova"):
+        rodar_prova([_prova(0), _caso(1)], agente, VERSAO, 0.5, registro, AGORA_PROVA)
+    assert agente.chamadas == []
+    assert rodar_prova([_prova(0)], agente, VERSAO, 0.5, registro, AGORA_PROVA).metricas.casos == 1
+
+
+def test_prova_sem_casos_nao_gasta_a_abertura(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    with pytest.raises(ValueError, match="sem casos"):
+        rodar_prova([], AgenteEspiao(), VERSAO, 0.5, registro, AGORA_PROVA)
+    assert rodar_prova([_prova()], AgenteEspiao(), VERSAO, 0.5, registro, AGORA_PROVA)
+
+
+def test_falha_na_prova_conta_e_gasta_a_abertura(tmp_path):
+    registro = RegistroProvas(tmp_path / "provas.sqlite")
+    agente = AgenteEspiao(RuntimeError("fora do ar"))
+    resultado = rodar_prova([_prova()], agente, VERSAO, 0.5, registro, AGORA_PROVA)
+    assert resultado.metricas.falhas.valor == 1.0
+    with pytest.raises(ProvaJaAberta):
+        rodar_prova([_prova()], agente, VERSAO, 0.5, registro, AGORA_PROVA)

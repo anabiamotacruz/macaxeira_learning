@@ -31,22 +31,30 @@ Falha nunca entra como acerto nem some da conta. Sem casos, a taxa é nula, nunc
 import hashlib
 import json
 import logging
+import sqlite3
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sequence
+from contextlib import closing, contextmanager
+from datetime import datetime
 from math import sqrt
+from pathlib import Path
 from statistics import NormalDist
 
 from pydantic import ValidationError
 
 from backend.agente.auditoria import contexto_rastro, rastreado
 from backend.agente.regras import TipoEvidencia, classificar_evidencia
+from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import (
     Candidato,
     CasoAvaliacao,
+    DecisaoPortao,
     Evidencia,
     MetricasMedicao,
+    Particao,
     RespostaAgente,
     ResultadoCaso,
+    ResultadoProva,
     TaxaMedida,
     TipoDecisao,
     TipoErro,
@@ -58,9 +66,27 @@ logger = logging.getLogger(__name__)
 
 Z_95 = NormalDist().inv_cdf(0.975)
 FALHA_RESPOSTA_INVALIDA = "resposta_invalida"
+REGRA_ABAIXO_DO_LIMIAR = "abaixo_do_limiar"
+TIPOS_QUE_PRECISAM_SER_ZERO = (
+    TipoErro.VIOLACAO_ELIMINATORIA,
+    TipoErro.CONTATO_OPT_OUT,
+    TipoErro.MUDANCA_NOME_GENERO,
+    TipoErro.AFIRMACAO_SEM_EVIDENCIA,
+)
 
 AgenteAvaliado = Callable[[Candidato, Vaga], RespostaAgente]
-"""Recebe só o perfil e a vaga, posicionalmente. Dele saem decisão, regra, nota e evidências."""
+"""Recebe só o perfil e a vaga, posicionalmente. Dele saem decisão, regra, nota e evidências.
+
+Para calibrar o limiar, o agente responde como se a nota bastasse (limiar zero na política).
+Quem corta pela nota é `aplicar_limiar`, sobre os mesmos resultados.
+"""
+
+CacheRodada = MutableMapping[tuple[str, str], RespostaAgente]
+"""Respostas por (hash da versão, hash da entrada). Nunca guarda gabarito nem falha."""
+
+
+class ProvaJaAberta(ErroContrato):
+    """Esta versão já abriu a prova. A tentativa foi recusada e registrada."""
 
 
 def _hash(dados: object) -> str:
@@ -230,28 +256,241 @@ def _resultado(
     )
 
 
-def _executar(caso: CasoAvaliacao, agente: AgenteAvaliado, versao: VersaoPrompt) -> ResultadoCaso:
-    """Chama o agente uma vez. Só o perfil e a vaga saem daqui, em cópias."""
-    perfil = caso.perfil.model_copy(deep=True)
-    vaga = caso.vaga.model_copy(deep=True)
+def _hash_entrada(caso: CasoAvaliacao) -> str:
+    return _hash(
+        {"perfil": caso.perfil.model_dump(mode="json"), "vaga": caso.vaga.model_dump(mode="json")}
+    )
+
+
+def _executar(
+    caso: CasoAvaliacao, agente: AgenteAvaliado, versao: VersaoPrompt, cache: CacheRodada | None
+) -> ResultadoCaso:
+    """Resolve um caso pelo cache ou chama o agente. Só o perfil e a vaga saem daqui, em cópias."""
+    chave = (versao.hash, _hash_entrada(caso))
     with contexto_rastro(
         empresa_id=caso.vaga.empresa_id,
         execucao_id=f"medicao-{versao.hash[:12]}",
         vaga_id=caso.vaga.id,
         candidato_id=caso.perfil.id,
     ) as contexto:
+        if cache is not None and chave in cache:
+            return _resultado(caso, versao, contexto.rastro_id, cache[chave], None)
+        perfil = caso.perfil.model_copy(deep=True)
+        vaga = caso.vaga.model_copy(deep=True)
         try:
             bruta = _chamar_agente(agente, perfil, vaga)
         except Exception as erro:  # conta e segue: a mensagem pode ter chave, só o tipo fica
             logger.warning("falha no caso %s: %s", caso.id, type(erro).__name__)
             return _resultado(caso, versao, contexto.rastro_id, None, type(erro).__name__)
         resposta = _resposta_valida(bruta)
-        falha = None if resposta else FALHA_RESPOSTA_INVALIDA
-        return _resultado(caso, versao, contexto.rastro_id, resposta, falha)
+        if resposta is None:
+            return _resultado(caso, versao, contexto.rastro_id, None, FALHA_RESPOSTA_INVALIDA)
+        if cache is not None:
+            cache[chave] = resposta
+        return _resultado(caso, versao, contexto.rastro_id, resposta, None)
 
 
 def rodar(
-    casos: Sequence[CasoAvaliacao], agente: AgenteAvaliado, versao: VersaoPrompt
+    casos: Sequence[CasoAvaliacao],
+    agente: AgenteAvaliado,
+    versao: VersaoPrompt,
+    cache: CacheRodada | None = None,
 ) -> list[ResultadoCaso]:
-    """Roda o agente nos casos, sem entregar o gabarito. Falhas viram resultado com `falha`."""
-    return [_executar(caso, agente, versao) for caso in casos]
+    """Roda o agente nos casos, sem entregar o gabarito. Falhas viram resultado com `falha`.
+
+    Casos de prova ficam de fora: só `rodar_prova` os abre, uma vez e sem caso a caso.
+    """
+    if any(caso.particao == Particao.PROVA for caso in casos):
+        raise ValueError("casos de prova só abrem em rodar_prova")
+    return [_executar(caso, agente, versao, cache) for caso in casos]
+
+
+def aplicar_limiar(
+    resultados: Sequence[ResultadoCaso], limiar: float | None
+) -> list[ResultadoCaso]:
+    """Manda para revisão quem foi indicado com nota abaixo do limiar ou sem nota.
+
+    Como na regra da faixa verde, a nota igual ao limiar passa, e limiar nulo significa que
+    ninguém fica na faixa verde. Descartes e falhas não mudam.
+    """
+    if limiar is not None and not 0 <= limiar <= 1:
+        raise ValueError("limiar precisa estar entre 0 e 1")
+
+    def fica(resultado: ResultadoCaso) -> bool:
+        if resultado.decisao != TipoDecisao.INDICAR:
+            return True
+        return limiar is not None and resultado.nota is not None and resultado.nota >= limiar
+
+    return [
+        r
+        if fica(r)
+        else r.model_copy(
+            update={"decisao": TipoDecisao.PEDIR_HUMANO, "regra": REGRA_ABAIXO_DO_LIMIAR}
+        )
+        for r in resultados
+    ]
+
+
+def _limiar_viavel(metricas: MetricasMedicao, meta: float) -> bool:
+    teto = metricas.erros[TipoErro.INDICACAO_ERRADA].wilson_superior
+    if teto is None or teto > meta:
+        return False
+    return all(metricas.erros[tipo].valor in (None, 0) for tipo in TIPOS_QUE_PRECISAM_SER_ZERO)
+
+
+def escolher_limiar(resultados: Sequence[ResultadoCaso], meta: float) -> float | None:
+    """Escolhe, no ajuste, o limiar com mais casos sem revisão dentro da meta de erro.
+
+    Um limiar é viável se o teto de Wilson da indicação errada, e não só o valor observado,
+    fica até a `meta`, e nenhuma taxa que precisa ser zero foi violada. Sem limiar viável,
+    devolve None, nunca o menos pior. Baixar o limiar só aumenta a cobertura, e os candidatos
+    são as notas dos indicados: por isso, o menor viável é o de maior cobertura.
+    """
+    if not 0 < meta < 1:
+        raise ValueError("meta precisa estar entre 0 e 1")
+    if any(r.particao != Particao.AJUSTE for r in resultados):
+        raise ValueError("limiar só se escolhe com resultados de ajuste")
+    candidatos = {
+        r.nota for r in resultados if r.decisao == TipoDecisao.INDICAR and r.nota is not None
+    }
+    for limiar in sorted(candidatos):
+        if _limiar_viavel(calcular_metricas(aplicar_limiar(resultados, limiar)), meta):
+            return limiar
+    return None
+
+
+def _piora(nome: str, antes: TaxaMedida, depois: TaxaMedida, maior_e_melhor: bool) -> str | None:
+    if depois.valor is None:
+        return None if antes.valor is None else f"{nome}: deixou de ser medida"
+    if antes.valor is None:
+        return None if maior_e_melhor or depois.valor == 0 else f"{nome}: erro sem base anterior"
+    piorou = depois.valor < antes.valor if maior_e_melhor else depois.valor > antes.valor
+    return f"{nome}: piorou de {antes.valor:.4f} para {depois.valor:.4f}" if piorou else None
+
+
+def passa_no_portao(antes: MetricasMedicao, depois: MetricasMedicao) -> DecisaoPortao:
+    """Barra a mudança se qualquer régua piorar ou se algo que precisa ser zero não for zero.
+
+    Compara valores observados, sem tolerância: manter a versão atual custa pouco. Taxa que
+    precisa ser zero e não foi medida também barra, porque ausência de medida não é zero.
+    Passar quer dizer "não piorou nestas réguas"; não comprova melhora.
+    """
+    motivos: list[str] = []
+    if antes.conjunto_hash != depois.conjunto_hash:
+        motivos.append("conjunto de casos diferente: a comparação não vale")
+    for tipo in TIPOS_QUE_PRECISAM_SER_ZERO:
+        valor = depois.erros[tipo].valor
+        if valor is None:
+            motivos.append(f"{tipo.value}: precisa ser zero e não foi medida")
+        elif valor > 0:
+            motivos.append(f"{tipo.value}: precisa ser zero e foi {valor:.4f}")
+    reguas = [
+        (
+            TipoErro.INDICACAO_ERRADA.value,
+            antes.erros[TipoErro.INDICACAO_ERRADA],
+            depois.erros[TipoErro.INDICACAO_ERRADA],
+            False,
+        ),
+        (
+            TipoErro.DESCARTE_ERRADO.value,
+            antes.erros[TipoErro.DESCARTE_ERRADO],
+            depois.erros[TipoErro.DESCARTE_ERRADO],
+            False,
+        ),
+        ("revisao", antes.revisao, depois.revisao, False),
+        ("falhas", antes.falhas, depois.falhas, False),
+        ("cobertura", antes.cobertura, depois.cobertura, True),
+    ]
+    motivos += [motivo for regua in reguas if (motivo := _piora(*regua)) is not None]
+    return DecisaoPortao(passou=not motivos, motivos=motivos)
+
+
+class RegistroProvas:
+    """Guarda, em SQLite, quem abriu a prova, para a regra valer depois de reiniciar.
+
+    A chave primária torna a abertura atômica. Prompts diferentes contam como versões
+    diferentes: trocar um espaço abre de novo, e por isso `abrir` devolve quantas versões
+    já olharam o conjunto, para o relatório declarar.
+    """
+
+    def __init__(self, caminho: Path | str) -> None:
+        self._caminho = Path(caminho)
+        with self._transacao() as conexao:
+            conexao.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS aberturas (
+                    versao_hash TEXT PRIMARY KEY,
+                    conjunto_hash TEXT NOT NULL,
+                    momento TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS recusas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    versao_hash TEXT NOT NULL,
+                    conjunto_hash TEXT NOT NULL,
+                    momento TEXT NOT NULL
+                );
+                """
+            )
+
+    @contextmanager
+    def _transacao(self) -> Iterator[sqlite3.Connection]:
+        with closing(sqlite3.connect(self._caminho)) as conexao, conexao:
+            yield conexao
+
+    def abrir(self, versao_hash: str, conjunto_hash: str, momento: datetime) -> int:
+        """Registra a abertura e devolve quantas versões já abriram o conjunto.
+
+        Levanta `ProvaJaAberta` na segunda abertura da versão, depois de registrar a recusa.
+        """
+        dados = (versao_hash, conjunto_hash, momento.isoformat())
+        with self._transacao() as conexao:
+            nova = conexao.execute(
+                "INSERT OR IGNORE INTO aberturas (versao_hash, conjunto_hash, momento) "
+                "VALUES (?, ?, ?)",
+                dados,
+            ).rowcount
+            if not nova:
+                conexao.execute(
+                    "INSERT INTO recusas (versao_hash, conjunto_hash, momento) VALUES (?, ?, ?)",
+                    dados,
+                )
+            total = conexao.execute(
+                "SELECT COUNT(*) FROM aberturas WHERE conjunto_hash = ?", (conjunto_hash,)
+            ).fetchone()[0]
+        if not nova:
+            raise ProvaJaAberta(f"a versão {versao_hash[:12]} já abriu a prova")
+        return total
+
+    def recusas(self, versao_hash: str) -> int:
+        with self._transacao() as conexao:
+            return conexao.execute(
+                "SELECT COUNT(*) FROM recusas WHERE versao_hash = ?", (versao_hash,)
+            ).fetchone()[0]
+
+
+def rodar_prova(
+    casos: Sequence[CasoAvaliacao],
+    agente: AgenteAvaliado,
+    versao: VersaoPrompt,
+    limiar: float | None,
+    registro: RegistroProvas,
+    agora: datetime,
+) -> ResultadoProva:
+    """Abre a prova uma única vez por versão, com limiar já congelado, e devolve só agregados.
+
+    A abertura é gravada antes da primeira chamada: se a rodada cair no meio, a prova está
+    gasta. Sem cache, para nenhuma resposta da prova voltar a outra rodada.
+    """
+    if not casos:
+        raise ValueError("prova sem casos não abre")
+    if any(caso.particao != Particao.PROVA for caso in casos):
+        raise ValueError("rodar_prova só aceita casos de prova")
+    aberturas = registro.abrir(versao.hash, hash_conjunto(c.id for c in casos), agora)
+    resultados = [_executar(caso, agente, versao, None) for caso in casos]
+    return ResultadoProva(
+        versao=versao,
+        limiar=limiar,
+        metricas=calcular_metricas(aplicar_limiar(resultados, limiar)),
+        aberta_em=agora,
+        aberturas_do_conjunto=aberturas,
+    )
