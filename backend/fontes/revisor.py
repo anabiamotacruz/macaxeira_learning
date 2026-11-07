@@ -21,6 +21,7 @@ from backend.fontes.analisador import (
     texto_permitido,
     trecho_confere,
 )
+from backend.fontes.anonimizador import Pseudonimizador, termos_preservados_da_vaga
 from backend.fontes.prompts import SISTEMA_REVISAO, USUARIO_REVISAO
 
 ETAPA_REVISAO = "revisao"
@@ -46,12 +47,19 @@ class RespostaRevisao(BaseModel):
 class RevisorIndependente:
     """Implementa `Revisor`. Falhas do cliente seguem para o fluxo, que sabe tratá-las."""
 
-    def __init__(self, cliente: ClienteModelo) -> None:
+    def __init__(
+        self, cliente: ClienteModelo, pseudonimizador: Pseudonimizador | None = None
+    ) -> None:
         self._cliente = cliente
+        self._pseudonimizador = pseudonimizador or Pseudonimizador()
 
     def revisar(self, vaga: Vaga, candidato: Candidato, analise: Analise) -> Analise:
         self._exigir_mesma_execucao(vaga, candidato, analise)
-        perfil = preparar_perfil(candidato)
+        perfil = preparar_perfil(
+            candidato,
+            pseudonimizador=self._pseudonimizador,
+            preservar=termos_preservados_da_vaga(vaga),
+        )
         usuario = USUARIO_REVISAO.format(
             vaga=descrever_vaga(vaga),
             perfil=como_dado(perfil.texto),

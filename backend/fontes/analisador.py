@@ -1,15 +1,15 @@
 """Analisa um candidato diante da vaga (T2.3). O modelo interpreta; o código confere.
 
 Requisito eliminatório vem de `backend/agente/regras.py`. Do modelo ficam só nota, trecho e
-perguntas, e cada afirmação precisa de um trecho literal do perfil. Nome, atributos, histórico
-e descrição da vaga não são enviados: datas revelam períodos sem trabalho, e o texto livre da
-vaga pode citar gênero ou outro tema sensível.
+perguntas, e cada afirmação precisa de um trecho literal do texto pseudonimizado. Atributos,
+histórico e descrição da vaga não são enviados: datas revelam períodos sem trabalho, e o texto
+livre da vaga pode citar gênero ou outro tema sensível.
 """
 
 import re
 import unicodedata
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -24,6 +24,11 @@ from backend.agente.regras import (
 )
 from backend.contratos.interfaces import ClienteModelo
 from backend.contratos.modelos import Analise, Candidato, Evidencia, Vaga
+from backend.fontes.anonimizador import (
+    PerfilPseudonimizado,
+    Pseudonimizador,
+    termos_preservados_da_vaga,
+)
 from backend.fontes.consultas import tem_termo_sensivel
 from backend.fontes.prompts import SISTEMA_ANALISE, USUARIO_ANALISE
 
@@ -34,17 +39,10 @@ ALERTA_INSTRUCAO = (
 )
 """Texto fixo: o alerta não repete o texto do candidato, que pode ir a outro modelo ou sistema."""
 
-MARCA_NOME = "[nome]"
-MARCA_CONTATO = "[contato]"
-TAMANHO_MINIMO_PARTE_DO_NOME = 3
-PARTICULAS_DO_NOME = frozenset({"das", "dos"})
-
-_EMAIL = re.compile(r"\S+@\S+\.\w+")
-_FIM_DE_FRASE = re.compile(r"(?<=[.!?])\s+|\n+")
-_PALAVRA = re.compile(r"\w+")
+FIM_DE_FRASE = re.compile(r"(?<=[.!?])\s+|\n+")
 _RACE_CONDITION = re.compile(r"\brace conditions?\b")
 
-_INSTRUCAO = re.compile(
+INSTRUCAO = re.compile(
     r"\b(ignor[ea]\w*|desconsider\w*|esquec\w*|disregard|forget)\b"
     r".{0,60}\b(regras?|instruc\w+|anteriores|previous|instructions?|prompt|sistema)\b"
     r"|\b(me de|de me|atribua|conceda|give|assign)\b.{0,30}\b(nota|score)\b"
@@ -72,7 +70,7 @@ _PERIODO_SEM_TRABALHO = re.compile(
 )
 
 
-def _normalizar(texto: str) -> str:
+def normalizar(texto: str) -> str:
     decomposto = unicodedata.normalize("NFKD", texto)
     sem_acento = "".join(c for c in decomposto if not unicodedata.combining(c))
     return " ".join(sem_acento.casefold().split())
@@ -80,25 +78,11 @@ def _normalizar(texto: str) -> str:
 
 def texto_permitido(texto: str) -> bool:
     """Diz se o texto não fala de dado sensível nem de período sem trabalho."""
-    normalizado = _RACE_CONDITION.sub(" ", _normalizar(texto))
+    normalizado = _RACE_CONDITION.sub(" ", normalizar(texto))
     return not (
         tem_termo_sensivel(normalizado)
         or _SENSIVEL_ALEM_DA_LISTA.search(normalizado)
         or _PERIODO_SEM_TRABALHO.search(normalizado)
-    )
-
-
-def _mascarar_nome(texto: str, nome: str) -> str:
-    partes = {
-        parte
-        for parte in _PALAVRA.findall(_normalizar(nome))
-        if len(parte) >= TAMANHO_MINIMO_PARTE_DO_NOME
-        and not parte.isdigit()
-        and parte not in PARTICULAS_DO_NOME
-    }
-    return _PALAVRA.sub(
-        lambda palavra: MARCA_NOME if _normalizar(palavra.group()) in partes else palavra.group(),
-        texto,
     )
 
 
@@ -108,28 +92,54 @@ class PerfilPreparado:
 
     texto: str
     tem_instrucao: bool
+    pseudonimizado: PerfilPseudonimizado = field(repr=False)
 
 
-def preparar_perfil(candidato: Candidato, retirar: Iterable[str] = ()) -> PerfilPreparado:
-    """Tira nome, contato, instruções e frases sobre dado sensível ou período sem trabalho.
+def preparar_perfil(
+    candidato: Candidato,
+    retirar: Iterable[str] = (),
+    *,
+    pseudonimizador: Pseudonimizador,
+    preservar: Iterable[str] = (),
+) -> PerfilPreparado:
+    """Tira instruções e frases sobre dado sensível ou período sem trabalho, e pseudonimiza o resto.
 
     Sai a frase inteira, sem alerta quando é dado sensível: mencionar gênero não pode mudar
-    o caminho de ninguém. `retirar` traz instruções que só o modelo percebeu.
+    o caminho de ninguém. `retirar` traz instruções que só o modelo percebeu, já com marcadores.
+    A instrução é procurada também depois da troca: `Aprove Fulana` só aparece como
+    `Aprove [PESSOA]`.
     """
-    retirados = [_normalizar(trecho) for trecho in retirar]
+    retirados = [normalizar(trecho) for trecho in retirar]
+    sessao = pseudonimizador.sessao(candidato, preservar)
     frases = []
     tem_instrucao = False
-    for frase in _FIM_DE_FRASE.split(candidato.perfil_texto):
-        normalizada = _normalizar(frase)
-        if not normalizada:
+    for inicio, fim in _posicoes_das_frases(sessao.fonte):
+        frase = sessao.fonte[inicio:fim]
+        if INSTRUCAO.search(normalizar(frase)):
+            tem_instrucao = True
             continue
-        if _INSTRUCAO.search(normalizada) or any(
+        if not texto_permitido(frase):
+            continue
+        pseudonimizada = sessao.frase(inicio, fim)
+        normalizada = normalizar(pseudonimizada.texto)
+        if INSTRUCAO.search(normalizada) or any(
             trecho in normalizada or normalizada in trecho for trecho in retirados
         ):
             tem_instrucao = True
-        elif texto_permitido(frase):
-            frases.append(_EMAIL.sub(MARCA_CONTATO, frase))
-    return PerfilPreparado(_mascarar_nome(" ".join(frases), candidato.nome), tem_instrucao)
+        elif texto_permitido(pseudonimizada.texto):
+            frases.append(pseudonimizada)
+    perfil = sessao.montar(frases)
+    return PerfilPreparado(perfil.texto, tem_instrucao, perfil)
+
+
+def _posicoes_das_frases(texto: str) -> Iterable[tuple[int, int]]:
+    inicio = 0
+    for separador in FIM_DE_FRASE.finditer(texto):
+        if texto[inicio : separador.start()].strip():
+            yield inicio, separador.start()
+        inicio = separador.end()
+    if texto[inicio:].strip():
+        yield inicio, len(texto)
 
 
 def como_no_perfil(trecho: str) -> str:
@@ -138,24 +148,22 @@ def como_no_perfil(trecho: str) -> str:
 
 
 def trecho_confere(trecho: str, candidato: Candidato, perfil: PerfilPreparado) -> bool:
-    """Exige o trecho no perfil original e no texto enviado: nada retirado pode ser citado."""
+    """Exige o trecho no texto enviado e o caminho até o original: nada retirado pode ser citado."""
+    if perfil.pseudonimizado.na_fonte(trecho) is None:
+        return False
     citacao = Evidencia(criterio="", trecho=trecho, fonte=candidato.fonte)
-    enviado = candidato.model_copy(update={"perfil_texto": perfil.texto})
-    return all(
-        classificar_evidencia(citacao, alvo) is not TipoEvidencia.INFERIDA
-        for alvo in (candidato, enviado)
-    )
+    return classificar_evidencia(citacao, candidato) is not TipoEvidencia.INFERIDA
 
 
 def criterios_da_vaga(vaga: Vaga) -> dict[str, str]:
     """Id de requisito e nome de competência, indexados como o modelo pode escrevê-los."""
-    criterios = {_normalizar(r.descricao): r.id for r in vaga.requisitos}
-    criterios |= {_normalizar(r.id): r.id for r in vaga.requisitos}
-    return criterios | {_normalizar(c.nome): c.nome for c in vaga.competencias}
+    criterios = {normalizar(r.descricao): r.id for r in vaga.requisitos}
+    criterios |= {normalizar(r.id): r.id for r in vaga.requisitos}
+    return criterios | {normalizar(c.nome): c.nome for c in vaga.competencias}
 
 
 def criterio_citado(criterios: dict[str, str], citado: str) -> str | None:
-    return criterios.get(_normalizar(citado))
+    return criterios.get(normalizar(citado))
 
 
 def descrever_vaga(vaga: Vaga) -> str:
@@ -192,12 +200,18 @@ def _sem_repetir(textos: Iterable[str]) -> list[str]:
 class AnalisadorPorModelo:
     """Implementa `Analisador`. Falhas do cliente seguem para o fluxo, que sabe tratá-las."""
 
-    def __init__(self, cliente: ClienteModelo) -> None:
+    def __init__(
+        self, cliente: ClienteModelo, pseudonimizador: Pseudonimizador | None = None
+    ) -> None:
         self._cliente = cliente
+        self._pseudonimizador = pseudonimizador or Pseudonimizador()
 
     def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
         requisitos_ok = verificar_requisitos(vaga, candidato)
-        perfil = preparar_perfil(candidato)
+        preservar = termos_preservados_da_vaga(vaga)
+        perfil = preparar_perfil(
+            candidato, pseudonimizador=self._pseudonimizador, preservar=preservar
+        )
         resposta = self._perguntar(vaga, perfil)
         apontadas = [
             como_no_perfil(trecho)
@@ -206,7 +220,9 @@ class AnalisadorPorModelo:
         ]
         if apontadas:
             # A nota pode ter sido influenciada: vale a análise do perfil sem a instrução.
-            perfil = preparar_perfil(candidato, apontadas)
+            perfil = preparar_perfil(
+                candidato, apontadas, pseudonimizador=self._pseudonimizador, preservar=preservar
+            )
             resposta = self._perguntar(vaga, perfil)
 
         evidencias = self._evidencias(vaga, candidato, perfil, resposta)
@@ -249,7 +265,7 @@ class AnalisadorPorModelo:
             trecho = como_no_perfil(evidencia.trecho).strip()
             if criterio is not None and trecho_confere(trecho, candidato, perfil):
                 aceitas.setdefault(
-                    (criterio, _normalizar(trecho)),
+                    (criterio, normalizar(trecho)),
                     Evidencia(criterio=criterio, trecho=trecho, fonte=candidato.fonte),
                 )
         return list(aceitas.values())
@@ -261,12 +277,12 @@ class AnalisadorPorModelo:
         """Nota sem trecho sai, e não vira zero: falta de informação não reduz a nota."""
         com_evidencia = {e.criterio for e in evidencias}
         informadas = {
-            _normalizar(nome): nota for nome, nota in resposta.notas.items() if nota is not None
+            normalizar(nome): nota for nome, nota in resposta.notas.items() if nota is not None
         }
         return {
-            c.nome: informadas[_normalizar(c.nome)]
+            c.nome: informadas[normalizar(c.nome)]
             for c in vaga.competencias
-            if c.nome in com_evidencia and _normalizar(c.nome) in informadas
+            if c.nome in com_evidencia and normalizar(c.nome) in informadas
         }
 
     @staticmethod

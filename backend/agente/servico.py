@@ -20,6 +20,7 @@ from backend.agente.fluxo import (
     FluxoVaga,
     Priorizador,
     ProvedorConsultas,
+    Reidentificador,
     consulta_pelo_titulo,
     exigir_humano,
 )
@@ -109,6 +110,7 @@ class DependenciasFluxo:
     priorizador: Priorizador
     consultas: ProvedorConsultas = consulta_pelo_titulo
     resiliencia: Resiliencia = field(default_factory=Resiliencia)
+    reidentificador: Reidentificador | None = None
 
 
 def _novo_id_de_vaga() -> str:
@@ -152,6 +154,7 @@ class ServicoVagas:
             medidor_gasto=d.medidor_gasto,
             auditoria=self._auditoria,
             resiliencia=d.resiliencia,
+            reidentificador=d.reidentificador,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:

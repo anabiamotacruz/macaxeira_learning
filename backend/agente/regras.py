@@ -10,6 +10,7 @@ from typing import Protocol
 
 from backend.agente.auditoria import responsavel_do_mandato
 from backend.agente.mandato import Mandato, MandatoInvalido, mandato_valido
+from backend.agente.neutralizacao import corresponde_ao_original
 from backend.contratos.criterios import TERMOS_SENSIVEIS as TERMOS_SENSIVEIS
 from backend.contratos.criterios import (
     campo_sensivel,
@@ -215,11 +216,11 @@ def pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga, hoje: date)
 
 
 def _trecho_no_perfil(trecho: str, perfil: str) -> bool:
-    """Confere o trecho inteiro, palavra a palavra: `Java` não confere com `JavaScript`."""
-    alvo = _normalizar_valor(trecho)
-    if not separar_palavras(alvo):
-        return False
-    return re.search(rf"(?<!\w){re.escape(alvo)}(?!\w)", _normalizar_valor(perfil)) is not None
+    """Confere o trecho inteiro, palavra a palavra: `Java` não confere com `JavaScript`.
+
+    Evidência pseudonimizada traz marcadores, e o gênero não conta: o perfil guardado é o original.
+    """
+    return corresponde_ao_original(trecho, perfil)
 
 
 def classificar_evidencia(evidencia: Evidencia, candidato: Candidato) -> TipoEvidencia:

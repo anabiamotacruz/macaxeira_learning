@@ -12,6 +12,7 @@ from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 from threading import RLock
+from typing import Protocol
 
 from backend.contratos.criterios import sem_genero
 from backend.contratos.modelos import Candidato, EstadoBanco
@@ -72,6 +73,12 @@ CREATE TABLE IF NOT EXISTS bloqueios (
 """
 
 
+class CofreDeRemocao(Protocol):
+    """O que o banco precisa do cofre de pseudônimos: apagar a pessoa junto com o perfil."""
+
+    def apagar_pessoa(self, empresa_id: str, candidato_id: str) -> int: ...
+
+
 def _exigir_empresa(empresa_id: str) -> str:
     if not isinstance(empresa_id, str) or not empresa_id.strip():
         raise ValueError("empresa_id é obrigatório em toda leitura e escrita")
@@ -120,14 +127,18 @@ class BancoTalentos:
         *,
         hoje: date | Callable[[], date],
         confiar_autorizacao_sintetica: bool = False,
+        cofre: CofreDeRemocao | None = None,
     ) -> None:
         """Em processo de longa duração, `hoje` deve ser uma função, lida a cada operação.
 
         `confiar_autorizacao_sintetica` serve só a cargas sintéticas de confiança. Sem ele, a
         autorização declarada no registro é ignorada: a pessoa entra como pendente e só autoriza
         por `registrar_autorizacao`.
+
+        `cofre` é o cofre de pseudônimos, guardado à parte: remover a pessoa apaga a entrada dela.
         """
         self._hoje = hoje
+        self._cofre = cofre
         self._confiar_autorizacao_sintetica = confiar_autorizacao_sintetica
         self._trava = RLock()
         self._conexao = sqlite3.connect(caminho, check_same_thread=False)
@@ -324,6 +335,10 @@ class BancoTalentos:
 
     def remover(self, empresa_id: str, candidato_id: str) -> None:
         empresa_id = _exigir_empresa(empresa_id)
+        # O cofre vem primeiro: uma falha depois disso deixa só o perfil, que pode ser removido de
+        # novo. Quem veio de outra fonte e nunca entrou no banco também tem a entrada apagada.
+        if self._cofre is not None:
+            self._cofre.apagar_pessoa(empresa_id, candidato_id)
         atual = self._obter(empresa_id, candidato_id)
         with self._trava, self._conexao:
             self._conexao.execute(

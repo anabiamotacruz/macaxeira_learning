@@ -102,6 +102,7 @@ ProvedorConsultas = Callable[[Vaga, int, Sequence[str]], list[str]]
 
 RegistrarCorte = Callable[[CorteFunil], None]
 Priorizador = Callable[[Vaga, list[Candidato], date, RegistrarCorte], list[Candidato]]
+Reidentificador = Callable[[PacoteContexto, Candidato, Vaga, Decisao], PacoteContexto]
 """Reduz os achados antes das análises e informa quem saiu, por `RegistrarCorte`."""
 
 
@@ -377,6 +378,7 @@ class FluxoVaga:
         medidor_gasto: Callable[[], float],
         auditoria: Auditoria | None = None,
         resiliencia: Resiliencia | None = None,
+        reidentificador: Reidentificador | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -384,6 +386,7 @@ class FluxoVaga:
         self._execucao_local = threading.local()
         self._auditoria = Auditoria(repositorio) if auditoria is None else auditoria
         self._resiliencia = Resiliencia() if resiliencia is None else resiliencia
+        self._reidentificador = reidentificador
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -1808,7 +1811,11 @@ class FluxoVaga:
                 chave,
                 lambda: self._resiliencia.chamar(
                     "destino",
-                    partial(_entregar_pacote, self._destino, pacote),
+                    partial(
+                        _entregar_pacote,
+                        self._destino,
+                        self._identificado(pacote, candidato, decisao),
+                    ),
                     etapa="entrega_destino",
                 ),
             )
@@ -1824,6 +1831,14 @@ class FluxoVaga:
 
         self._mudar(registrar)
         self._evento("entrega", "pacote de contexto entregue", candidato.id)
+
+    def _identificado(
+        self, pacote: PacoteContexto, candidato: Candidato, decisao: Decisao
+    ) -> PacoteContexto:
+        """Só a entrega, já decidida, devolve os dados originais. Sem reidentificador, não há."""
+        if self._reidentificador is None:
+            return pacote
+        return self._reidentificador(pacote, candidato, self.vaga, decisao)
 
     def _chave_de_entrega(self, candidato_id: str) -> str:
         return f"entrega:{self.vaga.empresa_id}:{self.vaga.id}:{candidato_id}"
