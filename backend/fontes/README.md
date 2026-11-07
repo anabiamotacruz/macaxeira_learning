@@ -2,11 +2,21 @@
 
 ## T2.7 — geração de consultas
 
-`gerar_consultas(vaga, cliente_modelo)` devolve texto simples, independente do
-provedor: o título original seguido das descrições dos requisitos e até seis
-variações de cargo propostas pelo modelo. Valores esperados diferentes de
-`sim`, `true` e `yes` também são mantidos no texto. Competências opcionais não
-viram filtros obrigatórios.
+`gerar_consultas(vaga, cliente_modelo)` devolve consultas de palavras-chave em
+texto simples. Por exemplo, requisitos “Python” e “experiência em produção”
+geram a consulta básica `Python produção`. Palavras de ligação e introduções
+genéricas são removidas; termos técnicos e acentos são preservados. Valores
+categóricos explícitos, como “Python” em “Linguagem”, substituem a descrição
+genérica na descoberta. Competências opcionais não viram filtros obrigatórios.
+
+Quando há palavras-chave, a consulta básica dispensa o título literal. Com uma
+resposta válida do modelo, seguem consultas adicionais com o título original
+e até seis sinônimos. Sem requisitos úteis, usa-se o cargo, nunca consulta vazia.
+O banco atual exige todas as palavras de cada consulta (E). Consultas alternativas
+devem ser executadas separadamente e seus resultados reunidos pelo chamador.
+A descoberta não valida requisitos: negações, intervalos e elegibilidade continuam
+nas regras determinísticas. A extração é lexical: não resolve flexões, sinônimos
+de competências ou equivalência semântica entre descrições.
 
 `ampliar_consultas(vaga, anteriores, cliente_modelo)` pede outros sinônimos e
 devolve somente consultas novas. Se não houver novidade, retorna lista vazia;
@@ -20,7 +30,7 @@ aleatoriedade, coleta, paginação ou execução de consultas neste módulo.
 - Dados de critérios sensíveis na vaga são recusados antes da chamada. Termos
   proibidos ou operadores na resposta fazem a saída voltar à consulta básica.
 - Resposta fora do esquema, lista vazia, limite excedido de sugestões ou modelo
-  indisponível usam o título e requisitos originais. Limite de gasto continua
+  indisponível usam a consulta básica de palavras-chave (ou o título quando não há termos). Limite de gasto continua
   sendo um erro para o fluxo pausar, nunca uma falha silenciosamente ignorada.
 - Apenas o título delimitado vai ao modelo; descrição livre e consultas
   anteriores não são necessárias para sugerir cargos e não são enviadas.

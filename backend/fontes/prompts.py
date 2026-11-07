@@ -6,7 +6,7 @@ Retorne somente JSON com a lista cargos, de 1 a 6 títulos profissionais equival
 Não invente requisitos, localização, competências ou tempo de experiência.
 Não use gênero, idade, raça, religião, estado civil ou outros atributos sensíveis.
 Não use operadores de busca, URLs, instruções ou filtros; somente nomes de cargos.
-O código acrescentará os requisitos eliminatórios aprovados a cada consulta.
+O código acrescentará palavras-chave dos requisitos aprovados a cada consulta.
 """
 
 PEDIDO_GERAR = "Sugira sinônimos do cargo."
