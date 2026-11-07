@@ -18,6 +18,7 @@ from backend.agente.mandato import Mandato, MandatoInvalido, ModoEntrega, Politi
 from backend.agente.persistencia import Repositorio
 from backend.contratos.erros import (
     ErroContrato,
+    FonteIndisponivel,
     LimiteGastoAtingido,
     ModeloIndisponivel,
     RespostaInvalida,
@@ -1413,3 +1414,246 @@ def test_parar_durante_a_entrega_nao_conclui(tmp_path: Path) -> None:
 
     assert m.fluxo().estado is E.CONCLUIDA
     assert len(m.destino.entregues) == 1
+
+
+class FonteContada(FonteSimulada):
+    def __init__(self, candidatos: list[Candidato], por_pagina: int = 20) -> None:
+        super().__init__(candidatos, por_pagina)
+        self.paginas: list[int] = []
+
+    def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+        self.paginas.append(pagina)
+        return super().buscar(empresa_id, consulta, pagina)
+
+
+def _fonte_fora_do_ar() -> FonteSimulada:
+    fonte = FonteSimulada([])
+    fonte.falhar = True
+    return fonte
+
+
+def test_fonte_indisponivel_segue_e_registra_cobertura_parcial(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [], fontes=[_fonte_fora_do_ar(), FonteSimulada(_dois_candidatos())])
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONVIDANDO
+    assert m.analisador.analisados == ["c1", "c2"]
+    cobertura = [e for e in fluxo.eventos if e.etapa == "cobertura"]
+    assert len(cobertura) == 1
+    assert "parcial" in cobertura[0].mensagem
+    assert "2 de 3" in cobertura[0].mensagem
+
+
+def test_todas_as_fontes_fora_do_ar_pausam_e_retomam(tmp_path: Path) -> None:
+    class BancoForaDoAr(BancoTalentosSimulado):
+        def __init__(self) -> None:
+            super().__init__()
+            self.falhar = True
+
+        def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+            if self.falhar:
+                raise FonteIndisponivel("banco fora do ar")
+            return super().buscar(empresa_id, consulta, pagina)
+
+    banco = BancoForaDoAr()
+    fonte = FonteSimulada(_dois_candidatos())
+    fonte.falhar = True
+    m = Montagem(tmp_path, [], banco=banco, fontes=[fonte])
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    salvo = _execucao(m)
+    assert salvo.estado == "pausada"
+    assert salvo.motivo == MotivoPausa.FONTES_INDISPONIVEIS
+    assert salvo.estado_anterior == "buscando"
+    assert m.analisador.analisados == []
+
+    fluxo.retomar()
+    assert fluxo.estado is E.PAUSADA
+
+    fonte.falhar = False
+    fluxo.retomar()
+
+    assert fluxo.estado is E.CONVIDANDO
+    assert m.analisador.analisados == ["c1", "c2"]
+
+
+def test_cobertura_completa_nao_gera_aviso(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert not [e for e in fluxo.eventos if e.etapa == "cobertura"]
+
+
+def test_meta_em_risco_avisa_recrutador(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], vaga=vaga_exemplo(meta_candidatos=3))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    avisos = [e for e in fluxo.eventos if e.etapa == "aviso_rh"]
+    assert len(avisos) == 1
+    assert "1 de 3" in avisos[0].mensagem
+    assert fluxo.estado is E.CONVIDANDO
+    etapas = [e.etapa for e in fluxo.eventos]
+    assert "meta_em_risco" in etapas
+    assert etapas.index("meta_em_risco") < etapas.index("convidando")
+
+
+def test_meta_em_risco_sem_indicado_conclui_sem_indicacao(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [candidato_exemplo("c1", atributos={"python": "nao"})])
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert m.mensageiro.enviados == {}
+    assert any("sem indicação" in e.mensagem for e in fluxo.eventos)
+
+
+def test_meta_em_risco_na_decisao_entrega_quem_foi_indicado(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], vaga=vaga_exemplo(meta_candidatos=3))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert len(m.destino.entregues) == 1
+
+
+def test_busca_sem_ninguem_vai_para_meta_em_risco(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [])
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert "analisando" not in [e.etapa for e in fluxo.eventos]
+    assert "meta_em_risco" in [e.etapa for e in fluxo.eventos]
+
+
+def test_ampliacao_busca_a_proxima_pagina_ate_a_meta(tmp_path: Path) -> None:
+    fonte = FonteContada(_tres_candidatos(), por_pagina=1)
+    rodadas: list[int] = []
+
+    def consultas(vaga: Vaga, rodada: int) -> list[str]:
+        rodadas.append(rodada)
+        return ["python"]
+
+    m = Montagem(tmp_path, [], fontes=[fonte], consultas=consultas)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, max_ampliacoes=5)
+
+    assert fonte.paginas == [1, 2]
+    assert rodadas == [0, 1]
+    assert m.analisador.analisados == ["c1", "c2"]
+    assert m.revisor.revisados == ["c1", "c2"]
+    assert fluxo.estado is E.CONVIDANDO
+    assert len([e for e in fluxo.eventos if e.etapa == "ampliacao"]) == 1
+
+
+def test_ampliacao_respeita_limite_do_mandato(tmp_path: Path) -> None:
+    fonte = FonteContada(_tres_candidatos(), por_pagina=1)
+    vaga = vaga_exemplo(meta_candidatos=3)
+    m = Montagem(tmp_path, [], fontes=[fonte], vaga=vaga)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, max_ampliacoes=1)
+
+    assert fonte.paginas == [1, 2]
+    assert m.analisador.analisados == ["c1", "c2"]
+    assert "meta_em_risco" in [e.etapa for e in fluxo.eventos]
+    assert fluxo.vaga.requisitos == vaga.requisitos
+
+
+def test_sem_ampliacao_no_mandato_nao_busca_de_novo(tmp_path: Path) -> None:
+    fonte = FonteContada([candidato_exemplo("c1")])
+    m = Montagem(tmp_path, [], fontes=[fonte])
+
+    _assinar_fluxo(m.fluxo(), max_ampliacoes=0)
+
+    assert fonte.paginas == [1]
+
+
+def test_busca_vazia_gasta_a_ampliacao_e_para_no_limite(tmp_path: Path) -> None:
+    fonte = FonteContada([])
+    m = Montagem(tmp_path, [], fontes=[fonte])
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, max_ampliacoes=2)
+
+    assert fonte.paginas == [1, 2, 3]
+    assert fluxo.estado is E.CONCLUIDA
+
+
+def test_meta_maior_que_o_limite_de_indicacoes_nao_amplia_a_toa(tmp_path: Path) -> None:
+    fonte = FonteContada(_tres_candidatos(), por_pagina=1)
+    m = Montagem(tmp_path, [], fontes=[fonte], vaga=vaga_exemplo(meta_candidatos=5))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, max_indicacoes=1, max_ampliacoes=3)
+
+    assert fonte.paginas == [1]
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def _dez_candidatos() -> list[Candidato]:
+    return [candidato_exemplo(f"c{i:02d}") for i in range(10)]
+
+
+def test_faixa_verde_demais_pausa_por_taxa_anomala(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dez_candidatos())
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert _execucao(m).motivo == MotivoPausa.TAXA_ANOMALA
+    assert _execucao(m).estado_anterior == "decidindo"
+    assert m.mensageiro.enviados == {}
+
+    fluxo.retomar()
+
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_nenhum_na_faixa_verde_pausa_por_taxa_anomala(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dez_candidatos(), analisador=AnalisadorComEvidencias(nota_padrao=0.1))
+
+    _assinar_fluxo(m.fluxo())
+
+    assert _execucao(m).motivo == MotivoPausa.TAXA_ANOMALA
+
+
+def test_taxa_de_oitenta_por_cento_nao_pausa(tmp_path: Path) -> None:
+    notas = {"c08": 0.5, "c09": 0.5}
+    m = Montagem(tmp_path, _dez_candidatos(), analisador=AnalisadorComEvidencias(notas=notas))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_menos_de_dez_analisados_nao_mede_taxa(tmp_path: Path) -> None:
+    candidatos = _dez_candidatos()[:9]
+    m = Montagem(tmp_path, candidatos)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_limiar_nulo_nao_conta_como_taxa_anomala(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dez_candidatos())
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, limiar_verde=None)
+
+    assert fluxo.estado is E.CONCLUIDA

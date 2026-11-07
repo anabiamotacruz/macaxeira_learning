@@ -35,6 +35,7 @@ from backend.agente.regras import (
 )
 from backend.contratos.erros import (
     ErroContrato,
+    FonteIndisponivel,
     LimiteGastoAtingido,
     ModeloIndisponivel,
     RespostaInvalida,
@@ -165,6 +166,9 @@ def _transitar(
 
 CANAL_CONVITE = "email"
 LIMITE_INVALIDAS_SEGUIDAS = 3
+MINIMO_PARA_MEDIR_TAXA = 10
+TAXA_VERDE_MAXIMA = 0.8
+REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
 RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
 
 
@@ -212,6 +216,10 @@ class ProgressoFluxo(Contrato):
     """O trabalho feito até aqui. Modelo local: não cruza frentes."""
 
     iniciado_em: AwareDatetime
+    ampliacoes: int = 0
+    inicio_rodada: int = 0
+    fontes_fora: list[str] = []
+    taxa_aceita: bool = False
     candidatos: list[Candidato] = []
     analises: dict[str, Analise] = {}
     analises_invalidas: list[str] = []
@@ -391,6 +399,7 @@ class FluxoVaga:
             raise MandatoInvalido(f"{motivo} só retoma com um aditivo assinado")
         self._ir(EstadoFluxo(anterior), cursor=cursor, motivo=f"retomada de {motivo}")
         progresso.invalidas_seguidas = 0
+        progresso.taxa_aceita = progresso.taxa_aceita or motivo == MotivoPausa.TAXA_ANOMALA
         self._salvar_progresso(progresso)
 
     def _assinar(
@@ -526,6 +535,7 @@ class FluxoVaga:
             EstadoFluxo.ANALISANDO: self._passo_analisar,
             EstadoFluxo.REVISANDO: self._passo_revisar,
             EstadoFluxo.DECIDINDO: self._passo_decidir,
+            EstadoFluxo.META_EM_RISCO: self._passo_meta_em_risco,
             EstadoFluxo.CONVIDANDO: self._passo_convidar,
             EstadoFluxo.ENTREGANDO: self._passo_entregar,
         }
@@ -537,25 +547,66 @@ class FluxoVaga:
                 continuar = passos[self.estado]()
 
     def _passo_buscar(self) -> bool:
+        """Busca a rodada atual. Sem ninguém novo, gasta ampliações até o limite do mandato."""
         progresso = self._progresso()
-        progresso.candidatos.extend(self._buscar(progresso))
+        limite = self.mandato.politica.max_ampliacoes
+        novos = self._buscar(progresso)
+        while not novos and progresso.ampliacoes < limite:
+            self._registrar_ampliacao(progresso)
+            novos = self._buscar(progresso)
+        progresso.inicio_rodada = len(progresso.candidatos)
+        progresso.candidatos.extend(novos)
         self._salvar_progresso(progresso)
-        self._avancar(EstadoFluxo.ANALISANDO)
+        if novos:
+            self._avancar(EstadoFluxo.ANALISANDO, cursor=progresso.inicio_rodada)
+        else:
+            self._avancar(EstadoFluxo.META_EM_RISCO)
         return True
 
+    def _registrar_ampliacao(self, progresso: ProgressoFluxo) -> None:
+        progresso.ampliacoes += 1
+        self._salvar_progresso(progresso)
+        self._evento("ampliacao", f"ampliação {progresso.ampliacoes} da busca, mesmos requisitos")
+
     def _buscar(self, progresso: ProgressoFluxo) -> list[Candidato]:
-        """Procura no banco e depois nas fontes externas, sem repetir pessoas."""
+        """Procura no banco e depois nas fontes externas, sem repetir pessoas.
+
+        Uma fonte fora do ar reduz a cobertura e fica registrada. Todas fora pausam a vaga.
+        """
         vistos = {c.id for c in progresso.candidatos}
+        fontes = (self._banco, *self._fontes)
+        consultas = self._consultas(self.vaga, progresso.ampliacoes)
+        novos: list[Candidato] = []
+        fora: list[str] = []
+        for fonte in fontes:
+            try:
+                for consulta in consultas:
+                    achados = fonte.buscar(
+                        self.vaga.empresa_id, consulta, pagina=progresso.ampliacoes + 1
+                    )
+                    novos.extend(self._filtrar_achados(achados, vistos))
+            except FonteIndisponivel:
+                fora.append(type(fonte).__name__)
+        progresso.fontes_fora = fora
+        if len(fora) == len(fontes):
+            raise _PausaNecessaria(MotivoPausa.FONTES_INDISPONIVEIS)
+        if fora:
+            responderam = len(fontes) - len(fora)
+            self._evento(
+                "cobertura",
+                f"cobertura parcial: {responderam} de {len(fontes)} fontes; "
+                f"fora do ar: {', '.join(fora)}",
+            )
+        return novos
+
+    def _filtrar_achados(self, achados: list[Candidato], vistos: set[str]) -> list[Candidato]:
         novos = []
-        consultas = self._consultas(self.vaga, 0)
-        for fonte in (self._banco, *self._fontes):
-            for consulta in consultas:
-                for candidato in fonte.buscar(self.vaga.empresa_id, consulta):
-                    if candidato.empresa_id != self.vaga.empresa_id:
-                        self._evento("busca", "candidato de outra empresa ignorado")
-                    elif candidato.id not in vistos:
-                        vistos.add(candidato.id)
-                        novos.append(candidato)
+        for candidato in achados:
+            if candidato.empresa_id != self.vaga.empresa_id:
+                self._evento("busca", "candidato de outra empresa ignorado")
+            elif candidato.id not in vistos:
+                vistos.add(candidato.id)
+                novos.append(candidato)
         return novos
 
     def _passo_analisar(self) -> bool:
@@ -574,7 +625,7 @@ class FluxoVaga:
             progresso.analises[candidato.id] = analise
             progresso.invalidas_seguidas = 0
             self._concluir_candidato(progresso, indice)
-        self._avancar(EstadoFluxo.REVISANDO)
+        self._avancar(EstadoFluxo.REVISANDO, cursor=progresso.inicio_rodada)
         return True
 
     def _passo_revisar(self) -> bool:
@@ -644,8 +695,45 @@ class FluxoVaga:
                     indicados += 1
             self._repo.salvar_decisao(decisao)
             self._evento("decisao", f"{decisao.tipo}: {decisao.regra}", decisao.candidato_id)
-        self._avancar(self._estado_de_saida(mandato))
+        if not progresso.taxa_aceita and self._taxa_anomala(progresso, mandato):
+            raise _PausaNecessaria(MotivoPausa.TAXA_ANOMALA)
+        self._avaliar_meta(progresso, mandato)
         return True
+
+    def _taxa_anomala(self, progresso: ProgressoFluxo, mandato: Mandato) -> bool:
+        """Faixa verde vazia ou cheia demais sugere problema na regra ou nos dados."""
+        analisados = len(progresso.analises)
+        if mandato.politica.limiar_verde is None or analisados < MINIMO_PARA_MEDIR_TAXA:
+            return False
+        verdes = sum(
+            decisao.regra in REGRAS_DA_FAIXA_VERDE for decisao in self._ultimas_decisoes().values()
+        )
+        return verdes == 0 or verdes / analisados > TAXA_VERDE_MAXIMA
+
+    def _meta_efetiva(self, mandato: Mandato) -> int:
+        return min(self.vaga.meta_candidatos, mandato.politica.max_indicacoes)
+
+    def _avaliar_meta(self, progresso: ProgressoFluxo, mandato: Mandato) -> None:
+        """Segue com a meta atingida; abaixo dela, amplia a busca ou avisa do risco."""
+        if len(self._indicados()) >= self._meta_efetiva(mandato):
+            self._avancar(self._estado_de_saida(mandato))
+        elif progresso.ampliacoes < mandato.politica.max_ampliacoes:
+            self._registrar_ampliacao(progresso)
+            self._avancar(EstadoFluxo.BUSCANDO)
+        else:
+            self._avancar(EstadoFluxo.META_EM_RISCO)
+
+    def _passo_meta_em_risco(self) -> bool:
+        """Avisa quem recruta e segue com quem houver: a meta em risco não para a vaga."""
+        mandato = self.mandato
+        indicados = len(self._indicados())
+        self._evento("aviso_rh", f"meta em risco: {indicados} de {self.vaga.meta_candidatos}")
+        if indicados:
+            self._avancar(self._estado_de_saida(mandato))
+            return True
+        self._evento("resultado", "sem indicação para esta vaga")
+        self._ir(EstadoFluxo.CONCLUIDA)
+        return False
 
     def _decidir_candidato(
         self, progresso: ProgressoFluxo, candidato: Candidato, mandato: Mandato, agora: datetime
