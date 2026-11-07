@@ -1,6 +1,6 @@
 """Comportamentos da T2.6, sem depender do mecanismo de persistência."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from importlib import import_module
 
 import pytest
@@ -16,8 +16,9 @@ HOJE = date(2026, 11, 7)
 
 @pytest.fixture
 def banco():
+    """Carga sintética de confiança: os testes de busca partem de registros já autorizados."""
     classe = import_module("backend.fontes.banco_talentos").BancoTalentos
-    return classe(hoje=HOJE)
+    return classe(hoje=HOJE, confiar_autorizacao_sintetica=True)
 
 
 def registro(identificador="pessoa-1", empresa="empresa-1", **campos):
@@ -162,7 +163,9 @@ def test_remover_nao_guarda_dados_em_texto_e_bloqueia_mesmo_email(tmp_path):
 
 def test_dados_sobrevivem_a_reinicio(tmp_path):
     arquivo = tmp_path / "banco.sqlite"
-    BancoTalentosReal(arquivo, hoje=HOJE).importar("empresa-1", [registro(perfil_texto="Python")])
+    BancoTalentosReal(arquivo, hoje=HOJE, confiar_autorizacao_sintetica=True).importar(
+        "empresa-1", [registro(perfil_texto="Python")]
+    )
 
     novo = BancoTalentosReal(arquivo, hoje=HOJE)
 
@@ -282,3 +285,243 @@ def test_atualizar_com_email_de_outra_pessoa_e_recusado(banco):
         banco.atualizar("empresa-1", "b", {"email": "A@e.invalid"})
 
     assert banco._obter("empresa-1", "b").atributos["email"] == "b@e.invalid"
+
+
+def test_importar_nao_concede_autorizacao_por_padrao():
+    banco = BancoTalentosReal(hoje=HOJE)
+
+    [importado] = banco.importar("empresa-1", [registro(estado=EstadoBanco.ATIVO)])
+
+    assert importado.autorizou_contato is False
+    assert importado.autorizacao_valida_ate is None
+    assert importado.estado == EstadoBanco.PENDENTE
+    assert banco.buscar("empresa-1", "") == []
+    assert banco.vencendo("empresa-1", date(2030, 1, 1)) == []
+
+
+def test_autorizacao_registrada_depois_da_importacao_coloca_na_busca():
+    banco = BancoTalentosReal(hoje=HOJE)
+    banco.importar("empresa-1", [registro()])
+
+    banco.registrar_autorizacao("empresa-1", "pessoa-1", date(2027, 1, 1))
+
+    assert [c.id for c in banco.buscar("empresa-1", "")] == ["pessoa-1"]
+
+
+def test_importar_por_padrao_preserva_opt_out_e_remocao_do_registro():
+    banco = BancoTalentosReal(hoje=HOJE)
+
+    [saiu, removido] = banco.importar(
+        "empresa-1", [registro("a", opt_out=True), registro("b", estado=EstadoBanco.REMOVIDO)]
+    )
+
+    assert saiu.opt_out is True
+    assert removido.estado == EstadoBanco.REMOVIDO
+
+
+def test_carga_de_confianca_nao_vale_para_registro_que_nao_e_sintetico():
+    banco = BancoTalentosReal(hoje=HOJE, confiar_autorizacao_sintetica=True)
+
+    banco.importar("empresa-1", [registro(simulado=False)])
+
+    assert banco.buscar("empresa-1", "") == []
+
+
+def test_autorizacao_nao_ressuscita_removido():
+    banco = BancoTalentosReal(hoje=HOJE)
+    banco.importar("empresa-1", [registro(estado=EstadoBanco.REMOVIDO)])
+
+    with pytest.raises(ValueError):
+        banco.registrar_autorizacao("empresa-1", "pessoa-1", date(2027, 1, 1))
+
+    assert banco._obter("empresa-1", "pessoa-1").estado == EstadoBanco.REMOVIDO
+    assert banco.buscar("empresa-1", "") == []
+
+
+def _base_com_dois_emails(banco):
+    banco.importar(
+        "empresa-1",
+        [
+            registro("a", atributos={"email": "a@e.invalid"}),
+            registro("b", atributos={"email": "b@e.invalid"}),
+        ],
+    )
+
+
+def test_opt_out_com_id_e_email_de_pessoas_diferentes_e_recusado_sem_marcar_ninguem(banco):
+    _base_com_dois_emails(banco)
+
+    with pytest.raises(ValueError):
+        banco.importar(
+            "empresa-1", [registro("b", atributos={"email": "a@e.invalid"}, opt_out=True)]
+        )
+
+    assert banco._obter("empresa-1", "a").opt_out is False
+    assert banco._obter("empresa-1", "b").opt_out is False
+
+
+def test_opt_out_com_email_diferente_do_id_e_recusado(banco):
+    _base_com_dois_emails(banco)
+
+    with pytest.raises(ValueError):
+        banco.importar(
+            "empresa-1", [registro("b", atributos={"email": "novo@e.invalid"}, opt_out=True)]
+        )
+
+    assert banco._obter("empresa-1", "b").opt_out is False
+
+
+def test_conflito_de_opt_out_nao_grava_o_lote(banco):
+    _base_com_dois_emails(banco)
+
+    with pytest.raises(ValueError):
+        banco.importar(
+            "empresa-1",
+            [
+                registro("c", atributos={"email": "c@e.invalid"}),
+                registro("b", atributos={"email": "a@e.invalid"}, opt_out=True),
+            ],
+        )
+
+    with pytest.raises(KeyError):
+        banco._obter("empresa-1", "c")
+
+
+@pytest.mark.parametrize(
+    ("identificador", "email"),
+    [("a", "A@e.invalid "), ("a", None), ("outro", "a@e.invalid")],
+)
+def test_opt_out_com_identidade_segura_vale_para_a_pessoa(banco, identificador, email):
+    _base_com_dois_emails(banco)
+    atributos = {"email": email} if email else {}
+
+    [resultado] = banco.importar(
+        "empresa-1", [registro(identificador, atributos=atributos, opt_out=True)]
+    )
+
+    assert resultado.id == "a"
+    assert resultado.opt_out is True
+    assert banco._obter("empresa-1", "b").opt_out is False
+
+
+def test_duplicata_sem_opt_out_com_conflito_fica_com_o_id_informado(banco):
+    _base_com_dois_emails(banco)
+
+    [resultado] = banco.importar(
+        "empresa-1", [registro("b", atributos={"email": "a@e.invalid"}, origem="ats")]
+    )
+
+    assert resultado.id == "b"
+    assert banco.origens("empresa-1", "a") == ["simulacao"]
+    assert banco.origens("empresa-1", "b") == ["simulacao", "ats"]
+
+
+def test_atualizar_nao_devolve_email_bloqueado_por_remocao(banco):
+    _base_com_dois_emails(banco)
+    banco.remover("empresa-1", "a")
+
+    with pytest.raises(ValueError):
+        banco.atualizar("empresa-1", "b", {"email": " A@e.invalid"})
+
+    assert banco._obter("empresa-1", "b").atributos["email"] == "b@e.invalid"
+    assert banco.atualizar("empresa-1", "b", {"cloud": "sim"}).atributos["cloud"] == "sim"
+
+
+def test_busca_acompanha_a_data_da_funcao_injetada():
+    dia = {"atual": HOJE}
+    banco = BancoTalentosReal(hoje=lambda: dia["atual"], confiar_autorizacao_sintetica=True)
+    banco.importar("empresa-1", [registro(autorizacao_valida_ate=date(2026, 11, 8))])
+    assert [c.id for c in banco.buscar("empresa-1", "")] == ["pessoa-1"]
+
+    dia["atual"] = date(2026, 11, 9)
+
+    assert banco.hoje == date(2026, 11, 9)
+    assert banco.buscar("empresa-1", "") == []
+    with pytest.raises(ValueError):
+        banco.registrar_autorizacao("empresa-1", "pessoa-1", date(2026, 11, 8))
+    assert banco.atualizar("empresa-1", "pessoa-1", {"a": "b"}).atualizado_em == dia["atual"]
+
+
+def test_aceita_o_relogio_do_fluxo_que_devolve_data_e_hora():
+    banco = BancoTalentosReal(
+        hoje=lambda: datetime(2026, 11, 9, 23, 59, tzinfo=UTC),
+        confiar_autorizacao_sintetica=True,
+    )
+    banco.importar(
+        "empresa-1",
+        [
+            registro("venceu", autorizacao_valida_ate=date(2026, 11, 8)),
+            registro("no_dia", autorizacao_valida_ate=date(2026, 11, 9)),
+        ],
+    )
+
+    assert [c.id for c in banco.buscar("empresa-1", "")] == ["no_dia"]
+
+
+@pytest.mark.parametrize(
+    ("consulta", "perfil"),
+    [
+        ("Desenvolvedor Python", "Desenvolvedora Python"),
+        ("Desenvolvedora Python", "Desenvolvedor Python"),
+        ("Desenvolvedor(a) Python", "Desenvolvedora Python"),
+        ("Desenvolvedor(a) Python", "Desenvolvedor Python"),
+        ("Desenvolvedores", "Desenvolvedoras"),
+        ("Engenheiro de dados", "Engenheira de dados"),
+        ("Arquiteto", "Arquiteta"),
+        ("Diretor", "Diretora"),
+        ("Líder técnico", "Líder técnica"),
+        ("Lider tecnico", "Lider tecnica"),
+    ],
+)
+def test_variacao_de_genero_da_palavra_nao_muda_a_busca(banco, consulta, perfil):
+    banco.importar("empresa-1", [registro(perfil_texto=perfil)])
+
+    assert [c.id for c in banco.buscar("empresa-1", consulta)] == ["pessoa-1"]
+
+
+def test_par_masculino_e_feminino_tem_o_mesmo_resultado(banco):
+    banco.importar(
+        "empresa-1",
+        [
+            registro("ela", perfil_texto="Desenvolvedora Python"),
+            registro("ele", perfil_texto="Desenvolvedor Python"),
+        ],
+    )
+
+    for consulta in ("Desenvolvedor Python", "Desenvolvedora Python"):
+        assert [c.id for c in banco.buscar("empresa-1", consulta)] == ["ela", "ele"]
+
+
+@pytest.mark.parametrize(
+    ("consulta", "perfil"),
+    [("for", "Fora"), ("banco", "Banca"), ("porto", "Porta"), ("Javo", "Java"), ("dor", "Dora")],
+)
+def test_palavras_sem_relacao_de_genero_nao_se_misturam(banco, consulta, perfil):
+    banco.importar("empresa-1", [registro(perfil_texto=perfil)])
+
+    assert banco.buscar("empresa-1", consulta) == []
+
+
+@pytest.mark.parametrize(
+    ("chave", "valor"),
+    [
+        ("genero", "feminino"),
+        ("Gênero", "feminino"),
+        ("sexo", "feminino"),
+        ("raca", "parda"),
+        ("pcd", "visual"),
+        ("idade", "42"),
+        ("campo_novo", "desconhecido"),
+    ],
+)
+def test_atributo_sensivel_ou_nao_previsto_nao_e_pesquisavel(banco, chave, valor):
+    banco.importar("empresa-1", [registro(atributos={chave: valor})])
+
+    assert banco.buscar("empresa-1", valor) == []
+
+
+@pytest.mark.parametrize(("chave", "valor"), [("cargo", "Artífice"), ("Skill", "Rust")])
+def test_atributo_profissional_continua_pesquisavel(banco, chave, valor):
+    banco.importar("empresa-1", [registro(atributos={chave: valor})])
+
+    assert [c.id for c in banco.buscar("empresa-1", valor)] == ["pessoa-1"]
