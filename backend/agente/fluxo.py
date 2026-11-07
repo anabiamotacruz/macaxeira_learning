@@ -253,7 +253,6 @@ class ProgressoFluxo(Contrato):
     taxa_aceita: bool = False
     candidatos: list[Candidato] = []
     analises: dict[str, Analise] = {}
-    analises_invalidas: list[str] = []
     invalidas_seguidas: int = 0
     versao_mandato_na_pausa: int | None = None
     convites: list[RegistroConvite] = []
@@ -351,7 +350,7 @@ class FluxoVaga:
         if (vaga.id, vaga.empresa_id) != (self.vaga.id, self.vaga.empresa_id):
             raise ValueError("a edição precisa ser da mesma vaga e da mesma empresa")
         mudou = hash_da_vaga(vaga) != hash_da_vaga(self.vaga)
-        self.vaga = vaga
+        self.vaga = vaga.model_copy(update={"aprovada": self.vaga.aprovada and not mudou})
         if mudou and self.estado == EstadoFluxo.AGUARDANDO_MANDATO:
             self._ir(EstadoFluxo.RASCUNHO, motivo="vaga editada antes da assinatura")
 
@@ -372,6 +371,7 @@ class FluxoVaga:
             aditivo = self._assinar(
                 assinante, limite_gasto_usd, politica, valido_ate, versao, agora
             )
+            self.vaga = self.vaga.model_copy(update={"aprovada": True})
             self._evento("mandato", f"aditivo assinado: versão {aditivo.versao}")
             self._avisar_limiar(aditivo)
             return
@@ -415,8 +415,9 @@ class FluxoVaga:
         progresso = self._progresso()
         limite = progresso.iniciado_em + timedelta(days=self.vaga.prazo_dias)
         if self._relogio() >= limite:
+            abertos = (EstadoConvite.A_ENVIAR, EstadoConvite.AGUARDANDO)
             for registro in progresso.convites:
-                if registro.estado == EstadoConvite.AGUARDANDO:
+                if registro.estado in abertos:
                     registro.estado = EstadoConvite.ENCERRADO
                     self._evento("convite", "prazo vencido", registro.convite.candidato_id)
             self._salvar_progresso(progresso)
@@ -838,7 +839,6 @@ class FluxoVaga:
                 analise = self._analisador.analisar(self.vaga, candidato)
                 self._exigir_coerencia(analise, candidato)
             except RespostaInvalida:
-                progresso.analises_invalidas.append(candidato.id)
                 self._contar_invalida(progresso, candidato, indice, "análise inválida")
                 continue
             progresso.analises[candidato.id] = analise

@@ -15,7 +15,14 @@ from backend.agente.fluxo import (
     TransicaoInvalida,
     _transitar,
 )
-from backend.agente.mandato import Mandato, MandatoInvalido, ModoEntrega, Politica, assinar
+from backend.agente.mandato import (
+    Mandato,
+    MandatoInvalido,
+    ModoEntrega,
+    Politica,
+    assinar,
+    hash_da_vaga,
+)
 from backend.agente.persistencia import Repositorio
 from backend.contratos.erros import (
     ErroContrato,
@@ -2076,3 +2083,38 @@ def test_quem_saiu_nao_volta_ao_banco_por_destino(tmp_path: Path) -> None:
             fluxo.registrar_destino("c1", destino, RH)
 
     fluxo.registrar_destino("c1", DestinoPessoa.CONTRATADA, RH)
+
+
+def test_convite_que_nao_saiu_nao_e_enviado_depois_do_prazo(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path,
+        [candidato_exemplo("c1")],
+        vaga=vaga_exemplo(meta_candidatos=1),
+        mensageiro=MensageiroSimulado(falhas_restantes=1),
+    )
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    m.relogio.avancar(days=10)
+
+    fluxo.verificar_prazo()
+
+    assert m.mensageiro.enviados == {}
+    assert fluxo.estado is E.CONCLUIDA
+
+
+def test_editar_vaga_assinada_tira_a_aprovacao_e_o_aditivo_devolve(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(ModeloIndisponivel("fora"), {"c1"})
+    m = Montagem(tmp_path, _dois_candidatos(), analisador=analisador)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert fluxo.vaga.aprovada is True
+
+    fluxo.editar_vaga(vaga_exemplo())
+    assert fluxo.vaga.aprovada is True
+
+    fluxo.editar_vaga(vaga_exemplo(titulo="Python sênior"))
+    assert fluxo.vaga.aprovada is False
+
+    _aditivo(fluxo)
+    assert fluxo.vaga.aprovada is True
+    assert fluxo.mandato.hash_vaga == hash_da_vaga(fluxo.vaga)
