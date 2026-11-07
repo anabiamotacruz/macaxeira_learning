@@ -199,6 +199,16 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 - [x] Testar `test_gera_duas_empresas_separadas`.
 - [x] Implementar e verificar.
 
+**Revisão de avaliação v3 solicitada:** `dados/avaliacao_v3/` e
+`dados/corpus_v3/`, preservando o conjunto legado de regressão.
+
+- [x] Redigir 216 narrativas profissionais distintas em 12 funções, sem unicidade artificial.
+- [x] Separar 120 famílias positivas de prova de ajuste e variantes de viés.
+- [x] Incluir 24 casos ambíguos, 24 negativos e 24 bloqueios de autorização.
+- [x] Marcar 12 pares com `par_vies`, sem contá-los como novas pessoas independentes.
+- [x] Auditar referências, evidências, semelhança lexical, partições e ausência de rótulos nos IDs.
+- [ ] Validar os rótulos com RH e medir o modelo na prova congelada (não feito nesta entrega).
+
 ### T2.6 [P] (onda 1): banco de talentos
 
 **Arquivo:** `backend/fontes/banco_talentos.py`. **Teste:** `tests/fontes/test_banco_talentos.py`.

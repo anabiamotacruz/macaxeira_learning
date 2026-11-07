@@ -1,5 +1,10 @@
 # Conjunto sintético — T2.1
 
+> Esta é a base legada de regressão, com cenários repetidos. Para a avaliação
+> ampliada, use a [base editorial v3](../avaliacao_v3/README.md): 216 narrativas
+> profissionais, 12 funções e 120 famílias indicáveis na prova, com pares de
+> viés fora do denominador. Não some as bases como observações independentes.
+
 Todos os candidatos, empregadores do histórico, contatos e resultados são
 fictícios. Não há consulta ao LinkedIn, Clay, modelo ou qualquer serviço externo.
 Endereços `example.invalid` não são canais reais de envio.

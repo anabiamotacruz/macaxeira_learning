@@ -1,0 +1,33 @@
+{
+  "versao": 3,
+  "registros": 240,
+  "funcoes": 12,
+  "vagas": 24,
+  "familias_profissionais": 216,
+  "indicaveis_prova_independentes": 120,
+  "textos_profissionais_distintos_sem_pares": 216,
+  "pares_vies": 12,
+  "por_particao": {
+    "prova": 180,
+    "ajuste": 60
+  },
+  "por_resultado_e_particao": {
+    "prova/indicar": 144,
+    "ajuste/indicar": 24,
+    "ajuste/bloquear_contato": 12,
+    "prova/bloquear_contato": 12,
+    "ajuste/pedir_humano": 12,
+    "ajuste/descartar": 12,
+    "prova/descartar": 12,
+    "prova/pedir_humano": 12
+  },
+  "maior_jaccard_trigramas_sem_pares": 0.1139,
+  "limiar_alerta_jaccard": 0.65,
+  "pares_muito_semelhantes_sem_vies": [],
+  "sha256_candidatos": "6c6f94aaf29643034e2ce6807b313416d574eedbb6fb779161d0063583a1b966",
+  "sha256_vagas": "1616fb702c54831a0b189831cb004f4b5938263a54711e8facc0b18f090f06d2",
+  "sha256_casos": "46cd898edd50e05447d6e30145737febcf3e4f49f742eda8bab8020793a5299d",
+  "validacao_rh": "pendente",
+  "precisao_modelo": "nao_medida",
+  "independencia_estatistica": "nao_demonstrada_por_diversidade_lexical"
+}

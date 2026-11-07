@@ -1,0 +1,146 @@
+[
+  {
+    "slug": "qa",
+    "titulo": "Qualidade de software",
+    "competencias": [
+      "Testes automatizados",
+      "Testes de API",
+      "Análise de defeitos"
+    ],
+    "campo": "experiencia_qa",
+    "positivos": [
+      "Na operação de uma loja virtual sintética, assumi a qualidade do fechamento de pedidos. Automatizei cenários de desconto e estoque, exercitei os endpoints de pagamento e investiguei divergências com os logs. Os defeitos documentados permitiram bloquear uma publicação que cobraria valores diferentes dos exibidos.",
+      "Qual foi o defeito mais difícil de reproduzir? Em um sistema hospitalar fictício, alterações de agendamento sumiam após interrupções de conexão. Testei a API sob essas condições e automatizei a regressão. Os registros mostraram uma resposta de sucesso anterior à gravação; minha responsabilidade profissional foi demonstrar essa sequência.",
+      "Atuei na equipe de qualidade de uma plataforma sintética de ensino. Construí testes automatizados para matrículas concorrentes e validei contratos da API. Ao analisar defeitos de duplicação, relacionei cada ocorrência ao cenário reproduzível e acompanhei a correção até verificar que a regressão deixara de ocorrer.",
+      "Quando um produto financeiro fictício passou a calcular juros diariamente, conduzi a validação profissional da mudança. Comparei respostas da API com exemplos calculados independentemente, automatizei datas de fronteira e investiguei arredondamentos. Registrei evidências que mostravam diferenças acumuladas, orientando a correção antes da entrega aos usuários.",
+      "Qualidade do rastreamento em serviço sintético de entregas. Automação de testes com eventos fora de ordem; validação das respostas da API; investigação de defeitos reportados pela operação. Resultado da análise: reenvios antigos sobrescreviam posições recentes. Responsabilidade pela reprodução do erro e pela cobertura de regressão do comportamento identificado.",
+      "Para uma aplicação fictícia de seguros, organizei a investigação de propostas desaparecidas. Meu trabalho de qualidade incluiu automatizar submissões interrompidas, testar a API com campos opcionais e reconstruir a sequência dos defeitos. O resultado foi uma reprodução consistente de uma validação que descartava propostas sem avisar.",
+      "Fui responsável pela validação de uma migração em uma biblioteca digital sintética. Testes automatizados compararam empréstimos antes e depois da alteração, enquanto chamadas à API verificaram paginação. A análise de defeitos revelou registros omitidos quando devoluções aconteciam durante a leitura, permitindo corrigir o comportamento antes da liberação.",
+      "Uma ferramenta fictícia de manutenção industrial apresentava falhas intermitentes no encerramento de ordens. Na função de qualidade, automatizei cenários com anexos, conferi respostas da API e classifiquei defeitos por evidência. Identifiquei uma corrida entre upload e confirmação e acompanhei os testes da correção entregue.",
+      "• Responsabilidade profissional: validar renovações de um serviço sintético de assinaturas.\n• Execução: testes automatizados de cancelamento, verificações da API e investigação de tentativas repetidas.\n• Evidência encontrada: assinaturas encerradas voltavam a gerar cobranças depois de um reprocessamento. A análise dos estados explicou a transição incorreta e sustentou a validação da correção.",
+      "Assumi os testes de uma plataforma fictícia de transporte coletivo. Automatizei combinações de tarifas, verifiquei os endpoints da API e analisei defeitos enviados pelo suporte. Os cenários de transferência revelaram uma cobrança adicional indevida, cuja correção validei por regressão antes da disponibilização da versão.",
+      "Em uma empresa sintética de gestão predial, minha entrega profissional foi a validação de reservas de espaços. Escrevi testes automatizados de concorrência, examinei os contratos da API e analisei defeitos de disponibilidade. Demonstrei que duas confirmações podiam ocupar o mesmo horário e verifiquei a solução adotada.",
+      "Um portal fictício de compras apresentava totais incompatíveis com os itens recebidos. Trabalhei na qualidade, automatizando recebimentos parciais e testando a API com devoluções. Analisei cada defeito por meio de exemplos reproduzíveis, localizando um erro no tratamento de quantidades negativas e validando a correção publicada."
+    ],
+    "ambiguos": [
+      "Participei de encontros sobre qualidade em uma organização sintética e observei testes de integração realizados pela equipe. O registro disponível menciona apoio à documentação e familiaridade com APIs, mas não confirma execução profissional de testes automatizados, investigação própria de defeitos ou responsabilidade pela validação de entregas.",
+      "Em um produto fictício de atendimento, acompanhei uma investigação de regressão e ajudei a reunir relatos do suporte. Há referência coletiva a automação e verificações de API, sem distinguir minhas ações. Permanece incerto se executei atividades profissionais de qualidade ou apenas organizei informações para a equipe responsável."
+    ],
+    "negativos": [
+      "Minha experiência profissional sintética é em desenvolvimento de interfaces, com implementação de componentes acessíveis e revisão de desempenho visual. Nunca trabalhei profissionalmente em qualidade de software, não desenvolvi suítes de testes e não fui responsável por testar APIs ou investigar defeitos na função de qualidade.",
+      "Atuo profissionalmente em pesquisa de experiência em um serviço fictício, conduzindo entrevistas e organizando achados de usabilidade. Não tenho experiência profissional em qualidade de software: nunca automatizei testes, validei APIs nem assumi análise técnica de defeitos. Os testes mencionados no meu histórico são exclusivamente sessões de usabilidade."
+    ],
+    "bloqueados": [
+      "Em uma operação sintética de venda de ingressos, respondi pela qualidade da fila de compras. Automatizei testes de expiração de reservas, verifiquei a API durante reenvios e analisei defeitos de confirmação. Reproduzi a venda duplicada de um assento e acompanhei a correção até a regressão demonstrar consistência.",
+      "Trabalhei na qualidade de um cadastro fictício de fornecedores, onde mudanças de endereço apagavam documentos. Criei testes automatizados com atualizações parciais, examinei a API e investiguei os defeitos a partir dos registros. Identifiquei uma substituição indevida do cadastro completo e validei a preservação dos campos após a correção."
+    ]
+  },
+  {
+    "slug": "sre",
+    "titulo": "Engenharia de confiabilidade",
+    "competencias": [
+      "Observabilidade",
+      "Gestão de incidentes",
+      "Automação operacional"
+    ],
+    "campo": "experiencia_sre",
+    "positivos": [
+      "Na operação profissional de uma plataforma sintética de vendas, fui responsável pela confiabilidade do checkout. Implementei métricas e alertas de latência, coordenei um incidente de saturação e automatizei a expansão de capacidade. A revisão posterior relacionou consultas lentas ao acúmulo de conexões e definiu medidas preventivas.",
+      "A confiabilidade das atualizações de um serviço fictício de comunicação ficou sob minha responsabilidade profissional. Foram construídos painéis de observabilidade e verificações automatizadas de publicação. A resposta a um incidente incluiu reversão coordenada e registro da cronologia: instâncias recebiam tráfego antes de concluir a inicialização, explicando as interrupções.",
+      "Atuei profissionalmente na confiabilidade de uma aplicação sintética de gestão de frotas. Configurei métricas de atraso no processamento, conduzi a resposta a uma fila paralisada e automatizei a recuperação de consumidores. A investigação do incidente identificou mensagens que provocavam repetição infinita e orientou uma separação segura desses eventos.",
+      "Como responsável operacional de um portal fictício de educação, defini indicadores de disponibilidade e montei alertas acionáveis. Em uma interrupção de autenticação, coordenei o diagnóstico e a restauração. Automatizei depois a renovação e a verificação de certificados, incluindo uma rotina que antecipava vencimentos sem depender de conferência manual.",
+      "Operação sintética de pagamentos: confiabilidade dos trabalhadores assíncronos, com instrumentação de duração e falhas. Coordenação da resposta a reprocessamentos indevidos e automação da drenagem controlada das filas. Na revisão do incidente, identifiquei que o limite de memória não comportava os lotes recebidos; a conclusão orientou os ajustes operacionais.",
+      "Uma plataforma fictícia de arquivos apresentava degradação sem alertas úteis. Meu trabalho profissional foi estabelecer observabilidade por operação, liderar o atendimento aos incidentes e automatizar diagnósticos de capacidade. Identifiquei crescimento do tempo de leitura antes das quedas e preparei uma recuperação documentada, posteriormente exercitada pela equipe.",
+      "Fui responsável pela confiabilidade de um sistema sintético de reservas. Criei métricas de sucesso por jornada, coordenei um incidente de esgotamento de conexões e automatizei testes de recuperação. A análise das causas permitiu ajustar limites e demonstrar, em exercício controlado, que a restauração preservava as reservas confirmadas.",
+      "Na sustentação de um serviço fictício de faturamento, transformei entradas de logs em indicadores operacionais e defini alertas por impacto. Atendi um incidente de indisponibilidade, organizei a comunicação técnica e automatizei procedimentos de retomada. O trabalho reduziu passos manuais e tornou verificável a conclusão de cada etapa de recuperação.",
+      "Como você descobriu a causa da lentidão? Instrumentei as dependências externas de uma plataforma sintética de atendimento. Ao coordenar um incidente, a cronologia mostrou que tentativas ilimitadas ampliavam a falha. Automatizei a troca controlada para uma rota alternativa e defini limites, acompanhados de verificações de estabilidade após a recuperação.",
+      "Em um ambiente fictício de processamento de documentos, respondia pela continuidade do serviço. Montei painéis de atraso e erros, conduzi a resposta a uma interrupção de armazenamento e automatizei checagens de restauração. Comparei evidências anteriores e posteriores ao incidente para localizar permissões alteradas por uma atualização operacional.",
+      "Trabalhei profissionalmente na confiabilidade de uma aplicação sintética de logística. Defini alertas com base na taxa de entrega de eventos, coordenei um incidente de perda de conectividade e automatizei a reconciliação posterior. A revisão técnica separou eventos atrasados de eventos ausentes, evitando repetir operações já concluídas.",
+      "Uma operação fictícia de inventário precisava recuperar serviços com segurança após manutenção. Fiquei responsável pela observabilidade, condução de incidentes e automação de retomada. Instrumentei dependências, documentei uma ocorrência de inicialização incompleta e implementei verificações que confirmavam consistência antes de liberar o tráfego normal novamente."
+    ],
+    "ambiguos": [
+      "Acompanhei reuniões de confiabilidade em uma equipe sintética e li painéis de disponibilidade. O histórico menciona participação em uma interrupção, mas não descreve se executei diagnóstico, coordenei resposta ou automatizei procedimentos. Minha responsabilidade operacional individual e a experiência profissional direta na função continuam sem confirmação documental.",
+      "Em uma aplicação fictícia, ajudei a reunir informações sobre lentidão durante um projeto acadêmico realizado com a equipe. Há menção a alertas e scripts coletivos, sem esclarecer autoria ou uso profissional. Não está confirmado se assumi confiabilidade operacional, atendimento a incidentes ou automação em ambiente de produção."
+    ],
+    "negativos": [
+      "Minha atuação profissional sintética está concentrada em arquitetura de interfaces e construção de componentes visuais. Não tenho experiência profissional em engenharia de confiabilidade, nunca participei de plantões operacionais e não fui responsável por observabilidade, resposta a incidentes ou automação de recuperação de serviços em produção.",
+      "Em uma organização fictícia, trabalho com planejamento de capacidade comercial e elaboração de relatórios financeiros. Apesar da familiaridade com indicadores, nunca exerci engenharia de confiabilidade profissionalmente. Não administrei serviços, não conduzi incidentes técnicos e não implementei observabilidade nem automação operacional em ambientes de produção."
+    ],
+    "bloqueados": [
+      "Na operação sintética de uma plataforma de compras, instrumentei a confirmação de pedidos e estabeleci alertas por falha observada. Durante um incidente de dependência indisponível, coordenei a recuperação e automatizei verificações de consistência. A análise posterior revelou que uma configuração de tempo limite prolongava a indisponibilidade percebida.",
+      "Atuei na confiabilidade profissional de um sistema fictício de distribuição de conteúdo. Monitorei filas e disponibilidade, conduzi um incidente após atualização de rede e automatizei a validação das rotas. Registrei decisões e evidências da recuperação, transformando o diagnóstico recorrente em um procedimento executável e verificável."
+    ]
+  },
+  {
+    "slug": "seguranca",
+    "titulo": "Segurança da informação",
+    "competencias": [
+      "Modelagem de ameaças",
+      "Gestão de vulnerabilidades",
+      "Resposta a incidentes"
+    ],
+    "campo": "experiencia_seguranca",
+    "positivos": [
+      "Na equipe profissional de uma loja virtual sintética, conduzi modelagem de ameaças do fluxo de pagamento. Investiguei vulnerabilidades de autorização e coordenei a resposta a um incidente de acesso indevido. Minha responsabilidade incluiu priorizar correções, acompanhar evidências de exploração e verificar que o isolamento entre contas havia sido restaurado.",
+      "• Escopo profissional: segurança do compartilhamento externo em um serviço fictício de documentos.\n• Ações: mapear ameaças de exposição, avaliar vulnerabilidades de links temporários e organizar contenção durante um incidente.\n• Resultado: os registros fundamentaram a invalidação dos links afetados e a correção das verificações de acesso, acompanhadas até a validação.",
+      "Atuei profissionalmente na segurança de uma plataforma sintética de aprendizagem. Modelei ameaças de troca de arquivos, organizei a gestão das vulnerabilidades encontradas e participei da resposta a um incidente de permissões. Reproduzi a leitura indevida entre turmas e acompanhei a correção com verificações negativas de autorização.",
+      "Em um produto fictício de logística, fui responsável por avaliar riscos das integrações externas. Realizei modelagem de ameaças, priorizei vulnerabilidades de credenciais e coordenei contenção após um acesso suspeito. A investigação reuniu registros de uso e levou à rotação controlada dos segredos e revisão dos privilégios concedidos.",
+      "Que evidência sustentou a contenção? Reproduzi a manipulação de parâmetros em uma aplicação sintética de reservas e registrei o caminho utilizado. Minha responsabilidade profissional abrangia modelar ameaças e gerir vulnerabilidades das alterações de cobrança. Conduzi a resposta ao incidente e verifiquei a correção com a equipe de desenvolvimento.",
+      "Na segurança de uma operação fictícia de arquivos, examinei fronteiras de confiança entre serviços. Identifiquei ameaças de acesso lateral, organizei a correção de vulnerabilidades e respondi a um incidente envolvendo permissões excessivas. A análise de registros sustentou a redução dos privilégios e o teste das novas restrições.",
+      "Trabalhei profissionalmente na proteção de um sistema sintético de atendimento. Conduzi modelagem de ameaças da recuperação de conta e triagem de vulnerabilidades relacionadas. Em um incidente de tentativas indevidas, organizei contenção, análise dos eventos e verificação das correções, evitando que a recuperação expusesse dados de outras contas.",
+      "Um portal fictício de compras apresentava caminhos diferentes para aprovar pedidos. Minha responsabilidade de segurança foi modelar as ameaças e avaliar vulnerabilidades de controle de acesso. Coordenei a resposta a uma alteração irregular, preservei evidências e acompanhei a aplicação de verificações consistentes em todos os pontos de aprovação.",
+      "Segurança dos anexos em plataforma sintética de comunicação. Modelagem de ameaças de exposição; acompanhamento das vulnerabilidades; resposta a incidente com links persistentes. Sob minha responsabilidade profissional, a revisão técnica localizou uma falha de revogação. A correção foi conferida por cenários de acesso expirado, mantendo evidências da investigação e da validação.",
+      "Como integrante profissional da segurança de um serviço fictício de inventário, analisei ameaças de alteração de registros. Priorizei vulnerabilidades de autenticação e organizei a resposta a um incidente com sessões antigas. Registrei a investigação, determinei a invalidação das sessões afetadas e conferi a eficácia das mudanças aplicadas.",
+      "Na operação sintética de uma ferramenta de contratos, conduzi a modelagem de ameaças da assinatura digital. Gerenciei vulnerabilidades encontradas nos controles de sessão e coordenei contenção durante um incidente de reutilização indevida. A investigação separou tentativas de acessos efetivos e produziu evidências para verificar a correção.",
+      "Fui responsável pela segurança de uma integração fictícia de transporte. Mapeei ameaças da troca de eventos, acompanhei vulnerabilidades de validação e conduzi a resposta a mensagens adulteradas. A análise identificou verificações ausentes na origem dos dados, permitindo conter o incidente e testar a rejeição de mensagens inválidas."
+    ],
+    "ambiguos": [
+      "Em uma organização sintética, acompanhei discussões de riscos e organizei documentos para uma auditoria. A referência a vulnerabilidades é coletiva e não esclarece se fiz análise técnica ou apenas preparação administrativa. A experiência profissional individual em modelagem de ameaças e resposta a incidentes permanece explicitamente não confirmada.",
+      "Participei de um exercício de segurança em ambiente fictício e observei a revisão de permissões. O material não informa se a atividade foi treinamento ou responsabilidade profissional, nem atribui ações individuais de investigação. Portanto, não há confirmação suficiente de gestão de vulnerabilidades ou condução de incidentes em trabalho real."
+    ],
+    "negativos": [
+      "Minha experiência profissional sintética é em gestão de projetos de tecnologia, organizando prazos e comunicação das entregas. Não trabalhei profissionalmente em segurança da informação, não modelei ameaças e nunca executei gestão técnica de vulnerabilidades ou resposta a incidentes. Minha participação em auditorias foi exclusivamente administrativa.",
+      "Atuo profissionalmente no desenvolvimento de funcionalidades de uma aplicação fictícia de comércio. Não tenho experiência profissional na função de segurança da informação: nunca conduzi modelagem de ameaças, gerenciei vulnerabilidades ou respondi a incidentes. Os controles presentes no código foram especificados e revisados por outra equipe."
+    ],
+    "bloqueados": [
+      "Na segurança de uma plataforma sintética de cursos, avaliei ameaças do acesso a certificados. Organizei vulnerabilidades por impacto e coordenei a resposta a uma exposição de documentos. Investiguei os registros, acompanhei a revogação dos acessos afetados e validei a correção dos controles antes da reabertura do serviço.",
+      "Um serviço fictício de gestão predial precisava limitar acesso a plantas técnicas. Minha atuação profissional incluiu modelagem de ameaças, acompanhamento das vulnerabilidades e resposta a um incidente de compartilhamento indevido. A investigação permitiu identificar o controle ausente, aplicar contenção e comprovar a correção mediante testes de autorização."
+    ]
+  },
+  {
+    "slug": "ml",
+    "titulo": "Engenharia de aprendizado de máquina",
+    "competencias": [
+      "Treinamento de modelos",
+      "Avaliação de modelos",
+      "Implantação de modelos"
+    ],
+    "campo": "experiencia_ml",
+    "positivos": [
+      "Na equipe profissional de uma operação sintética de estoque, desenvolvi um modelo de previsão de demanda. Treinei com dados históricos simulados, avaliei erros por categoria e implantei o modelo em um serviço de consulta. Minha responsabilidade incluiu verificar divergências entre preparação dos dados no treinamento e na execução.",
+      "O encaminhamento de mensagens de um serviço fictício de atendimento exigiu um classificador sob responsabilidade profissional individual. Foram realizados treinamento, avaliação em amostras separadas e implantação no fluxo operacional. A comparação por classe revelou confusões entre assuntos próximos; os exemplos foram ajustados antes da liberação, preservando a verificação dos resultados.",
+      "Atuei profissionalmente em aprendizado de máquina para uma plataforma sintética de manutenção. Treinei um modelo de anomalias com medições simuladas, avaliei falsos alertas e implantei a inferência no processamento de eventos. Investiguei diferenças entre períodos e defini verificações que indicavam quando os resultados precisavam de revisão.",
+      "Em uma aplicação fictícia de documentos, fui responsável por classificar tipos de comprovante. Organizei o treinamento do modelo, avaliei desempenho em documentos separados e implantei uma versão com pré-processamento consistente. A análise dos erros mostrou sensibilidade à rotação das imagens e orientou a ampliação controlada dos exemplos.",
+      "• Entrega profissional: previsão de atrasos para uma operação sintética de transporte, sem exposição de trajetos individuais.\n• Trabalho executado: treinamento com dados simulados, avaliação do erro em condições distintas e implantação na API.\n• Verificação: comparação entre as respostas do experimento e da implantação para localizar divergências nas transformações dos dados.",
+      "Na engenharia de aprendizado de máquina de um portal fictício de produtos, treinei um classificador de categorias. Avaliei resultados em uma divisão temporal e implantei o modelo no cadastro. Os erros de categorias raras motivaram uma revisão dos exemplos e um mecanismo de encaminhamento para análise quando a confiança era insuficiente.",
+      "Assumi profissionalmente um modelo de estimativa de duração de ordens em uma empresa sintética. Executei treinamento com históricos simulados, comparei métricas por tipo de serviço e implantei a inferência na aplicação. Uma verificação revelou vazamento de informações futuras, exigindo refazer a preparação dos dados e a avaliação.",
+      "Em um serviço fictício de busca documental, desenvolvi um modelo de relevância. Treinei com pares sintéticos de consulta e documento, avaliei a ordenação em um conjunto reservado e implantei o modelo no serviço de pesquisa. Investiguei consultas sem correspondência e ajustei o tratamento antes de liberar a versão.",
+      "O que mudou entre experimento e operação? Em uma plataforma sintética de reciclagem, uma resolução diferente das imagens prejudicou as respostas do classificador. Eu havia treinado o modelo, avaliado confusões entre materiais parecidos e implantado a previsão assíncrona. Investiguei a divergência comparando os ambientes e identifiquei a transformação responsável.",
+      "Uma aplicação fictícia de assinaturas precisava prever volume de solicitações. Atuei profissionalmente no treinamento do modelo, na avaliação com períodos posteriores e na implantação do serviço de previsão. Comparei o desempenho com uma referência simples e investiguei os desvios durante eventos excepcionais, documentando os limites encontrados.",
+      "Na equipe sintética de catalogação, treinei um modelo para associar descrições a categorias técnicas. Avaliei precisão em exemplos reservados e implantei a inferência na API utilizada pelo produto. A análise de erros mostrou dependência de abreviações, levando à revisão do processamento e à repetição da avaliação antes da publicação.",
+      "Trabalhei profissionalmente em um sistema fictício de inspeção visual. Organizei o treinamento de um detector com imagens sintéticas, avaliei falhas por condição de iluminação e implantei a execução em lote. Minha responsabilidade incluiu comparar resultados após a implantação e corrigir um desacordo na normalização das imagens recebidas."
+    ],
+    "ambiguos": [
+      "Acompanhei experimentos de aprendizado de máquina em uma equipe sintética e organizei tabelas para apresentação. Há menção a um modelo implantado, mas o registro não diferencia contribuições individuais nem confirma treinamento profissional. A responsabilidade por avaliação e implantação operacional também permanece incerta, dependendo de esclarecimento adicional.",
+      "Em um ambiente fictício de pesquisa, participei de discussões sobre classificação e revisei exemplos coletivos. Não está claro se executei treinamento ou apenas observei os experimentos, nem se houve implantação profissional. O histórico não confirma experiência individual de engenharia de aprendizado de máquina além dessa participação descrita."
+    ],
+    "negativos": [
+      "Minha experiência profissional sintética é em análise de negócios, com painéis descritivos e investigação de indicadores comerciais. Nunca trabalhei profissionalmente em engenharia de aprendizado de máquina, não treinei modelos e não fui responsável por sua avaliação ou implantação. As previsões dos relatórios eram fornecidas por outro serviço.",
+      "Atuo profissionalmente no desenvolvimento de APIs em uma aplicação fictícia e integro respostas produzidas por serviços externos. Não tenho experiência profissional em engenharia de aprendizado de máquina: nunca treinei, avaliei ou implantei modelos. Meu trabalho se limita ao transporte e à apresentação dos resultados recebidos."
+    ],
+    "bloqueados": [
+      "Em uma plataforma sintética de consumo energético, desenvolvi um modelo de previsão de carga. Realizei treinamento com séries simuladas, avaliei erros em períodos separados e implantei a previsão no serviço operacional. Investiguei uma mudança de escala entre fontes e confirmei a correção comparando resultados antes e depois da implantação.",
+      "Assumi profissionalmente a classificação de chamados em uma organização fictícia de serviços. Treinei um modelo com exemplos sintéticos, avaliei desempenho por assunto e implantei o classificador no recebimento das mensagens. A investigação de erros revelou descrições muito curtas, para as quais configurei encaminhamento explícito à revisão manual."
+    ]
+  }
+]
