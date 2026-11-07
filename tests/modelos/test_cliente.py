@@ -6,11 +6,13 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field
 
-from backend.contratos.erros import ModeloIndisponivel, RespostaInvalida
+from backend.contratos.erros import LimiteGastoAtingido, ModeloIndisponivel, RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
 from backend.modelos.cliente import (
     MAX_TOKENS_MINIMO,
     MODELO_PADRAO,
+    PRECOS_USD,
+    TETO_GASTO_PADRAO_USD,
     ClienteFeatherless,
 )
 
@@ -285,3 +287,181 @@ def test_instrucao_na_resposta_nao_passa_pelo_esquema():
 def test_etapa_e_obrigatoria():
     with pytest.raises(ValueError, match="etapa"):
         cliente_com(Transporte()).completar("s", "u", Resumo, " ")
+
+
+def recusa(status: int) -> httpx2.Response:
+    return httpx2.Response(status, json={"error": {"message": "falha sintética"}})
+
+
+@pytest.mark.parametrize(
+    "falha",
+    [recusa(500), recusa(404), recusa(429), httpx2.ConnectError("sem rede")],
+)
+def test_modelo_indisponivel_usa_alternativa(falha):
+    transporte = Transporte(falha, VALIDA)
+    cliente = cliente_com(transporte, modelo_alternativo="modelo/alternativo")
+
+    assert completar(cliente).nota == 0.8
+
+    assert transporte.corpo(0)["model"] == MODELO_PADRAO
+    assert transporte.corpo(1)["model"] == "modelo/alternativo"
+
+
+def test_tempo_esgotado_usa_alternativa():
+    transporte = Transporte(httpx2.ReadTimeout("lento"), VALIDA)
+    cliente = cliente_com(transporte, modelo_alternativo="modelo/alternativo")
+
+    assert completar(cliente).nota == 0.8
+
+
+def test_alternativa_pode_vir_do_ambiente(monkeypatch):
+    monkeypatch.setenv("MODELO_ALTERNATIVO", "modelo/do-ambiente")
+    transporte = Transporte(recusa(500), VALIDA)
+
+    completar(cliente_com(transporte))
+
+    assert transporte.corpo(1)["model"] == "modelo/do-ambiente"
+
+
+def test_sem_alternativa_levanta_modelo_indisponivel():
+    transporte = Transporte(recusa(500))
+
+    with pytest.raises(ModeloIndisponivel) as erro:
+        completar(cliente_com(transporte))
+
+    assert "analise" in str(erro.value)
+    assert MODELO_PADRAO in str(erro.value)
+    assert "500" in str(erro.value)
+    assert len(transporte.pedidos) == 1
+
+
+def test_alternativa_tambem_falha_levanta_modelo_indisponivel():
+    transporte = Transporte(recusa(500), recusa(503))
+    cliente = cliente_com(transporte, modelo_alternativo="modelo/alternativo")
+
+    with pytest.raises(ModeloIndisponivel) as erro:
+        completar(cliente)
+
+    assert "modelo/alternativo" in str(erro.value)
+    assert erro.value.__context__ is None
+
+
+def test_chave_recusada_nao_tenta_alternativa():
+    transporte = Transporte(recusa(401))
+    cliente = cliente_com(transporte, modelo_alternativo="modelo/alternativo")
+
+    with pytest.raises(ModeloIndisponivel, match="FEATHERLESS_API_KEY"):
+        completar(cliente)
+
+    assert len(transporte.pedidos) == 1
+
+
+def test_resposta_invalida_nao_usa_alternativa():
+    transporte = Transporte("inválida", "inválida")
+    cliente = cliente_com(transporte, modelo_alternativo="modelo/alternativo")
+
+    with pytest.raises(RespostaInvalida):
+        completar(cliente)
+
+    assert [transporte.corpo(i)["model"] for i in (0, 1)] == [MODELO_PADRAO, MODELO_PADRAO]
+
+
+def test_correcao_tambem_usa_alternativa():
+    transporte = Transporte("inválida", recusa(500), VALIDA)
+    cliente = cliente_com(transporte, modelo_alternativo="modelo/alternativo")
+
+    assert completar(cliente).nota == 0.8
+    assert transporte.corpo(2)["model"] == "modelo/alternativo"
+
+
+def test_limite_verificado_antes_da_chamada():
+    transporte = Transporte(VALIDA)
+    cliente = cliente_com(transporte, limite_gasto_usd=0.0001)
+
+    with pytest.raises(LimiteGastoAtingido) as erro:
+        completar(cliente)
+
+    assert transporte.pedidos == []
+    assert "analise" in str(erro.value)
+    assert "0.0001" in str(erro.value)
+
+
+def test_limite_conta_o_pior_caso_da_saida():
+    # 2000 tokens de saída a US$ 4,40 por milhão custam US$ 0,0088, além da entrada.
+    transporte = Transporte(VALIDA)
+
+    with pytest.raises(LimiteGastoAtingido):
+        completar(cliente_com(transporte, limite_gasto_usd=0.0088))
+
+    assert transporte.pedidos == []
+    assert completar(cliente_com(Transporte(VALIDA), limite_gasto_usd=0.02)).nota == 0.8
+
+
+def test_limite_vale_para_a_alternativa_e_nao_vira_indisponivel():
+    # O principal cabe no limite; a alternativa, mais cara, não.
+    transporte = Transporte(recusa(500))
+    cliente = cliente_com(
+        transporte,
+        modelo="zai-org/GLM-4.7-Flash",
+        modelo_alternativo=MODELO_PADRAO,
+        limite_gasto_usd=0.002,
+    )
+
+    with pytest.raises(LimiteGastoAtingido):
+        completar(cliente)
+
+    assert len(transporte.pedidos) == 1
+
+
+def test_modelo_sem_preco_usa_o_preco_de_referencia():
+    assert PRECOS_USD[MODELO_PADRAO] == (1.4, 4.4)
+    transporte = Transporte(VALIDA)
+
+    with pytest.raises(LimiteGastoAtingido):
+        completar(cliente_com(transporte, modelo="modelo/sem-preco", limite_gasto_usd=0.0088))
+
+
+def test_teto_do_ambiente_vence_mandato_maior(monkeypatch):
+    monkeypatch.setenv("LIMITE_GASTO_SESSAO_USD", "0.001")
+    transporte = Transporte(VALIDA)
+    cliente = cliente_com(transporte)
+
+    cliente.definir_limite_mandato(50.0)
+
+    assert cliente.limite_gasto_usd == 0.001
+    with pytest.raises(LimiteGastoAtingido):
+        completar(cliente)
+    assert transporte.pedidos == []
+
+
+def test_mandato_menor_vence_o_teto_do_ambiente(monkeypatch):
+    monkeypatch.setenv("LIMITE_GASTO_SESSAO_USD", "50")
+    cliente = cliente_com(Transporte())
+
+    cliente.definir_limite_mandato(0.5)
+
+    assert cliente.limite_gasto_usd == 0.5
+
+
+def test_sem_mandato_nem_ambiente_usa_teto_padrao():
+    assert cliente_com(Transporte()).limite_gasto_usd == TETO_GASTO_PADRAO_USD
+
+
+@pytest.mark.parametrize("valor", ["abc", "-1", "nan", "inf"])
+def test_teto_invalido_no_ambiente_e_recusado(monkeypatch, valor):
+    monkeypatch.setenv("LIMITE_GASTO_SESSAO_USD", valor)
+
+    with pytest.raises(ValueError, match="LIMITE_GASTO_SESSAO_USD"):
+        cliente_com(Transporte())
+
+
+@pytest.mark.parametrize("valor", [-1.0, float("nan"), float("inf")])
+def test_limite_invalido_do_mandato_e_recusado(valor):
+    with pytest.raises(ValueError, match="limite"):
+        cliente_com(Transporte()).definir_limite_mandato(valor)
+
+
+def test_variavel_vazia_de_teto_conta_como_ausente(monkeypatch):
+    monkeypatch.setenv("LIMITE_GASTO_SESSAO_USD", "")
+
+    assert cliente_com(Transporte()).limite_gasto_usd == TETO_GASTO_PADRAO_USD
