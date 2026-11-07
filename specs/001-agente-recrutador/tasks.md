@@ -8,7 +8,7 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 | Frente | Onda 1 | Onda 2 | Onda 3 |
 | --- | --- | --- | --- |
-| **1. Agente** | T1.1, T1.2, T1.3, T1.8, T1.9 | T1.4, T1.7, T1.10, T1.11 | T1.5, T1.6 |
+| **1. Agente** | T1.1, T1.2, T1.3, T1.8, T1.9 | T1.4, T1.7, T1.10, T1.11, T1.12 | T1.5, T1.6, T1.13 |
 | **2. Fontes e dados** | T2.1, T2.6, T2.7, T2.8 | T2.2, T2.3, T2.4, T2.9 | T2.5 |
 | **3. Contato e Nara** | T3.1, T3.2, T3.3, T3.4 | T3.5, T3.6 | Ajustes da integração |
 | **4. Produto e qualidade** | T4.1, T4.2 | T4.3, T4.5, T4.6 | T4.4 |
@@ -148,6 +148,41 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 ### T1.6 (onda 3, corte): adaptador MCP
 
 **Arquivo:** `backend/agente/mcp.py`. Expor `buscar_candidatos`, `explicar_escolha` e `entregar_a_nara` sobre as mesmas funções. Só começar com o fluxo principal integrado.
+
+### T1.12 (onda 2): conector MCP para agentes recrutadores
+
+**Arquivo:** `backend/agente/conector_mcp.py`. **Teste:** `tests/agente/test_conector_mcp.py`, com um servidor MCP local e sintético, criado só para o teste.
+
+**Consome:** `AgenteRecrutador`, `PacoteContexto`, `ResultadoEntrevista`. **Produz:** `ConectorMCP`, implementação de `AgenteRecrutador` que chama as ferramentas de um servidor MCP configurado. A Nara é a primeira integração e continua simulada e identificada até haver acesso real.
+
+Esta tarefa é da Frente 1 e substitui a T3.8 proposta na spec da Frente 3. Não se confunde com a T1.6: aqui o agente chama outro agente recrutador; lá, outros clientes chamam as ferramentas do agente.
+
+- [ ] Confirmar a biblioteca MCP na documentação oficial e justificar a dependência no PR.
+- [ ] Testar `test_conector_segue_a_interface`.
+- [ ] Testar `test_ferramentas_vem_da_configuracao_do_destino`, sem nome de ferramenta fixo no código.
+- [ ] Testar `test_entrega_repetida_nao_duplica`, enviando `chave_idempotencia`.
+- [ ] Testar `test_servidor_fora_do_ar_deixa_entrega_pendente` e `test_tempo_limite_gera_erro_claro`.
+- [ ] Testar `test_resposta_invalida_nao_conta_como_entrega` e `test_resposta_do_servidor_e_tratada_como_dado`.
+- [ ] Testar `test_destino_sem_agenda_nem_resultado`.
+- [ ] Testar `test_empresa_de_outro_escopo_e_recusada` e `test_simulacao_e_identificada`.
+- [ ] Implementar, com rastro em cada chamada, e verificar.
+
+### T1.13 (onda 3): avaliação pela pessoa de RH
+
+**Arquivo:** `backend/agente/avaliacao_rh.py`. **Teste:** `tests/agente/test_avaliacao_rh.py`.
+
+**Consome:** casos sintéticos da Frente 2. **Produz:** `gerar_fichas(casos, semente) -> list[Ficha]`, `importar_avaliacoes(respostas) -> list[AvaliacaoHumana]` e `medir_concordancia(avaliacoes, gabarito) -> dict[str, float]`.
+
+A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste, 18 de prova e 4 duplicatas, em cerca de 1h15 a 1h50. O resultado valida o gabarito e calibra o agente, mas não prova desempenho com pessoas reais.
+
+- [ ] Combinar data e horário com a pessoa de RH.
+- [ ] Testar `test_ficha_nao_mostra_gabarito_nem_resposta_do_agente`.
+- [ ] Testar `test_selecao_e_reproduzivel_e_respeita_as_particoes`.
+- [ ] Testar `test_importacao_guarda_decisao_e_motivo` e `test_resposta_incompleta_e_recusada`.
+- [ ] Testar `test_mede_concordancia_por_tipo_de_caso` e `test_duplicatas_medem_consistencia`.
+- [ ] Implementar e verificar.
+- [ ] Aplicar a avaliação e, se houver muita discordância, corrigir o gerador antes de usar as taxas de erro.
+- [ ] Registrar o resultado no relatório, sem dados reais e com os limites da medição.
 
 ## Frente 2: fontes e dados
 
@@ -398,6 +433,7 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 - T1.5 depende de `ClienteNara.resultados`, com simulação disponível desde T0.
 - T1.7 usa um `BancoTalentos` simulado até T2.6 chegar.
 - T1.11 usa `Repositorio` de T1.8. T2.3 usa o funil de T2.8.
+- T1.13 depende dos casos sintéticos de T2.1 e da disponibilidade da pessoa de RH.
 - T4.5 depende de T1.4; T4.6 depende da integração da onda 1.
 - T4.3 e a parte final de T4.4 dependem da integração.
 
@@ -429,3 +465,5 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 | SC-010 | T1.11 |
 | FR-018, FR-019, FR-021, FR-023, FR-024 | T2.6, T1.2, T1.7 |
 | FR-020, FR-022 | T3.4 |
+| FR-010, FR-012, FR-015 (entrega por MCP) | T1.12 |
+| SC-007 (validação humana) | T1.13 |
