@@ -10,7 +10,7 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 | --- | --- | --- | --- |
 | **1. Agente** | T1.1, T1.2, T1.3, T1.8, T1.9 | T1.4, T1.7, T1.10, T1.11, T1.12 | T1.5, T1.6, T1.13 |
 | **2. Fontes e dados** | T2.1, T2.6, T2.7, T2.8 | T2.2, T2.3, T2.4, T2.9 | T2.5 |
-| **3. Contato e Nara** | T3.1, T3.2, T3.3, T3.4 | T3.5, T3.6 | Ajustes da integração |
+| **3. Contato e Nara** | T3.1, T3.2, T3.3, T3.4 | T3.6 | Ajustes da integração |
 | **4. Produto e qualidade** | T4.1, T4.2 | T4.3, T4.5, T4.6 | T4.4 |
 
 ## Fase 0: em conjunto (sábado, das 10h às 11h)
@@ -333,18 +333,6 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 - [ ] Testar `test_resultados_reproduziveis_alimentam_aprendizado`.
 - [ ] Implementar e verificar.
 
-### T3.5 [P] (onda 2): entrada de novos candidatos
-
-**Arquivo:** `backend/contato/entrada.py`. **Teste:** `tests/contato/test_entrada.py`.
-
-**Produz:** `gerar_link_cadastro(empresa_id: str, origem: str) -> str`, `registrar_cadastro(token: str, dados: dict[str, str], autorizacao: bool) -> Candidato` e `registrar_indicacao(empresa_id: str, indicador: str, contato: str) -> Convite`.
-
-- [ ] Testar `test_link_identifica_empresa_e_origem`.
-- [ ] Testar `test_cadastro_sem_autorizacao_nao_entra_no_banco`.
-- [ ] Testar `test_indicado_so_recebe_pedido_de_autorizacao`.
-- [ ] Testar `test_token_invalido_e_recusado`.
-- [ ] Implementar e verificar.
-
 ### T3.6 [P] (onda 2): recontato e proposta de valor
 
 **Arquivo:** `backend/contato/recontato.py`. **Teste:** `tests/contato/test_recontato.py`.
@@ -453,7 +441,6 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 | FR-014 | T1.1, T1.11, T1.4 |
 | FR-015 | T2.2, T3.1, T3.3, T1.4, T4.1 |
 | FR-016 | T1.5 |
-| FR-025 | T3.5 |
 | FR-026 | T2.9 |
 | FR-027 | T2.7, T2.8 |
 | FR-028 | T1.8, T1.2 |

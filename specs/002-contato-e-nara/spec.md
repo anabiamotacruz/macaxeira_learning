@@ -34,7 +34,6 @@ Etapas da arquitetura do #50, seção 8. Em negrito, o que é desta frente.
 - Validação da pré-triagem, envio do link da Nara e montagem do pacote de contexto.
 - Lista de supressão no contato: link de exclusão, "sair" no WhatsApp e consulta antes de cada envio.
 - Pedido de autorização para o banco de talentos e atualização de perfis por conversa.
-- Captação de novos candidatos por link de cadastro e por indicação, sempre com autorização.
 - Recontato de quem está no banco, com moderação.
 - Simuladores dos canais (e-mail e WhatsApp) e da Nara, que imitam o formato das APIs reais (#50, seção 13). A Nara simulada também é exposta como servidor MCP.
 
@@ -120,18 +119,7 @@ Como recrutador, quero que o agente peça autorização para o banco de talentos
 4. **Dada** uma atualização por mensagem, **quando** é extraída, **então** o perfil muda e a data de atualização é registrada.
 5. **Dado** um pedido de exclusão, **quando** é registrado, **então** os dados são apagados e só o hash fica na lista de supressão.
 
-### História 7: captar novos candidatos (P2)
-
-Como recrutador, quero receber pessoas por link de cadastro e por indicação, para o banco crescer com autorização.
-
-**Teste independente:** gerar links, cadastrar perfis fictícios e registrar indicações. Tarefa T3.5 (#39).
-
-1. **Dado** um link de cadastro, **quando** é gerado, **então** identifica a empresa e a origem.
-2. **Dado** um cadastro sem autorização, **quando** é enviado, **então** a pessoa não entra no banco.
-3. **Dada** uma indicação, **quando** é registrada, **então** o indicado recebe só um pedido de autorização.
-4. **Dado** um token inválido, vencido ou de outra empresa, **quando** é usado, **então** o cadastro é recusado.
-
-### História 8: recontato com proposta de valor (P2)
+### História 7: recontato com proposta de valor (P2)
 
 Como recrutador, quero manter o banco vivo sem cansar as pessoas, para elas continuarem respondendo.
 
@@ -141,7 +129,7 @@ Como recrutador, quero manter o banco vivo sem cansar as pessoas, para elas cont
 2. **Dado** um recontato, **quando** a mensagem é montada, **então** diz por que a pessoa foi contatada, o que ela ganha e traz o link de exclusão.
 3. **Dado** quem recusou ou está na lista de supressão, **quando** um recontato é avaliado, **então** ele não é enviado.
 
-### História 9: Nara simulada por MCP (P2)
+### História 8: Nara simulada por MCP (P2)
 
 Como time, quero a Nara simulada exposta como servidor MCP, para o conector da T1.12 ser testado de ponta a ponta e trocado pela Nara real só por configuração.
 
@@ -168,8 +156,6 @@ Como time, quero a Nara simulada exposta como servidor MCP, para o conector da T
 - Nara simulada fora do ar ou lenta.
 - Entrega repetida depois de reinício do serviço.
 - Autorização que vence durante a conversa.
-- Indicação de alguém que já está no banco ou na lista de supressão.
-- Token de cadastro reusado, vencido ou de outra empresa.
 - Mensagem com instruções ao agente, vazia ou grande demais.
 - Classificação ou extração inválida devolvida pelo modelo.
 
@@ -200,8 +186,8 @@ Como time, quero a Nara simulada exposta como servidor MCP, para o conector da T
 | **FR-C019** | O agente NÃO DEVE agendar entrevistas. Ele envia o link da Nara, e ela agenda. A pré-triagem NÃO DEVE substituir a entrevista. | FR-011 |
 | **FR-C020** | Link de exclusão, cabeçalho `List-Unsubscribe` e "sair" no WhatsApp DEVEM pôr a pessoa na lista de supressão na hora, por um clique e sem login, de forma idempotente. A lista guarda só o hash do e-mail e das identidades, e o resto dos dados é apagado. | FR-020, FR-023, FR-032, #50 §5 |
 | **FR-C021** | Perfil do banco sem autorização e sem contato publicado DEVE receber só o pedido de autorização. A autorização DEVE ter validade, e a atualização por conversa DEVE alterar o perfil e a data de atualização. Candidato do hunting só entra no banco se autorizar. | FR-020, FR-021, FR-022 |
-| **FR-C022** | O link de cadastro DEVE identificar empresa e origem e usar token verificável. Cadastro sem autorização NÃO DEVE entrar no banco. | FR-025 |
-| **FR-C023** | O indicado DEVE receber só um pedido de autorização, e a indicação DEVE registrar quem indicou. | FR-025 |
+| **FR-C022** | Retirado: o produto busca os candidatos e não recebe cadastros (T3.5 cancelada, #39). | — |
+| **FR-C023** | Retirado: o produto não recebe indicações (T3.5 cancelada, #39). | — |
 | **FR-C024** | Recontato DEVE respeitar no máximo um contato a cada 90 dias, explicar o motivo, trazer o link de exclusão e não alcançar quem recusou ou está na lista de supressão. | FR-020, FR-023 |
 | **FR-C025** | O modelo DEVE ser usado só para redigir mensagens, classificar respostas, conversar, responder dúvidas e extrair respostas e atualizações, sempre via `ClienteModelo` com `etapa` e saída validada por Pydantic. Regras, limites, supressão e validação ficam em código. | Constituição I |
 | **FR-C026** | Texto do candidato DEVE ir ao modelo entre delimitadores, declarado como dado. Instruções nele DEVEM ser ignoradas e gerar alerta visível. | Constituição VII |
@@ -249,7 +235,6 @@ Usa as entidades de `backend/contratos` com os nomes do #4: `Convite` (com `link
 | FR-011 | FR-C019 | Todas |
 | FR-032, #50 §5 | FR-C020 | T3.10, proposta, com a Frente 1 |
 | FR-020, FR-021, FR-022 | FR-C021 | T3.4 (#38) |
-| FR-025 | FR-C022, FR-C023 | T3.5 (#39) |
 | FR-023 | FR-C020, FR-C024 | T3.4, T3.6 (#40) |
 | FR-015, #50 §13 | FR-C029, FR-C030 | T3.1, T3.3 |
 | FR-004 | FR-C003, FR-C007 | Consome T1.1 |
