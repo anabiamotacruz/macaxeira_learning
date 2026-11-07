@@ -6,9 +6,10 @@ from datetime import date
 import pytest
 
 from backend.agente.regras import avaliar_requisitos
+from backend.contratos.erros import ModeloIndisponivel
 from backend.contratos.modelos import Competencia, EstadoBanco, Experiencia, Requisito, Vaga
-from backend.contratos.simulacoes import FonteSimulada, candidato_simulado
-from backend.fontes.funil import Corte, RegraCorte, priorizar
+from backend.contratos.simulacoes import AnalisadorSimulado, FonteSimulada, candidato_simulado
+from backend.fontes.funil import CacheAnalise, Corte, RegraCorte, priorizar
 
 HOJE = date(2026, 11, 7)
 EMPRESA = "empresa-demo-1"
@@ -412,3 +413,148 @@ def test_candidato_achado_por_consulta_ampliada_ainda_passa_pelo_requisito():
     assert _ids(achados) == ["a", "b"]
     assert _ids(selecionados) == ["b"]
     assert _regras(cortes) == {"a": RegraCorte.REQUISITO_NAO_ATENDIDO}
+
+
+class _AnalisadorContador(AnalisadorSimulado):
+    def __init__(self) -> None:
+        self.chamadas = 0
+
+    def analisar(self, vaga, candidato):
+        self.chamadas += 1
+        return super().analisar(vaga, candidato)
+
+
+VERSAO = "config-1"
+
+
+def test_cache_evita_nova_analise_e_expira_ao_mudar_vaga():
+    cache = CacheAnalise()
+    analisador = _AnalisadorContador()
+    vaga, candidato = _vaga(), _pessoa("a")
+
+    primeira = cache.obter_ou_analisar(vaga, candidato, analisador, VERSAO)
+    segunda = cache.obter_ou_analisar(vaga, candidato, analisador, VERSAO)
+    assert analisador.chamadas == 1
+    assert primeira == segunda
+
+    vaga_nova = vaga.model_copy(update={"titulo": "Staff Software Engineer"})
+    cache.obter_ou_analisar(vaga_nova, candidato, analisador, VERSAO)
+    assert analisador.chamadas == 2
+
+
+def test_cache_expira_ao_mudar_competencia_mesmo_com_o_mesmo_id_de_vaga():
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+    cache.guardar(vaga, candidato, VERSAO, AnalisadorSimulado().analisar(vaga, candidato))
+
+    vaga_nova = vaga.model_copy(update={"competencias": [Competencia(nome="go", peso=1.0)]})
+
+    assert cache.obter(vaga_nova, candidato, VERSAO) is None
+
+
+def test_cache_nao_expira_so_por_aprovar_a_vaga():
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+    cache.guardar(vaga, candidato, VERSAO, AnalisadorSimulado().analisar(vaga, candidato))
+
+    assert cache.obter(vaga.model_copy(update={"aprovada": True}), candidato, VERSAO) is not None
+
+
+def test_cache_expira_ao_mudar_perfil():
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+    cache.guardar(vaga, candidato, VERSAO, AnalisadorSimulado().analisar(vaga, candidato))
+
+    novo = candidato.model_copy(update={"perfil_texto": "Perfil atualizado"})
+
+    assert cache.obter(vaga, novo, VERSAO) is None
+
+
+def test_cache_nao_expira_so_por_renovar_autorizacao():
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+    cache.guardar(vaga, candidato, VERSAO, AnalisadorSimulado().analisar(vaga, candidato))
+
+    renovado = candidato.model_copy(update={"autorizacao_valida_ate": date(2028, 1, 1)})
+
+    assert cache.obter(vaga, renovado, VERSAO) is not None
+
+
+def test_cache_expira_ao_mudar_versao_da_configuracao():
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+    cache.guardar(vaga, candidato, VERSAO, AnalisadorSimulado().analisar(vaga, candidato))
+
+    assert cache.obter(vaga, candidato, "config-2") is None
+    assert cache.obter(vaga, candidato, VERSAO) is not None
+
+
+def test_cache_nao_cruza_empresas_com_ids_iguais():
+    cache = CacheAnalise()
+    vaga_a, candidato_a = _vaga(), _pessoa("a")
+    cache.guardar(vaga_a, candidato_a, VERSAO, AnalisadorSimulado().analisar(vaga_a, candidato_a))
+
+    vaga_b = vaga_a.model_copy(update={"empresa_id": "empresa-demo-2"})
+    candidato_b = candidato_a.model_copy(update={"empresa_id": "empresa-demo-2"})
+
+    assert cache.obter(vaga_b, candidato_b, VERSAO) is None
+
+
+def test_cache_recusa_vaga_e_candidato_de_empresas_diferentes():
+    cache = CacheAnalise()
+    estrangeiro = candidato_simulado("a", "empresa-demo-2")
+
+    with pytest.raises(ValueError, match="empresa"):
+        cache.obter(_vaga(), estrangeiro, VERSAO)
+
+
+@pytest.mark.parametrize(
+    "campo", [{"empresa_id": "outra"}, {"vaga_id": "outra"}, {"candidato_id": "outro"}]
+)
+def test_cache_recusa_analise_de_outro_contexto(campo):
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+    analise = AnalisadorSimulado().analisar(vaga, candidato).model_copy(update=campo)
+
+    with pytest.raises(ValueError, match="análise"):
+        cache.guardar(vaga, candidato, VERSAO, analise)
+    assert cache.obter(vaga, candidato, VERSAO) is None
+
+
+def test_cache_nao_guarda_falha_da_analise():
+    class AnalisadorFora:
+        def analisar(self, vaga, candidato):
+            raise ModeloIndisponivel("fora do ar")
+
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+
+    with pytest.raises(ModeloIndisponivel):
+        cache.obter_ou_analisar(vaga, candidato, AnalisadorFora(), VERSAO)
+
+    assert cache.obter(vaga, candidato, VERSAO) is None
+
+
+def test_alterar_analise_devolvida_nao_muda_o_cache():
+    cache = CacheAnalise()
+    vaga, candidato = _vaga(), _pessoa("a")
+    analise = cache.obter_ou_analisar(vaga, candidato, AnalisadorSimulado(), VERSAO)
+
+    analise.lacunas.append("alterada fora do cache")
+
+    assert cache.obter(vaga, candidato, VERSAO).lacunas == []
+
+
+def test_chave_nao_depende_da_ordem_dos_atributos():
+    cache = CacheAnalise()
+    vaga = _vaga()
+    um = _pessoa("a", atributos={"x": "1", "y": "2"})
+    outro = _pessoa("a", atributos={"y": "2", "x": "1"})
+    cache.guardar(vaga, um, VERSAO, AnalisadorSimulado().analisar(vaga, um))
+
+    assert cache.obter(vaga, outro, VERSAO) is not None
+
+
+def test_versao_vazia_e_recusada():
+    with pytest.raises(ValueError, match="versão"):
+        CacheAnalise().obter(_vaga(), _pessoa("a"), "  ")

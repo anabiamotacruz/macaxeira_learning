@@ -5,6 +5,8 @@ empresas do histórico nunca entram na conta, então não há como favorecer ou 
 por nome, atributo sensível, GitHub ou dado que faltou.
 """
 
+import hashlib
+import json
 import logging
 import math
 import re
@@ -15,7 +17,8 @@ from datetime import date
 from enum import StrEnum
 from fractions import Fraction
 
-from backend.contratos.modelos import Candidato, EstadoBanco, Vaga
+from backend.contratos.interfaces import Analisador
+from backend.contratos.modelos import Analise, Candidato, EstadoBanco, Vaga
 from backend.fontes.consultas import tem_termo_sensivel
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,10 @@ PALAVRAS_VAZIAS = frozenset(
     {"a", "as", "com", "da", "das", "de", "do", "dos", "e", "em", "na", "nas", "no", "nos", "o"}
     | {"os", "ou", "para", "and", "of", "the"}
 )
+
+
+CAMPOS_FORA_DO_PERFIL = {"autorizacao_valida_ate", "autorizou_contato", "estado", "opt_out"}
+"""Autorização não muda o que o perfil diz: renovar não pede nova análise."""
 
 
 class RegraCorte(StrEnum):
@@ -205,3 +212,59 @@ def priorizar(
         "funil: vaga=%s entrada=%d selecionados=%d", vaga.id, len(candidatos), len(selecionados)
     )
     return selecionados
+
+
+def _resumo(conteudo: dict) -> str:
+    canonico = json.dumps(conteudo, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonico.encode("utf-8")).hexdigest()
+
+
+class CacheAnalise:
+    """Guarda análises em memória, por empresa, conteúdo da vaga, perfil e versão da configuração.
+
+    O resumo do conteúdo faz a entrada expirar sozinha: vaga ou perfil editados, mesmo com o
+    mesmo `id`, geram outra chave. Mudar `aprovada` na vaga ou a autorização da pessoa não muda.
+    """
+
+    def __init__(self) -> None:
+        self._analises: dict[tuple[str, str, str, str], Analise] = {}
+
+    @staticmethod
+    def _chave(vaga: Vaga, candidato: Candidato, versao_config: str) -> tuple[str, str, str, str]:
+        if vaga.empresa_id != candidato.empresa_id:
+            raise ValueError("vaga e candidato pertencem a empresas diferentes")
+        if not versao_config.strip():
+            raise ValueError("versão da configuração é obrigatória")
+        return (
+            vaga.empresa_id,
+            _resumo(vaga.model_dump(mode="json", exclude={"aprovada"})),
+            _resumo(candidato.model_dump(mode="json", exclude=CAMPOS_FORA_DO_PERFIL)),
+            versao_config,
+        )
+
+    def obter(self, vaga: Vaga, candidato: Candidato, versao_config: str) -> Analise | None:
+        analise = self._analises.get(self._chave(vaga, candidato, versao_config))
+        return None if analise is None else analise.model_copy(deep=True)
+
+    def guardar(
+        self, vaga: Vaga, candidato: Candidato, versao_config: str, analise: Analise
+    ) -> None:
+        chave = self._chave(vaga, candidato, versao_config)
+        if (analise.empresa_id, analise.vaga_id, analise.candidato_id) != (
+            vaga.empresa_id,
+            vaga.id,
+            candidato.id,
+        ):
+            raise ValueError("a análise é de outra empresa, vaga ou pessoa")
+        self._analises[chave] = analise.model_copy(deep=True)
+
+    def obter_ou_analisar(
+        self, vaga: Vaga, candidato: Candidato, analisador: Analisador, versao_config: str
+    ) -> Analise:
+        """Devolve a análise guardada ou chama o analisador. Falha não fica guardada."""
+        guardada = self.obter(vaga, candidato, versao_config)
+        if guardada is not None:
+            return guardada
+        analise = analisador.analisar(vaga, candidato)
+        self.guardar(vaga, candidato, versao_config, analise)
+        return analise
