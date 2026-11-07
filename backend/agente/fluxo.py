@@ -5,7 +5,8 @@ opcionais. `FluxoVaga` não guarda estado em memória: tudo o que permite contin
 no `Repositorio`, e um novo objeto sobre o mesmo arquivo continua de onde o outro parou.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
@@ -14,6 +15,7 @@ from pydantic import AwareDatetime
 
 from backend.agente.mandato import (
     Mandato,
+    MandatoInvalido,
     ModoEntrega,
     Politica,
     assinar,
@@ -26,11 +28,17 @@ from backend.agente.regras import (
     autorizacao_ativa,
     classificar_evidencia,
     decidir,
+    decisao_sem_analise,
     nao_priorizada,
     pode_contatar,
     validar_criterios,
 )
-from backend.contratos.erros import ErroContrato
+from backend.contratos.erros import (
+    ErroContrato,
+    LimiteGastoAtingido,
+    ModeloIndisponivel,
+    RespostaInvalida,
+)
 from backend.contratos.interfaces import (
     AgenteRecrutador,
     Analisador,
@@ -156,6 +164,35 @@ def _transitar(
 
 
 CANAL_CONVITE = "email"
+LIMITE_INVALIDAS_SEGUIDAS = 3
+RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
+
+
+class MotivoPausa(StrEnum):
+    LIMITE_GASTO = "LIMITE_GASTO"
+    MODELO_INDISPONIVEL = "MODELO_INDISPONIVEL"
+    FONTES_INDISPONIVEIS = "FONTES_INDISPONIVEIS"
+    DESTINO_INDISPONIVEL = "DESTINO_INDISPONIVEL"
+    MANDATO_INVALIDO = "MANDATO_INVALIDO"
+    RESPOSTAS_INVALIDAS = "RESPOSTAS_INVALIDAS"
+    AUDITORIA_REPROVADA = "AUDITORIA_REPROVADA"
+    TAXA_ANOMALA = "TAXA_ANOMALA"
+    PARADA_PELO_RH = "PARADA_PELO_RH"
+
+
+MOTIVOS_QUE_EXIGEM_ADITIVO = frozenset({MotivoPausa.LIMITE_GASTO, MotivoPausa.MANDATO_INVALIDO})
+
+
+class _PausaNecessaria(Exception):
+    """Sinal interno: a etapa não pode seguir, e o motivo vai para o estado salvo."""
+
+    def __init__(self, motivo: MotivoPausa) -> None:
+        super().__init__(motivo)
+        self.motivo = motivo
+
+
+class _VagaInterrompida(Exception):
+    """Sinal interno: outra chamada mudou o estado da vaga, e esta execução deve sair."""
 
 
 class EstadoConvite(StrEnum):
@@ -177,6 +214,9 @@ class ProgressoFluxo(Contrato):
     iniciado_em: AwareDatetime
     candidatos: list[Candidato] = []
     analises: dict[str, Analise] = {}
+    analises_invalidas: list[str] = []
+    invalidas_seguidas: int = 0
+    versao_mandato_na_pausa: int | None = None
     convites: list[RegistroConvite] = []
     entregues: list[str] = []
 
@@ -211,6 +251,7 @@ class FluxoVaga:
         destino: AgenteRecrutador,
         relogio: Callable[[], datetime],
         consultas: Callable[[Vaga, int], list[str]] = _consulta_pelo_titulo,
+        medidor_gasto: Callable[[], float] | None = None,
     ) -> None:
         self._repo = repositorio
         self._banco = banco
@@ -221,6 +262,7 @@ class FluxoVaga:
         self._destino = destino
         self._relogio = relogio
         self._consultas = consultas
+        self._medidor_gasto = medidor_gasto
         self.vaga = vaga
         if self.mandato is not None:
             self.vaga = vaga.model_copy(update={"aprovada": True})
@@ -262,10 +304,21 @@ class FluxoVaga:
         politica: Politica,
         valido_ate: datetime | None = None,
     ) -> None:
-        """Registra a assinatura e executa até a vaga depender de resposta externa."""
+        """Registra a assinatura e executa até a vaga depender de resposta externa.
+
+        Com a vaga pausada, vira um aditivo: uma nova versão, que só vale depois de `retomar`.
+        """
+        agora = self._relogio()
+        if self.estado == EstadoFluxo.PAUSADA:
+            versao = self.mandato.versao + 1
+            aditivo = self._assinar(
+                assinante, limite_gasto_usd, politica, valido_ate, versao, agora
+            )
+            self._evento("mandato", f"aditivo assinado: versão {aditivo.versao}")
+            self._avisar_limiar(aditivo)
+            return
         if self.estado != EstadoFluxo.AGUARDANDO_MANDATO:
             raise TransicaoInvalida(f"{self.estado} não aceita assinatura de mandato")
-        agora = self._relogio()
         mandato = self._assinar(assinante, limite_gasto_usd, politica, valido_ate, 1, agora)
         self.vaga = self.vaga.model_copy(update={"aprovada": True})
         self._salvar_progresso(ProgressoFluxo(iniciado_em=agora))
@@ -292,8 +345,6 @@ class FluxoVaga:
             self._aplicar_resposta(progresso, registro, resposta.tipo)
         self._salvar_progresso(progresso)
 
-        if resposta.tipo == TipoResposta.ACEITE and registro.estado == EstadoConvite.ACEITO:
-            self._entregar_pendentes()
         if self.estado == EstadoFluxo.CONVIDANDO:
             self._executar()
 
@@ -310,6 +361,37 @@ class FluxoVaga:
                     self._evento("convite", "prazo vencido", registro.convite.candidato_id)
             self._salvar_progresso(progresso)
         self._executar()
+
+    def parar(self) -> None:
+        """Pausa a vaga. Quem está em execução sai antes do próximo candidato."""
+        estado = self.estado
+        if estado == EstadoFluxo.PAUSADA:
+            return
+        try:
+            self._ir(EstadoFluxo.PAUSADA, cursor=self._cursor(), motivo=MotivoPausa.PARADA_PELO_RH)
+        except _VagaInterrompida:
+            self.parar()
+
+    def retomar(self) -> None:
+        """Continua de onde parou: depois de uma pausa ou de uma queda em estado ativo."""
+        execucao = self._repo.carregar_estado(self.vaga.empresa_id, self.vaga.id)
+        estado = self.estado
+        if estado == EstadoFluxo.PAUSADA:
+            self._sair_da_pausa(execucao.motivo, execucao.estado_anterior, execucao.cursor)
+        elif estado == EstadoFluxo.CONCLUIDA:
+            return
+        elif estado not in ESTADOS_ATIVOS:
+            raise TransicaoInvalida(f"{estado} não tem execução para retomar")
+        self._executar()
+
+    def _sair_da_pausa(self, motivo: str | None, anterior: str | None, cursor: int) -> None:
+        progresso = self._progresso()
+        versao_na_pausa = progresso.versao_mandato_na_pausa
+        if motivo in MOTIVOS_QUE_EXIGEM_ADITIVO and self.mandato.versao == versao_na_pausa:
+            raise MandatoInvalido(f"{motivo} só retoma com um aditivo assinado")
+        self._ir(EstadoFluxo(anterior), cursor=cursor, motivo=f"retomada de {motivo}")
+        progresso.invalidas_seguidas = 0
+        self._salvar_progresso(progresso)
 
     def _assinar(
         self,
@@ -365,22 +447,80 @@ class FluxoVaga:
         )
 
     def _ir(self, destino: EstadoFluxo, *, cursor: int = 0, motivo: str = "") -> None:
+        execucao = self._repo.carregar_estado(self.vaga.empresa_id, self.vaga.id)
+        atual = EstadoFluxo.RASCUNHO if execucao is None else EstadoFluxo(execucao.estado)
         novo, evento = _transitar(
-            self.estado,
+            atual,
             destino,
             vaga=self.vaga,
             mandato=self.mandato,
             agora=self._relogio(),
+            estado_anterior=None if execucao is None else execucao.estado_anterior,
             motivo=motivo,
         )
-        self._repo.salvar_estado(self.vaga.empresa_id, self.vaga.id, novo, cursor)
+        pausando = novo == EstadoFluxo.PAUSADA
+        dados = (
+            novo,
+            cursor,
+            motivo if pausando else None,
+            atual if pausando else None,
+        )
+        if execucao is None:
+            self._repo.salvar_estado(self.vaga.empresa_id, self.vaga.id, *dados)
+        elif not self._repo.trocar_estado(self.vaga.empresa_id, self.vaga.id, atual, *dados):
+            raise _VagaInterrompida
         self._repo.registrar_evento(evento)
 
-    def _salvar_cursor(self, cursor: int) -> None:
-        self._repo.salvar_estado(self.vaga.empresa_id, self.vaga.id, self.estado, cursor)
+    def _avancar(self, destino: EstadoFluxo, *, cursor: int = 0) -> None:
+        """Muda de etapa dentro de uma execução, que sai se a vaga foi parada ou o mandato caiu."""
+        self._conferir_execucao()
+        self._ir(destino, cursor=cursor)
+
+    def _conferir_execucao(self) -> None:
+        if self.estado == EstadoFluxo.PAUSADA:
+            raise _VagaInterrompida
+        mandato = self.mandato
+        if mandato is None or not mandato_valido(mandato, self.vaga, self._relogio()):
+            raise MandatoInvalido("mandato não vale para esta vaga neste momento")
+
+    def _conferir_gasto(self) -> None:
+        if (
+            self._medidor_gasto is not None
+            and self._medidor_gasto() >= self.mandato.limite_gasto_usd
+        ):
+            raise LimiteGastoAtingido("gasto chegou ao limite assinado no mandato")
+
+    def _pausar(self, motivo: MotivoPausa) -> None:
+        """Salva o motivo e o ponto de retomada. Parada humana em curso não é sobrescrita."""
+        if self.estado not in ESTADOS_ATIVOS:
+            self._evento("pausa", f"sem execução para pausar: {motivo}")
+            return
+        progresso = self._progresso()
+        progresso.versao_mandato_na_pausa = self.mandato.versao
+        self._salvar_progresso(progresso)
+        try:
+            self._ir(EstadoFluxo.PAUSADA, cursor=self._cursor(), motivo=motivo)
+        except _VagaInterrompida:
+            self._evento("pausa", f"vaga já mudou de estado; motivo não aplicado: {motivo}")
+
+    @contextmanager
+    def _pausando_em_falha(self) -> Iterator[None]:
+        """Transforma falha previsível em pausa com estado salvo."""
+        try:
+            yield
+        except LimiteGastoAtingido:
+            self._pausar(MotivoPausa.LIMITE_GASTO)
+        except ModeloIndisponivel:
+            self._pausar(MotivoPausa.MODELO_INDISPONIVEL)
+        except MandatoInvalido:
+            self._pausar(MotivoPausa.MANDATO_INVALIDO)
+        except _PausaNecessaria as sinal:
+            self._pausar(sinal.motivo)
+        except _VagaInterrompida:
+            return
 
     def _executar(self) -> None:
-        """Avança etapa por etapa até a vaga depender de algo externo ou terminar."""
+        """Avança etapa por etapa até a vaga depender de algo externo, pausar ou terminar."""
         passos = {
             EstadoFluxo.BUSCANDO: self._passo_buscar,
             EstadoFluxo.ANALISANDO: self._passo_analisar,
@@ -389,15 +529,18 @@ class FluxoVaga:
             EstadoFluxo.CONVIDANDO: self._passo_convidar,
             EstadoFluxo.ENTREGANDO: self._passo_entregar,
         }
-        continuar = True
-        while continuar and self.estado in passos:
-            continuar = passos[self.estado]()
+        with self._pausando_em_falha():
+            continuar = True
+            while continuar and self.estado in passos:
+                if self.estado != EstadoFluxo.ENTREGANDO:
+                    self._conferir_execucao()
+                continuar = passos[self.estado]()
 
     def _passo_buscar(self) -> bool:
         progresso = self._progresso()
         progresso.candidatos.extend(self._buscar(progresso))
         self._salvar_progresso(progresso)
-        self._ir(EstadoFluxo.ANALISANDO)
+        self._avancar(EstadoFluxo.ANALISANDO)
         return True
 
     def _buscar(self, progresso: ProgressoFluxo) -> list[Candidato]:
@@ -418,23 +561,66 @@ class FluxoVaga:
     def _passo_analisar(self) -> bool:
         progresso = self._progresso()
         for indice in range(self._cursor(), len(progresso.candidatos)):
+            self._conferir_execucao()
+            self._conferir_gasto()
             candidato = progresso.candidatos[indice]
-            progresso.analises[candidato.id] = self._analisador.analisar(self.vaga, candidato)
-            self._salvar_progresso(progresso)
-            self._salvar_cursor(indice + 1)
-        self._ir(EstadoFluxo.REVISANDO)
+            try:
+                analise = self._analisador.analisar(self.vaga, candidato)
+                self._exigir_coerencia(analise, candidato)
+            except RespostaInvalida:
+                progresso.analises_invalidas.append(candidato.id)
+                self._contar_invalida(progresso, candidato, indice, "análise inválida")
+                continue
+            progresso.analises[candidato.id] = analise
+            progresso.invalidas_seguidas = 0
+            self._concluir_candidato(progresso, indice)
+        self._avancar(EstadoFluxo.REVISANDO)
         return True
 
     def _passo_revisar(self) -> bool:
         progresso = self._progresso()
         for indice in range(self._cursor(), len(progresso.candidatos)):
+            self._conferir_execucao()
             candidato = progresso.candidatos[indice]
-            analise = progresso.analises[candidato.id]
-            progresso.analises[candidato.id] = self._revisor.revisar(self.vaga, candidato, analise)
-            self._salvar_progresso(progresso)
-            self._salvar_cursor(indice + 1)
-        self._ir(EstadoFluxo.DECIDINDO)
+            analise = progresso.analises.get(candidato.id)
+            if analise is None:
+                self._concluir_candidato(progresso, indice)
+                continue
+            self._conferir_gasto()
+            try:
+                revisada = self._revisor.revisar(self.vaga, candidato, analise)
+                self._exigir_coerencia(revisada, candidato)
+            except RespostaInvalida:
+                ressalvas = [*analise.ressalvas_revisor, RESSALVA_REVISOR_INVALIDO]
+                progresso.analises[candidato.id] = analise.model_copy(
+                    update={"ressalvas_revisor": ressalvas}
+                )
+                self._contar_invalida(progresso, candidato, indice, "revisão inválida")
+                continue
+            progresso.analises[candidato.id] = revisada
+            progresso.invalidas_seguidas = 0
+            self._concluir_candidato(progresso, indice)
+        self._avancar(EstadoFluxo.DECIDINDO)
         return True
+
+    def _exigir_coerencia(self, analise: Analise, candidato: Candidato) -> None:
+        esperado = (self.vaga.empresa_id, self.vaga.id, candidato.id)
+        if (analise.empresa_id, analise.vaga_id, analise.candidato_id) != esperado:
+            raise RespostaInvalida("análise de outra empresa, vaga ou candidato")
+
+    def _concluir_candidato(self, progresso: ProgressoFluxo, indice: int) -> None:
+        self._salvar_progresso(progresso)
+        self._repo.atualizar_cursor(self.vaga.empresa_id, self.vaga.id, indice + 1)
+
+    def _contar_invalida(
+        self, progresso: ProgressoFluxo, candidato: Candidato, indice: int, mensagem: str
+    ) -> None:
+        """Falha isolada não para a vaga; três seguidas indicam um problema maior."""
+        progresso.invalidas_seguidas += 1
+        self._evento("falha_individual", mensagem, candidato.id)
+        self._concluir_candidato(progresso, indice)
+        if progresso.invalidas_seguidas >= LIMITE_INVALIDAS_SEGUIDAS:
+            raise _PausaNecessaria(MotivoPausa.RESPOSTAS_INVALIDAS)
 
     def _passo_decidir(self) -> bool:
         """Decide quem falta. Refazer depois de uma queda não repete decisão já salva."""
@@ -443,21 +629,14 @@ class FluxoVaga:
         agora = self._relogio()
         decididos = self._ultimas_decisoes()
         decisoes = [
-            decidir(
-                self.vaga,
-                candidato,
-                progresso.analises[candidato.id],
-                mandato,
-                agora.date(),
-                agora,
-                f"rastro:{self.vaga.id}:{candidato.id}",
-            )
+            self._decidir_candidato(progresso, candidato, mandato, agora)
             for candidato in progresso.candidatos
             if candidato.id not in decididos
         ]
         limite = mandato.politica.max_indicacoes
         indicados = len(self._indicados())
         for decisao in sorted(decisoes, key=_ordem_de_decisao):
+            self._conferir_execucao()
             if decisao.tipo == TipoDecisao.INDICAR:
                 if indicados >= limite:
                     decisao = nao_priorizada(decisao, limite)
@@ -465,8 +644,17 @@ class FluxoVaga:
                     indicados += 1
             self._repo.salvar_decisao(decisao)
             self._evento("decisao", f"{decisao.tipo}: {decisao.regra}", decisao.candidato_id)
-        self._ir(self._estado_de_saida(mandato))
+        self._avancar(self._estado_de_saida(mandato))
         return True
+
+    def _decidir_candidato(
+        self, progresso: ProgressoFluxo, candidato: Candidato, mandato: Mandato, agora: datetime
+    ) -> Decisao:
+        rastro_id = f"rastro:{self.vaga.id}:{candidato.id}"
+        analise = progresso.analises.get(candidato.id)
+        if analise is None:
+            return decisao_sem_analise(self.vaga, candidato, mandato, agora, rastro_id)
+        return decidir(self.vaga, candidato, analise, mandato, agora.date(), agora, rastro_id)
 
     def _estado_de_saida(self, mandato: Mandato) -> EstadoFluxo:
         if mandato.politica.modo_entrega == ModoEntrega.NA_DECISAO:
@@ -488,14 +676,17 @@ class FluxoVaga:
         ]
 
     def _passo_convidar(self) -> bool:
+        """Entrega quem já aceitou, envia o que falta e só segue com os convites encerrados."""
+        self._entregar_pendentes()
         progresso = self._progresso()
         for candidato_id in self._indicados():
+            self._conferir_execucao()
             self._convidar(progresso, candidato_id)
-        self._salvar_progresso(progresso)
+            self._salvar_progresso(progresso)
         abertos = (EstadoConvite.A_ENVIAR, EstadoConvite.AGUARDANDO)
         if any(r.estado in abertos for r in progresso.convites):
             return False
-        self._ir(EstadoFluxo.ENTREGANDO)
+        self._avancar(EstadoFluxo.ENTREGANDO)
         return True
 
     def _convidar(self, progresso: ProgressoFluxo, candidato_id: str) -> None:
@@ -522,7 +713,7 @@ class FluxoVaga:
             vaga_id=self.vaga.id,
             candidato_id=candidato_id,
             mensagem=f"Temos uma vaga de {self.vaga.titulo} que combina com o seu perfil.",
-            link_agendamento=self._destino.link_agendamento(self.vaga.id, candidato_id),
+            link_agendamento=self._link_de_agendamento(candidato_id),
             chave_idempotencia=f"convite:{self.vaga.empresa_id}:{identificador}",
             simulado=candidato.simulado,
         )
@@ -530,13 +721,41 @@ class FluxoVaga:
         progresso.convites.append(registro)
         return registro
 
+    def _link_de_agendamento(self, candidato_id: str) -> str | None:
+        """O agendamento é opcional: sem link, o convite segue e o fluxo não trava."""
+        try:
+            return self._destino.link_agendamento(self.vaga.id, candidato_id)
+        except (ErroContrato, OSError) as erro:
+            self._evento("convite", f"destino sem link: {type(erro).__name__}", candidato_id)
+            return None
+
+    def _acao_idempotente(self, chave: str, acao: Callable[[], bool]) -> bool:
+        """Faz a ação ao menos uma vez e nunca de novo depois de concluída.
+
+        Uma queda deixa a chave pendente, e a ação se repete com a mesma chave, que o
+        destino usa para descartar a duplicata.
+        """
+        if self._repo.chave_concluida(self.vaga.empresa_id, chave):
+            return True
+        self._repo.registrar_chave(self.vaga.empresa_id, chave)
+        try:
+            feita = acao()
+        except (ErroContrato, OSError) as erro:
+            self._evento("idempotencia", f"ação falhou: {type(erro).__name__}")
+            return False
+        if feita:
+            self._repo.concluir_chave(self.vaga.empresa_id, chave)
+        return feita
+
     def _enviar(self, progresso: ProgressoFluxo, registro: RegistroConvite) -> None:
         candidato = progresso.candidato(registro.convite.candidato_id)
         hoje = self._relogio().date()
         if not pode_contatar(candidato, registro.tentativa - 1, self.vaga, hoje):
             registro.estado = EstadoConvite.ENCERRADO
             self._evento("convite", "contato bloqueado pelas regras", candidato.id)
-        elif self._mensageiro.enviar(registro.convite):
+        elif self._acao_idempotente(
+            registro.convite.chave_idempotencia, lambda: self._mensageiro.enviar(registro.convite)
+        ):
             registro.estado = EstadoConvite.AGUARDANDO
             self._evento("convite", "convite enviado", candidato.id)
         else:
@@ -573,6 +792,8 @@ class FluxoVaga:
 
     def _passo_entregar(self) -> bool:
         self._entregar_pendentes()
+        if self.estado == EstadoFluxo.PAUSADA:
+            raise _VagaInterrompida
         self._ir(EstadoFluxo.CONCLUIDA)
         return False
 
@@ -589,23 +810,26 @@ class FluxoVaga:
         return [c for c in base if c in indicados and c not in progresso.entregues]
 
     def _entregar_pendentes(self) -> None:
+        """Entrega quem falta. Falha do destino pausa a vaga, com a entrega ainda pendente."""
         progresso = self._progresso()
         hoje = self._relogio().date()
         for candidato_id in self._a_entregar(progresso):
+            self._conferir_execucao()
             candidato = progresso.candidato(candidato_id)
-            if not autorizacao_ativa(candidato, hoje):
+            if autorizacao_ativa(candidato, hoje):
+                self._entregar(progresso, candidato)
+            else:
                 self._evento("entrega", "entrega cancelada: sem autorização", candidato_id)
-                continue
-            chave = f"entrega:{self.vaga.empresa_id}:{self.vaga.id}:{candidato_id}"
-            decisao = self._ultimas_decisoes()[candidato_id]
-            pacote = self._pacote(
-                candidato, progresso.analises[candidato_id], decisao.rastro_id, chave
-            )
-            if self._repo.registrar_chave(self.vaga.empresa_id, chave):
-                self._destino.entregar(pacote)
-            progresso.entregues.append(candidato_id)
-            self._salvar_progresso(progresso)
-            self._evento("entrega", "pacote de contexto entregue", candidato_id)
+
+    def _entregar(self, progresso: ProgressoFluxo, candidato: Candidato) -> None:
+        chave = f"entrega:{self.vaga.empresa_id}:{self.vaga.id}:{candidato.id}"
+        decisao = self._ultimas_decisoes()[candidato.id]
+        pacote = self._pacote(candidato, progresso.analises[candidato.id], decisao.rastro_id, chave)
+        if not self._acao_idempotente(chave, lambda: self._destino.entregar(pacote)):
+            raise _PausaNecessaria(MotivoPausa.DESTINO_INDISPONIVEL)
+        progresso.entregues.append(candidato.id)
+        self._salvar_progresso(progresso)
+        self._evento("entrega", "pacote de contexto entregue", candidato.id)
 
     def _pacote(
         self, candidato: Candidato, analise: Analise, rastro_id: str, chave: str

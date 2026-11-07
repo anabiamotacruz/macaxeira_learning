@@ -354,3 +354,28 @@ def nao_priorizada(decisao: Decisao, limite: int) -> Decisao:
             "motivo": f"dentro da faixa verde, além do limite de {limite} indicações do mandato",
         }
     )
+
+
+def decisao_sem_analise(
+    vaga: Vaga, candidato: Candidato, mandato: Mandato, agora: datetime, rastro_id: str
+) -> Decisao:
+    """Falha individual: sem análise válida, a decisão fica com uma pessoa."""
+    return Decisao(
+        empresa_id=vaga.empresa_id,
+        vaga_id=vaga.id,
+        candidato_id=candidato.id,
+        tipo=TipoDecisao.PEDIR_HUMANO,
+        regra="analise_invalida",
+        motivo="a análise voltou inválida",
+        responsavel=f"agente:mandato:{mandato.id}:v{mandato.versao}",
+        rastro_id=rastro_id,
+        entrada={
+            "vaga_id": vaga.id,
+            "candidato_id": candidato.id,
+            "mandato_id": mandato.id,
+            "mandato_versao": str(mandato.versao),
+            "hash_vaga": mandato.hash_vaga,
+        },
+        evidencias=[],
+        momento=agora,
+    )

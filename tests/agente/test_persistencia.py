@@ -265,6 +265,11 @@ OPERACOES_COM_EMPRESA = {
     "listar_decisoes": lambda repo, e: repo.listar_decisoes(e, "vaga-1"),
     "salvar_mandato": lambda repo, e: repo.salvar_mandato(e, "vaga-1", "{}"),
     "carregar_mandato": lambda repo, e: repo.carregar_mandato(e, "vaga-1"),
+    "chave_concluida": lambda repo, e: repo.chave_concluida(e, "convite-1"),
+    "concluir_chave": lambda repo, e: repo.concluir_chave(e, "convite-1"),
+    "chaves_pendentes": lambda repo, e: repo.chaves_pendentes(e),
+    "trocar_estado": lambda repo, e: repo.trocar_estado(e, "vaga-1", "a", "b", 0),
+    "atualizar_cursor": lambda repo, e: repo.atualizar_cursor(e, "vaga-1", 1),
     "salvar_progresso": lambda repo, e: repo.salvar_progresso(e, "vaga-1", "{}"),
     "carregar_progresso": lambda repo, e: repo.carregar_progresso(e, "vaga-1"),
 }
@@ -370,3 +375,76 @@ def test_progresso_de_outra_empresa_nao_aparece(repo: Repositorio) -> None:
 def test_progresso_invalido_e_recusado(repo: Repositorio) -> None:
     with pytest.raises(ValueError):
         repo.salvar_progresso("empresa-a", "vaga-1", "isto não é json")
+
+
+def test_chave_registrada_fica_pendente_ate_concluir(repo: Repositorio, caminho: Path) -> None:
+    repo.registrar_chave("empresa-a", "entrega-1")
+
+    assert repo.chave_ja_usada("empresa-a", "entrega-1") is True
+    assert repo.chave_concluida("empresa-a", "entrega-1") is False
+    assert Repositorio(caminho).chaves_pendentes("empresa-a") == ["entrega-1"]
+
+    repo.concluir_chave("empresa-a", "entrega-1")
+
+    assert repo.chave_concluida("empresa-a", "entrega-1") is True
+    assert Repositorio(caminho).chaves_pendentes("empresa-a") == []
+    assert repo.registrar_chave("empresa-a", "entrega-1") is False
+    assert repo.chave_concluida("empresa-a", "entrega-1") is True
+
+
+def test_chave_desconhecida_nao_conclui_nem_conta_como_concluida(repo: Repositorio) -> None:
+    assert repo.chave_concluida("empresa-a", "entrega-1") is False
+    with pytest.raises(ValueError, match="registrada"):
+        repo.concluir_chave("empresa-a", "entrega-1")
+
+
+def test_chave_pendente_nao_cruza_empresas(repo: Repositorio) -> None:
+    repo.registrar_chave("empresa-a", "entrega-1")
+
+    assert repo.chaves_pendentes("empresa-b") == []
+    with pytest.raises(ValueError, match="registrada"):
+        repo.concluir_chave("empresa-b", "entrega-1")
+    assert repo.chave_concluida("empresa-a", "entrega-1") is False
+
+
+def test_trocar_estado_so_vale_a_partir_do_esperado(repo: Repositorio) -> None:
+    repo.salvar_estado("empresa-a", "vaga-1", "analisando", 2)
+
+    assert repo.trocar_estado("empresa-a", "vaga-1", "buscando", "pausada", 2) is False
+    assert repo.carregar_estado("empresa-a", "vaga-1").estado == "analisando"
+
+    trocou = repo.trocar_estado(
+        "empresa-a", "vaga-1", "analisando", "pausada", 3, "LIMITE_GASTO", "analisando"
+    )
+
+    assert trocou is True
+    salvo = repo.carregar_estado("empresa-a", "vaga-1")
+    assert (salvo.estado, salvo.cursor, salvo.motivo, salvo.estado_anterior) == (
+        "pausada",
+        3,
+        "LIMITE_GASTO",
+        "analisando",
+    )
+
+
+def test_trocar_estado_nao_cruza_empresas(repo: Repositorio) -> None:
+    repo.salvar_estado("empresa-a", "vaga-1", "analisando", 2)
+
+    assert repo.trocar_estado("empresa-b", "vaga-1", "analisando", "pausada", 2) is False
+
+
+def test_atualizar_cursor_nao_muda_o_estado(repo: Repositorio) -> None:
+    repo.salvar_estado("empresa-a", "vaga-1", "pausada", 2, "PARADA_PELO_RH", "analisando")
+
+    repo.atualizar_cursor("empresa-a", "vaga-1", 3)
+    repo.atualizar_cursor("empresa-b", "vaga-1", 9)
+
+    salvo = repo.carregar_estado("empresa-a", "vaga-1")
+    assert (salvo.estado, salvo.cursor, salvo.motivo) == ("pausada", 3, "PARADA_PELO_RH")
+
+
+def test_atualizar_cursor_recusa_valor_negativo(repo: Repositorio) -> None:
+    repo.salvar_estado("empresa-a", "vaga-1", "analisando", 2)
+
+    with pytest.raises(ValueError):
+        repo.atualizar_cursor("empresa-a", "vaga-1", -1)

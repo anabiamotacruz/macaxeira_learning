@@ -36,6 +36,7 @@ CREATE INDEX IF NOT EXISTS eventos_por_vaga ON eventos (empresa_id, vaga_id, id)
 CREATE TABLE IF NOT EXISTS chaves_idempotencia (
     empresa_id TEXT NOT NULL,
     chave TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'pendente',
     PRIMARY KEY (empresa_id, chave)
 );
 
@@ -139,6 +140,57 @@ class Repositorio:
                 ),
             )
 
+    def trocar_estado(
+        self,
+        empresa_id: str,
+        vaga_id: str,
+        de: str,
+        para: str,
+        cursor: int,
+        motivo: str | None = None,
+        estado_anterior: str | None = None,
+    ) -> bool:
+        """Muda o estado só se ele ainda for `de`, para quem parou a vaga não ser sobrescrito."""
+        registro = EstadoExecucao(
+            empresa_id=_exigir_texto(empresa_id, "empresa_id"),
+            vaga_id=vaga_id,
+            estado=para,
+            cursor=cursor,
+            motivo=motivo,
+            estado_anterior=estado_anterior,
+        )
+        with self._transacao() as conexao:
+            alterado = conexao.execute(
+                """
+                UPDATE execucoes SET estado = ?, cursor = ?, motivo = ?, estado_anterior = ?
+                WHERE empresa_id = ? AND vaga_id = ? AND estado = ?
+                """,
+                (
+                    registro.estado,
+                    registro.cursor,
+                    registro.motivo,
+                    registro.estado_anterior,
+                    registro.empresa_id,
+                    registro.vaga_id,
+                    de,
+                ),
+            )
+            return alterado.rowcount == 1
+
+    def atualizar_cursor(self, empresa_id: str, vaga_id: str, cursor: int) -> None:
+        """Avança o cursor sem tocar no estado: o candidato em curso conta mesmo com a parada."""
+        if cursor < 0:
+            raise ValueError("cursor não pode ser negativo")
+        with self._transacao() as conexao:
+            conexao.execute(
+                "UPDATE execucoes SET cursor = ? WHERE empresa_id = ? AND vaga_id = ?",
+                (
+                    cursor,
+                    _exigir_texto(empresa_id, "empresa_id"),
+                    _exigir_texto(vaga_id, "vaga_id"),
+                ),
+            )
+
     def carregar_estado(self, empresa_id: str, vaga_id: str) -> EstadoExecucao | None:
         with self._transacao() as conexao:
             linha = conexao.execute(
@@ -180,8 +232,9 @@ class Repositorio:
     def registrar_chave(self, empresa_id: str, chave: str) -> bool:
         """Devolve `True` só para quem registrou primeiro; a restrição do banco garante a corrida.
 
-        Quem chama faz a ação depois de receber `True`. Se cair entre o registro e a
-        ação, a chave fica usada e a ação não acontece: nunca duplica, mas pode faltar.
+        A chave nasce pendente. Quem chama faz a ação e depois usa `concluir_chave`. Se cair
+        no meio, a chave segue pendente e a ação pode ser repetida, com a mesma chave, para
+        o destino descartar a duplicata: não duplica e não se perde.
         """
         with self._transacao() as conexao:
             cursor = conexao.execute(
@@ -192,6 +245,41 @@ class Repositorio:
                 (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(chave, "chave")),
             )
             return cursor.rowcount == 1
+
+    def concluir_chave(self, empresa_id: str, chave: str) -> None:
+        """Marca a ação como feita. Depois disso, ela nunca mais é repetida."""
+        with self._transacao() as conexao:
+            cursor = conexao.execute(
+                """
+                UPDATE chaves_idempotencia SET estado = 'concluida'
+                WHERE empresa_id = ? AND chave = ?
+                """,
+                (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(chave, "chave")),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("chave ainda não foi registrada nesta empresa")
+
+    def chave_concluida(self, empresa_id: str, chave: str) -> bool:
+        with self._transacao() as conexao:
+            linha = conexao.execute(
+                """
+                SELECT 1 FROM chaves_idempotencia
+                WHERE empresa_id = ? AND chave = ? AND estado = 'concluida'
+                """,
+                (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(chave, "chave")),
+            ).fetchone()
+        return linha is not None
+
+    def chaves_pendentes(self, empresa_id: str) -> list[str]:
+        with self._transacao() as conexao:
+            linhas = conexao.execute(
+                """
+                SELECT chave FROM chaves_idempotencia
+                WHERE empresa_id = ? AND estado = 'pendente' ORDER BY chave
+                """,
+                (_exigir_texto(empresa_id, "empresa_id"),),
+            ).fetchall()
+        return [chave for (chave,) in linhas]
 
     def chave_ja_usada(self, empresa_id: str, chave: str) -> bool:
         with self._transacao() as conexao:

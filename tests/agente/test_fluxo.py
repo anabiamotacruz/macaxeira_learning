@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import product
 from pathlib import Path
 
@@ -10,15 +10,22 @@ from backend.agente.fluxo import (
     TRANSICOES,
     EstadoFluxo,
     FluxoVaga,
+    MotivoPausa,
     TransicaoInvalida,
     _transitar,
 )
 from backend.agente.mandato import Mandato, MandatoInvalido, ModoEntrega, Politica, assinar
 from backend.agente.persistencia import Repositorio
-from backend.contratos.erros import ErroContrato
+from backend.contratos.erros import (
+    ErroContrato,
+    LimiteGastoAtingido,
+    ModeloIndisponivel,
+    RespostaInvalida,
+)
 from backend.contratos.modelos import (
     Analise,
     Candidato,
+    Decisao,
     Evidencia,
     Requisito,
     RespostaCandidato,
@@ -35,6 +42,8 @@ from backend.contratos.simulacoes import (
 )
 from tests.agente.apoio import (
     AnalisadorComEvidencias,
+    NaraFalhaDepoisDeAceitar,
+    NaraForaDoAr,
     Relogio,
     RevisorSemRessalva,
     candidato_exemplo,
@@ -840,3 +849,567 @@ def test_consultas_sao_injetadas(tmp_path: Path) -> None:
 
     assert pedidas == [("v1", 0)]
     assert m.analisador.analisados == ["c1", "c2"]
+
+
+class AnalisadorQueFalha(AnalisadorComEvidencias):
+    """Levanta o erro dado ao chegar nos candidatos listados, enquanto `ativo`."""
+
+    def __init__(self, erro: Exception, candidatos: set[str]) -> None:
+        super().__init__()
+        self.erro = erro
+        self.candidatos = candidatos
+        self.ativo = True
+
+    def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+        if self.ativo and candidato.id in self.candidatos:
+            raise self.erro
+        return super().analisar(vaga, candidato)
+
+
+class Queda(Exception):
+    """Interrupção do processo no meio de uma operação."""
+
+
+class RepositorioQueCai(Repositorio):
+    def concluir_chave(self, empresa_id: str, chave: str) -> None:
+        raise Queda
+
+
+def _tres_candidatos() -> list[Candidato]:
+    return [candidato_exemplo(c) for c in ("c1", "c2", "c3")]
+
+
+def _execucao(m: Montagem):
+    return m.repo.carregar_estado("empresa-a", "v1")
+
+
+def _decisoes(m: Montagem) -> dict[str, Decisao]:
+    return {d.candidato_id: d for d in m.repo.listar_decisoes("empresa-a", "v1")}
+
+
+def _aditivo(fluxo: FluxoVaga, limite: float = 10.0) -> None:
+    fluxo.assinar_mandato("Pessoa Recrutadora", limite, _politica_fluxo())
+
+
+def test_limite_de_gasto_gera_erro_e_fluxo_pausa_com_estado_salvo(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(LimiteGastoAtingido("limite"), {"c3"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    salvo = _execucao(m)
+    assert fluxo.estado is E.PAUSADA
+    assert salvo.motivo == MotivoPausa.LIMITE_GASTO
+    assert salvo.estado_anterior == "analisando"
+    assert salvo.cursor == 2
+    assert any("LIMITE_GASTO" in e.mensagem for e in fluxo.eventos)
+
+
+def test_estado_salvo_permite_retomar(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(LimiteGastoAtingido("limite"), {"c3"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+    _assinar_fluxo(m.fluxo())
+    assert analisador.analisados == ["c1", "c2"]
+
+    analisador.ativo = False
+    reiniciado = m.fluxo()
+    _aditivo(reiniciado)
+    assert reiniciado.estado is E.PAUSADA
+    reiniciado.retomar()
+
+    assert analisador.analisados == ["c1", "c2", "c3"]
+    assert reiniciado.estado is E.CONVIDANDO
+    assert reiniciado.mandato.versao == 2
+    assert reiniciado.mandato.limite_gasto_usd == 10.0
+
+
+def test_retomar_do_limite_de_gasto_exige_aditivo(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(LimiteGastoAtingido("limite"), {"c1"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(MandatoInvalido, match="aditivo"):
+        fluxo.retomar()
+
+    assert fluxo.estado is E.PAUSADA
+
+
+def test_medidor_de_gasto_pausa_antes_de_chamar_o_modelo(tmp_path: Path) -> None:
+    gastos = iter([0.0, 1.0, 5.0])
+    m = Montagem(tmp_path, _tres_candidatos(), medidor_gasto=lambda: next(gastos))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.PAUSADA
+    assert _execucao(m).motivo == MotivoPausa.LIMITE_GASTO
+    assert m.analisador.analisados == ["c1", "c2"]
+
+
+def test_parar_interrompe_entre_candidatos(tmp_path: Path) -> None:
+    fluxos: list[FluxoVaga] = []
+
+    class ParaNoSegundo(AnalisadorComEvidencias):
+        def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+            if candidato.id == "c2":
+                fluxos[0].parar()
+            return super().analisar(vaga, candidato)
+
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=ParaNoSegundo())
+    fluxos.append(m.fluxo())
+
+    _assinar_fluxo(m.fluxo())
+
+    salvo = _execucao(m)
+    assert salvo.estado == "pausada"
+    assert salvo.motivo == MotivoPausa.PARADA_PELO_RH
+    assert salvo.estado_anterior == "analisando"
+    assert salvo.cursor == 2
+    assert m.analisador.analisados == ["c1", "c2"]
+
+    m.fluxo().retomar()
+
+    assert m.analisador.analisados == ["c1", "c2", "c3"]
+    assert m.fluxo().estado is E.CONVIDANDO
+
+
+def test_parar_no_ultimo_candidato_nao_avanca_de_etapa(tmp_path: Path) -> None:
+    fluxos: list[FluxoVaga] = []
+
+    class ParaNoUltimo(AnalisadorComEvidencias):
+        def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+            if candidato.id == "c2":
+                fluxos[0].parar()
+            return super().analisar(vaga, candidato)
+
+    m = Montagem(tmp_path, _dois_candidatos(), analisador=ParaNoUltimo())
+    fluxos.append(m.fluxo())
+
+    _assinar_fluxo(m.fluxo())
+
+    salvo = _execucao(m)
+    assert salvo.estado == "pausada"
+    assert salvo.estado_anterior == "analisando"
+    assert m.revisor.revisados == []
+
+
+def test_parar_repetido_mantem_o_primeiro_motivo(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(ModeloIndisponivel("fora"), {"c1"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    fluxo.parar()
+
+    assert _execucao(m).motivo == MotivoPausa.MODELO_INDISPONIVEL
+
+
+@pytest.mark.parametrize("etapas", [0, 1])
+def test_parar_sem_execucao_e_recusado(tmp_path: Path, etapas: int) -> None:
+    fluxo = Montagem(tmp_path, []).fluxo()
+    if etapas:
+        fluxo.iniciar()
+
+    with pytest.raises(TransicaoInvalida):
+        fluxo.parar()
+
+
+def test_retomar_sem_execucao_e_recusado(tmp_path: Path) -> None:
+    with pytest.raises(TransicaoInvalida):
+        Montagem(tmp_path, []).fluxo().retomar()
+
+
+def test_retomar_vaga_concluida_nao_faz_nada(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+
+    fluxo.retomar()
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert len(m.destino.entregues) == 2
+
+
+def test_reinicio_nao_duplica_entrega(tmp_path: Path) -> None:
+    destino = NaraFalhaDepoisDeAceitar(falhas=1)
+    m = Montagem(tmp_path, _dois_candidatos(), destino=destino)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    assert fluxo.estado is E.PAUSADA
+    assert _execucao(m).motivo == MotivoPausa.DESTINO_INDISPONIVEL
+    assert "nara" not in MotivoPausa.DESTINO_INDISPONIVEL.value.casefold()
+
+    reiniciado = m.fluxo()
+    reiniciado.retomar()
+
+    assert destino.chamadas == 2
+    assert [p.candidato_id for p in destino.entregues.values()] == ["c1"]
+    assert reiniciado.estado is E.CONVIDANDO
+    assert m.repo.chaves_pendentes("empresa-a") == []
+
+
+def test_queda_entre_registro_e_entrega_nao_perde_a_entrega(tmp_path: Path) -> None:
+    class DestinoQueCai(ClienteNaraSimulado):
+        def __init__(self) -> None:
+            super().__init__()
+            self.cair = True
+
+        def entregar(self, pacote) -> bool:
+            if self.cair:
+                raise Queda
+            return super().entregar(pacote)
+
+    destino = DestinoQueCai()
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], destino=destino)
+    fluxo = m.fluxo()
+
+    with pytest.raises(Queda):
+        _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+    assert len(m.repo.chaves_pendentes("empresa-a")) == 1
+    assert destino.entregues == {}
+
+    destino.cair = False
+    reiniciado = m.fluxo()
+    reiniciado.retomar()
+
+    assert [p.candidato_id for p in destino.entregues.values()] == ["c1"]
+    assert m.repo.chaves_pendentes("empresa-a") == []
+    assert reiniciado.estado is E.CONCLUIDA
+
+
+def test_queda_depois_da_entrega_nao_duplica(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [candidato_exemplo("c1")])
+    fluxo = m.fluxo(repositorio=RepositorioQueCai(m.caminho))
+
+    with pytest.raises(Queda):
+        _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+    assert len(m.destino.entregues) == 1
+
+    m.fluxo().retomar()
+
+    assert len(m.destino.entregues) == 1
+    assert m.repo.chaves_pendentes("empresa-a") == []
+    assert m.fluxo().estado is E.CONCLUIDA
+
+
+def test_entrega_ja_concluida_nao_chama_o_destino_de_novo(tmp_path: Path) -> None:
+    destino = NaraFalhaDepoisDeAceitar(falhas=0)
+    m = Montagem(tmp_path, _dois_candidatos(), destino=destino)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    m.fluxo().retomar()
+
+    assert destino.chamadas == 1
+
+
+def test_destino_fora_do_ar_pausa_e_preserva_os_aceites(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos(), destino=NaraForaDoAr())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    _responder(fluxo, m, "c2", TipoResposta.ACEITE)
+    assert fluxo.estado is E.PAUSADA
+
+    voltou = ClienteNaraSimulado()
+    reiniciado = m.fluxo(destino=voltou)
+    reiniciado.retomar()
+
+    assert {p.candidato_id for p in voltou.entregues.values()} == {"c1", "c2"}
+    assert reiniciado.estado is E.CONCLUIDA
+
+
+def test_destino_que_levanta_erro_tambem_pausa(tmp_path: Path) -> None:
+    class DestinoComErro(ClienteNaraSimulado):
+        def entregar(self, pacote) -> bool:
+            raise ConnectionError("recusada")
+
+    m = Montagem(tmp_path, _dois_candidatos(), destino=DestinoComErro())
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+
+    assert fluxo.estado is E.PAUSADA
+    assert _execucao(m).motivo == MotivoPausa.DESTINO_INDISPONIVEL
+
+
+def test_link_que_falha_nao_trava_o_convite(tmp_path: Path) -> None:
+    class DestinoSemLink(ClienteNaraSimulado):
+        def link_agendamento(self, vaga_id: str, candidato_id: str) -> str | None:
+            raise ConnectionError("recusada")
+
+    m = Montagem(tmp_path, _dois_candidatos(), destino=DestinoSemLink())
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONVIDANDO
+    assert all(c.link_agendamento is None for c in m.mensageiro.enviados.values())
+
+
+def test_mensageiro_que_levanta_erro_nao_trava(tmp_path: Path) -> None:
+    class MensageiroComErro(MensageiroSimulado):
+        def enviar(self, convite) -> bool:
+            raise ConnectionError("recusada")
+
+    m = Montagem(tmp_path, _dois_candidatos(), mensageiro=MensageiroComErro())
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONVIDANDO
+    assert any("falhou" in e.mensagem for e in fluxo.eventos)
+
+
+def test_queda_depois_do_envio_nao_duplica_convite(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos(), mensageiro=MensageiroSimulado(falhas_apos_envio=1))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+    fluxo.verificar_prazo()
+
+    assert len(m.mensageiro.enviados) == 2
+
+
+def test_opt_out_durante_a_pausa_cancela_a_entrega_pendente(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos(), destino=NaraForaDoAr())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    assert fluxo.estado is E.PAUSADA
+
+    _responder(fluxo, m, "c1", TipoResposta.OPT_OUT)
+    voltou = ClienteNaraSimulado()
+    m.fluxo(destino=voltou).retomar()
+
+    assert voltou.entregues == {}
+
+
+def test_modelo_indisponivel_pausa_e_repete_o_mesmo_candidato(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(ModeloIndisponivel("fora"), {"c2"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert _execucao(m).motivo == MotivoPausa.MODELO_INDISPONIVEL
+    assert _execucao(m).cursor == 1
+
+    fluxo.retomar()
+    assert fluxo.estado is E.PAUSADA
+
+    analisador.ativo = False
+    fluxo.retomar()
+
+    assert analisador.analisados == ["c1", "c2", "c3"]
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_modelo_indisponivel_na_revisao_pausa_na_revisao(tmp_path: Path) -> None:
+    class RevisorForaDoAr(RevisorSemRessalva):
+        def __init__(self) -> None:
+            super().__init__()
+            self.ativo = True
+
+        def revisar(self, vaga: Vaga, candidato: Candidato, analise: Analise) -> Analise:
+            if self.ativo and candidato.id == "c2":
+                raise ModeloIndisponivel("fora")
+            return super().revisar(vaga, candidato, analise)
+
+    revisor = RevisorForaDoAr()
+    m = Montagem(tmp_path, _tres_candidatos(), revisor=revisor)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert _execucao(m).estado_anterior == "revisando"
+    assert _execucao(m).cursor == 1
+
+    revisor.ativo = False
+    fluxo.retomar()
+
+    assert revisor.revisados == ["c1", "c2", "c3"]
+
+
+def test_resposta_invalida_isolada_nao_pausa_e_vai_para_a_fila(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(RespostaInvalida("inválida"), {"c2"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONVIDANDO
+    decisao = _decisoes(m)["c2"]
+    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
+    assert decisao.regra == "analise_invalida"
+    assert decisao.responsavel.startswith("agente:mandato:")
+    assert m.revisor.revisados == ["c1", "c3"]
+
+
+def test_tres_respostas_invalidas_seguidas_pausam(tmp_path: Path) -> None:
+    candidatos = [candidato_exemplo(f"c{i}") for i in range(1, 6)]
+    analisador = AnalisadorQueFalha(RespostaInvalida("inválida"), {"c1", "c2", "c3"})
+    m = Montagem(tmp_path, candidatos, analisador=analisador)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+    salvo = _execucao(m)
+    assert salvo.motivo == MotivoPausa.RESPOSTAS_INVALIDAS
+    assert salvo.cursor == 3
+
+    analisador.ativo = False
+    fluxo.retomar()
+
+    assert analisador.analisados == ["c4", "c5"]
+
+
+def test_duas_invalidas_nao_seguidas_nao_pausam(tmp_path: Path) -> None:
+    candidatos = [candidato_exemplo(f"c{i}") for i in range(1, 6)]
+    analisador = AnalisadorQueFalha(RespostaInvalida("inválida"), {"c1", "c2", "c4"})
+    m = Montagem(tmp_path, candidatos, analisador=analisador)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.estado is E.CONVIDANDO
+
+
+def test_revisor_invalido_vira_ressalva_e_nao_faixa_verde(tmp_path: Path) -> None:
+    class RevisorInvalido(RevisorSemRessalva):
+        def revisar(self, vaga: Vaga, candidato: Candidato, analise: Analise) -> Analise:
+            if candidato.id == "c1":
+                raise RespostaInvalida("inválida")
+            return super().revisar(vaga, candidato, analise)
+
+    m = Montagem(tmp_path, _dois_candidatos(), revisor=RevisorInvalido())
+
+    _assinar_fluxo(m.fluxo())
+
+    decisoes = _decisoes(m)
+    assert decisoes["c1"].tipo is TipoDecisao.PEDIR_HUMANO
+    assert "ressalva_do_revisor" in decisoes["c1"].motivo
+    assert decisoes["c2"].tipo is TipoDecisao.INDICAR
+
+
+def test_analise_de_outra_empresa_vira_falha_individual(tmp_path: Path) -> None:
+    class AnalisadorVazado(AnalisadorComEvidencias):
+        def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+            analise = super().analisar(vaga, candidato)
+            if candidato.id == "c1":
+                return analise.model_copy(update={"empresa_id": "empresa-b"})
+            return analise
+
+    m = Montagem(tmp_path, _dois_candidatos(), analisador=AnalisadorVazado())
+
+    _assinar_fluxo(m.fluxo())
+
+    assert _decisoes(m)["c1"].regra == "analise_invalida"
+
+
+def test_mandato_vencido_no_meio_pausa_e_exige_nova_assinatura(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _tres_candidatos())
+    relogio = m.relogio
+
+    class AvancaOTempo(AnalisadorComEvidencias):
+        def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+            if candidato.id == "c2":
+                relogio.avancar(days=2)
+            return super().analisar(vaga, candidato)
+
+    m.analisador = AvancaOTempo()
+    fluxo = m.fluxo()
+    fluxo.iniciar()
+    fluxo.assinar_mandato(
+        "Pessoa Recrutadora", 5.0, _politica_fluxo(), valido_ate=relogio.agora + timedelta(days=1)
+    )
+    assert fluxo.estado is E.PAUSADA
+    assert _execucao(m).motivo == MotivoPausa.MANDATO_INVALIDO
+
+    with pytest.raises(MandatoInvalido):
+        fluxo.retomar()
+
+    _aditivo(fluxo)
+    fluxo.retomar()
+
+    assert fluxo.estado is E.CONVIDANDO
+    assert _decisoes(m)["c1"].responsavel.endswith(":v2")
+
+
+def test_vaga_alterada_durante_a_execucao_pausa(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(ModeloIndisponivel("fora"), {"c1"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+    _assinar_fluxo(m.fluxo())
+    analisador.ativo = False
+
+    editada = m.fluxo(vaga=vaga_exemplo(titulo="Outro título"))
+    with pytest.raises(TransicaoInvalida, match="mandato"):
+        editada.retomar()
+
+    assert editada.estado is E.PAUSADA
+
+
+def test_assinar_em_vaga_em_execucao_e_recusado(tmp_path: Path) -> None:
+    fluxo = Montagem(tmp_path, _dois_candidatos()).fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(TransicaoInvalida):
+        _aditivo(fluxo)
+
+
+def test_queda_no_meio_da_analise_continua_com_retomar(tmp_path: Path) -> None:
+    analisador = AnalisadorQueFalha(Queda(), {"c2"})
+    m = Montagem(tmp_path, _tres_candidatos(), analisador=analisador)
+
+    with pytest.raises(Queda):
+        _assinar_fluxo(m.fluxo())
+    assert m.fluxo().estado is E.ANALISANDO
+
+    analisador.ativo = False
+    m.fluxo().retomar()
+
+    assert analisador.analisados == ["c1", "c2", "c3"]
+    assert m.fluxo().estado is E.CONVIDANDO
+
+
+def test_queda_no_meio_das_decisoes_nao_repete_decisao(tmp_path: Path) -> None:
+    class CaiNaSegundaDecisao(Repositorio):
+        def salvar_decisao(self, decisao: Decisao) -> None:
+            if decisao.candidato_id == "c2":
+                raise Queda
+            super().salvar_decisao(decisao)
+
+    m = Montagem(tmp_path, _tres_candidatos())
+    fluxo = m.fluxo(repositorio=CaiNaSegundaDecisao(m.caminho))
+
+    with pytest.raises(Queda):
+        _assinar_fluxo(fluxo)
+    m.fluxo().retomar()
+
+    decisoes = m.repo.listar_decisoes("empresa-a", "v1")
+    assert sorted(d.candidato_id for d in decisoes) == ["c1", "c2", "c3"]
+
+
+def test_parar_durante_a_entrega_nao_conclui(tmp_path: Path) -> None:
+    fluxos: list[FluxoVaga] = []
+
+    class DestinoQuePara(ClienteNaraSimulado):
+        def entregar(self, pacote) -> bool:
+            fluxos[0].parar()
+            return super().entregar(pacote)
+
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], destino=DestinoQuePara())
+    fluxos.append(m.fluxo())
+
+    _assinar_fluxo(m.fluxo(), modo_entrega=ModoEntrega.NA_DECISAO)
+
+    assert _execucao(m).estado == "pausada"
+    assert _execucao(m).estado_anterior == "entregando"
+    assert len(m.destino.entregues) == 1
+
+    m.fluxo().retomar()
+
+    assert m.fluxo().estado is E.CONCLUIDA
+    assert len(m.destino.entregues) == 1
