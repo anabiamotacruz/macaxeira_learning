@@ -379,3 +379,15 @@ def decisao_sem_analise(
         evidencias=[],
         momento=agora,
     )
+
+
+def criterios_sem_evidencia(vaga: Vaga, candidato: Candidato, analise: Analise) -> list[str]:
+    """Critérios relevantes sem nenhuma evidência conferida, comprovada ou declarada."""
+    conferidos = {
+        e.criterio
+        for e in analise.evidencias
+        if classificar_evidencia(e, candidato) != TipoEvidencia.INFERIDA
+    }
+    criterios = [r.id for r in vaga.requisitos]
+    criterios += [c.nome for c in vaga.competencias if c.peso > 0]
+    return [criterio for criterio in criterios if criterio not in conferidos]

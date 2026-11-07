@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from backend.agente.fluxo import (
     ESTADOS_ATIVOS,
     TRANSICOES,
+    DestinoPessoa,
     EstadoFluxo,
     FluxoVaga,
     MotivoPausa,
@@ -1657,3 +1658,421 @@ def test_limiar_nulo_nao_conta_como_taxa_anomala(tmp_path: Path) -> None:
     _assinar_fluxo(fluxo, limiar_verde=None)
 
     assert fluxo.estado is E.CONCLUIDA
+
+
+RH = "Pessoa Recrutadora"
+
+
+def _decisoes_de(m: Montagem, candidato_id: str) -> list[Decisao]:
+    return [d for d in m.repo.listar_decisoes("empresa-a", "v1") if d.candidato_id == candidato_id]
+
+
+def _montagem_com_fila(tmp_path: Path, **pecas) -> Montagem:
+    """c1 vai para a faixa verde, c2 para a fila e c3 é descartado por requisito."""
+    candidatos = [
+        candidato_exemplo("c1"),
+        candidato_exemplo("c2"),
+        candidato_exemplo("c3", atributos={"python": "nao"}),
+    ]
+    pecas.setdefault("analisador", AnalisadorComEvidencias(notas={"c2": 0.5}))
+    pecas.setdefault("vaga", vaga_exemplo(meta_candidatos=1))
+    return Montagem(tmp_path, candidatos, **pecas)
+
+
+def test_reverter_preserva_decisao_original(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    original = _decisoes(m)["c1"]
+
+    nova = fluxo.reverter("c1", "Trecho não sustenta o critério", RH)
+
+    historico = _decisoes_de(m, "c1")
+    assert historico == [original, nova]
+    assert nova.tipo is TipoDecisao.PEDIR_HUMANO
+    assert nova.regra == "reversao_humana"
+    assert nova.motivo == "Trecho não sustenta o critério"
+    assert nova.responsavel == f"humano:{RH}"
+    assert nova.entrada["tipo_anterior"] == "indicar"
+    assert nova.entrada["regra_anterior"] == "faixa_verde_v1"
+    assert nova.entrada["decisao_anterior"]
+    assert nova.evidencias == original.evidencias
+
+
+def test_reverter_repetido_nao_acrescenta_decisao(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    primeira = fluxo.reverter("c1", "Motivo", RH)
+    segunda = fluxo.reverter("c1", "Motivo", RH)
+
+    assert primeira == segunda
+    assert len(_decisoes_de(m, "c1")) == 2
+
+
+def test_reverter_antes_do_aceite_cancela_a_entrega(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert set(_convites_por_candidato(m)) == {"c1"}
+
+    fluxo.reverter("c1", "Motivo", RH)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+
+    assert m.destino.entregues == {}
+    assert fluxo.estado is E.CONCLUIDA
+    assert any("tardia" in e.mensagem for e in fluxo.eventos)
+
+
+def test_reverter_depois_da_entrega_avisa_sem_prometer_retirada(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    assert fluxo.estado is E.CONCLUIDA
+
+    fluxo.reverter("c1", "Motivo", RH)
+
+    assert len(m.destino.entregues) == 1
+    avisos = [e for e in fluxo.eventos if e.etapa == "aviso_destino"]
+    assert [e.candidato_id for e in avisos] == ["c1"]
+    assert "nara" not in avisos[0].mensagem.casefold()
+    assert fluxo.estado is E.CONCLUIDA
+
+
+def test_reverter_descarte_devolve_a_fila(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    nova = fluxo.reverter("c3", "Atributo desatualizado", RH)
+
+    assert nova.tipo is TipoDecisao.PEDIR_HUMANO
+    assert nova.entrada["regra_anterior"] == "requisito_eliminatorio:r1"
+    assert "c3" in fluxo.resumo().fila_humana
+
+
+def test_reverter_quem_so_esta_na_fila_e_recusado(tmp_path: Path) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError, match="reverter"):
+        fluxo.reverter("c2", "Motivo", RH)
+
+
+@pytest.mark.parametrize(
+    ("candidato_id", "motivo", "responsavel"),
+    [
+        ("desconhecido", "Motivo", RH),
+        ("c1", "   ", RH),
+        ("c1", "Motivo", "   "),
+        ("c1", "Motivo", "agente:mandato:m1:v1"),
+    ],
+)
+def test_reverter_recusa_entrada_invalida(
+    tmp_path: Path, candidato_id: str, motivo: str, responsavel: str
+) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError):
+        fluxo.reverter(candidato_id, motivo, responsavel)
+
+
+def test_fila_humana_nao_bloqueia_a_vaga(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert fluxo.resumo().fila_humana == ["c2"]
+
+
+def test_resolver_fila_indicando_convida_sem_mudar_a_vaga_concluida(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    assert fluxo.estado is E.CONCLUIDA
+
+    decisao = fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Experiência confere", RH)
+
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert decisao.regra == "decisao_humana"
+    assert decisao.responsavel == f"humano:{RH}"
+    assert decisao.entrada["regra_anterior"] == "fora_da_faixa_verde"
+    assert "c2" in _convites_por_candidato(m)
+    assert fluxo.estado is E.CONCLUIDA
+
+    _responder(fluxo, m, "c2", TipoResposta.ACEITE)
+
+    assert {p.candidato_id for p in m.destino.entregues.values()} == {"c1", "c2"}
+    assert fluxo.estado is E.CONCLUIDA
+
+
+def test_resolver_fila_enquanto_convida_entra_na_rodada(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert fluxo.estado is E.CONVIDANDO
+
+    fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Confere", RH)
+    assert set(_convites_por_candidato(m)) == {"c1", "c2"}
+
+    _responder(fluxo, m, "c1", TipoResposta.RECUSA)
+    assert fluxo.estado is E.CONVIDANDO
+    _responder(fluxo, m, "c2", TipoResposta.ACEITE)
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert [p.candidato_id for p in m.destino.entregues.values()] == ["c2"]
+
+
+def test_resolver_fila_descartando_nao_contata(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    decisao = fluxo.resolver_fila("c2", TipoDecisao.DESCARTAR, "Não confere", RH)
+
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert "c2" not in _convites_por_candidato(m)
+    assert fluxo.resumo().fila_humana == []
+
+
+def test_resolver_fila_na_decisao_entrega_direto(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+    assert fluxo.estado is E.CONCLUIDA
+
+    fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Confere", RH)
+
+    assert {p.candidato_id for p in m.destino.entregues.values()} == {"c1", "c2"}
+    assert fluxo.estado is E.CONCLUIDA
+
+
+def test_entrega_tardia_que_falha_nao_reabre_a_vaga_e_retomar_repete(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path, destino=NaraFalhaDepoisDeAceitar(falhas=0))
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
+    m.destino.falhas = 1
+
+    fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Confere", RH)
+
+    assert fluxo.estado is E.CONCLUIDA
+    assert "c2" not in fluxo.resumo().entregues
+
+    fluxo.retomar()
+
+    assert "c2" in fluxo.resumo().entregues
+    assert len(m.destino.entregues) == 2
+
+
+def test_resolver_fila_com_a_vaga_pausada_so_vale_ao_retomar(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    fluxo.parar()
+
+    fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Confere", RH)
+    assert "c2" not in _convites_por_candidato(m)
+
+    fluxo.retomar()
+
+    assert "c2" in _convites_por_candidato(m)
+
+
+def test_indicacao_humana_ainda_respeita_a_autorizacao(tmp_path: Path) -> None:
+    candidatos = [candidato_exemplo("c1"), candidato_exemplo("c4", opt_out=True)]
+    m = Montagem(tmp_path, candidatos, vaga=vaga_exemplo(meta_candidatos=1))
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    fluxo.reverter("c4", "Quero rever", RH)
+
+    fluxo.resolver_fila("c4", TipoDecisao.INDICAR, "Confere", RH)
+
+    assert "c4" not in _convites_por_candidato(m)
+    assert any("bloqueado" in e.mensagem for e in fluxo.eventos if e.candidato_id == "c4")
+
+
+def test_indicar_de_novo_depois_de_reverter_faz_novo_convite(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    fluxo.reverter("c1", "Quero rever", RH)
+
+    fluxo.resolver_fila("c1", TipoDecisao.INDICAR, "Revisto", RH)
+
+    assert len(m.mensageiro.enviados) == 2
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    assert [p.candidato_id for p in m.destino.entregues.values()] == ["c1"]
+
+
+def test_nao_indica_pela_fila_sem_evidencia_conferida(tmp_path: Path) -> None:
+    """Constituição, princípio IV: sem evidência, nem a pessoa indica por aqui."""
+    analisador = AnalisadorQueFalha(RespostaInvalida("inválida"), {"c2"})
+    m = _montagem_com_fila(tmp_path, analisador=analisador)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError, match="evidência"):
+        fluxo.resolver_fila("c2", TipoDecisao.INDICAR, "Confere", RH)
+
+    assert fluxo.resolver_fila("c2", TipoDecisao.DESCARTAR, "Sem dados", RH).regra == (
+        "decisao_humana"
+    )
+
+
+def test_inferida_nao_sustenta_indicacao_pela_fila(tmp_path: Path) -> None:
+    class SoInferencia(AnalisadorComEvidencias):
+        def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+            analise = super().analisar(vaga, candidato)
+            inventadas = [
+                e.model_copy(update={"trecho": "Trecho inventado"}) for e in analise.evidencias
+            ]
+            return analise.model_copy(update={"evidencias": inventadas})
+
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], analisador=SoInferencia())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError, match="evidência"):
+        fluxo.resolver_fila("c1", TipoDecisao.INDICAR, "Confere", RH)
+
+
+@pytest.mark.parametrize(
+    ("candidato_id", "tipo", "responsavel"),
+    [
+        ("c1", TipoDecisao.INDICAR, RH),
+        ("desconhecido", TipoDecisao.INDICAR, RH),
+        ("c2", TipoDecisao.PEDIR_HUMANO, RH),
+        ("c2", TipoDecisao.INDICAR, "agente:mandato:m1:v1"),
+        ("c2", TipoDecisao.INDICAR, " "),
+    ],
+)
+def test_resolver_fila_recusa_entrada_invalida(
+    tmp_path: Path, candidato_id: str, tipo: TipoDecisao, responsavel: str
+) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError):
+        fluxo.resolver_fila(candidato_id, tipo, "Motivo", responsavel)
+
+
+def test_resumo_traz_contagens_por_faixa_e_gasto(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path, medidor_gasto=lambda: 1.25)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    resumo = fluxo.resumo()
+
+    assert resumo.estado == "convidando"
+    assert resumo.motivo_pausa is None
+    assert resumo.contagens == {"verde": 1, "amarela": 1, "vermelha": 1}
+    assert resumo.fila_humana == ["c2"]
+    assert resumo.gasto_usd == 1.25
+    assert resumo.limite_gasto_usd == 5.0
+    assert resumo.mandato_versao == 1
+    assert resumo.meta_candidatos == 1
+    assert resumo.simulado is True
+
+
+def test_resumo_sem_medidor_nao_inventa_gasto_zero(tmp_path: Path) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+
+    assert fluxo.resumo().gasto_usd is None
+
+
+def test_resumo_usa_a_decisao_vigente(tmp_path: Path) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+
+    fluxo.reverter("c1", "Motivo", RH)
+
+    assert fluxo.resumo().contagens == {"verde": 0, "amarela": 2, "vermelha": 1}
+
+
+def test_resumo_mostra_pausa_e_cobertura(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [], fontes=[_fonte_fora_do_ar(), FonteSimulada(_dois_candidatos())])
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    fluxo.parar()
+
+    resumo = fluxo.resumo()
+
+    assert resumo.estado == "pausada"
+    assert resumo.motivo_pausa == MotivoPausa.PARADA_PELO_RH
+    assert resumo.fontes_fora == ["FonteSimulada"]
+
+
+def test_resumo_antes_do_mandato_nao_quebra(tmp_path: Path) -> None:
+    resumo = Montagem(tmp_path, []).fluxo().resumo()
+
+    assert resumo.estado == "rascunho"
+    assert resumo.contagens == {"verde": 0, "amarela": 0, "vermelha": 0}
+    assert resumo.mandato_versao is None
+    assert resumo.limite_gasto_usd is None
+    assert resumo.simulado is False
+
+
+@pytest.mark.parametrize("responsavel", ["", "   ", "agente", "Agente:mandato:m1:v1"])
+def test_destino_exige_decisao_humana(tmp_path: Path, responsavel: str) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError, match="humana"):
+        fluxo.registrar_destino("c1", DestinoPessoa.CONTRATADA, responsavel)
+
+    assert fluxo.resumo().destinos == {}
+
+
+@pytest.mark.parametrize(
+    ("destino", "valor"),
+    [
+        (DestinoPessoa.BANCO, "banco"),
+        (DestinoPessoa.TALENT_GARDEN, "talent_garden"),
+        (DestinoPessoa.CONTRATADA, "contratada"),
+    ],
+)
+def test_destino_registrado_por_pessoa_nao_muda_a_vaga(
+    tmp_path: Path, destino: DestinoPessoa, valor: str
+) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+    estado = fluxo.estado
+
+    fluxo.registrar_destino("c1", destino, RH)
+
+    assert fluxo.estado is estado
+    assert fluxo.resumo().destinos == {"c1": valor}
+    eventos = [e for e in fluxo.eventos if e.etapa == "destino"]
+    assert [e.candidato_id for e in eventos] == ["c1"]
+    assert RH in eventos[0].mensagem
+
+
+def test_destino_recusa_valor_fora_da_lista_e_pessoa_desconhecida(tmp_path: Path) -> None:
+    fluxo = _montagem_com_fila(tmp_path).fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ValueError):
+        fluxo.registrar_destino("c1", "demitida", RH)
+    with pytest.raises(ValueError, match="candidato"):
+        fluxo.registrar_destino("desconhecido", DestinoPessoa.BANCO, RH)
+
+
+def test_quem_saiu_nao_volta_ao_banco_por_destino(tmp_path: Path) -> None:
+    m = _montagem_com_fila(tmp_path)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    _responder(fluxo, m, "c1", TipoResposta.OPT_OUT)
+
+    for destino in (DestinoPessoa.BANCO, DestinoPessoa.TALENT_GARDEN):
+        with pytest.raises(ValueError, match="opt-out"):
+            fluxo.registrar_destino("c1", destino, RH)
+
+    fluxo.registrar_destino("c1", DestinoPessoa.CONTRATADA, RH)
