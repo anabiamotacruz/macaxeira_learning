@@ -170,7 +170,7 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** implementação de `BancoTalentos`.
 
-**Em andamento:** 13 casos de teste preparados em `tests/fontes/test_banco_talentos.py`; ainda não passam porque o módulo do banco não existe. Implementação aguarda definição de integração com o `Repositorio` da T1.8, ausente neste checkout.
+**Pendente:** testes preliminares preservados no histórico do commit `c4c4ef4`, fora desta entrega da T2.1. Retomar os testes junto com a implementação do banco, após definir a integração com o `Repositorio` da T1.8.
 
 - [ ] Testar `test_importa_base_e_remove_duplicatas`, com a origem registrada.
 - [ ] Testar `test_empresas_nao_veem_dados_uma_da_outra`.
