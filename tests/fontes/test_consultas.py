@@ -158,6 +158,17 @@ def test_ampliacao_com_resposta_invalida_usa_termos_da_vaga():
     assert "sistemas distribuídos" in consultas
 
 
+def test_ampliacao_sem_modelo_tambem_tenta_palavras_soltas_das_competencias():
+    vaga = _vaga(competencias=[Competencia(nome="transformação de processos", peso=1.0)])
+
+    consultas = ampliar_consultas(vaga, [], ClienteModeloSimulado())
+
+    assert "transformação de processos" in consultas
+    assert "transformação" in consultas
+    assert "processos" in consultas
+    assert "de" not in consultas
+
+
 def test_resposta_invalida_usa_consulta_basica():
     cliente = ClienteModeloSimulado({ETAPA_GERAR: {"consultas": "não é uma lista"}})
 

@@ -25,6 +25,9 @@ MAX_CONSULTAS = 12
 MAX_PALAVRAS_CONSULTA = 6
 """As fontes exigem todas as palavras da consulta no perfil; consulta longa não acha ninguém."""
 
+TAMANHO_MINIMO_PALAVRA_SOLTA = 4
+"""Deixa de fora conectivos como `e`, `de` e `com` ao separar as palavras de uma competência."""
+
 PROMPT_SISTEMA_GERAR = """\
 Você traduz uma vaga em consultas curtas para buscar perfis em um banco de talentos.
 Cada consulta tem até 4 palavras, e a busca exige que todas estejam no perfil.
@@ -214,9 +217,19 @@ def _consultas_basicas(vaga: Vaga) -> list[str]:
 
 
 def _consultas_amplas(vaga: Vaga) -> list[str]:
-    """Consultas básicas mais as competências, sem o detalhe entre parênteses."""
+    """Consultas básicas, competências sem o detalhe entre parênteses e suas palavras soltas.
+
+    A busca exige todas as palavras no perfil; só a palavra solta acha quem descreve a
+    competência de outro jeito.
+    """
     competencias = [re.sub(r"\(.*?\)", " ", c.nome) for c in vaga.competencias]
-    return [*_consultas_basicas(vaga), *competencias]
+    palavras = [
+        palavra
+        for competencia in competencias
+        for palavra in competencia.split()
+        if len(palavra) >= TAMANHO_MINIMO_PALAVRA_SOLTA
+    ]
+    return [*_consultas_basicas(vaga), *competencias, *palavras]
 
 
 def _dados_vaga(vaga: Vaga, **extras: list[str]) -> str:
