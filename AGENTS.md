@@ -20,4 +20,54 @@ Digital worker de sourcing para RH: encontra candidatos, explica cada escolha, f
 - Escreva o teste antes do código e rode os testes antes de declarar pronto.
 - Commits e PRs descrevem a mudança, sem atribuição a assistentes.
 
-Para código: Python 3.12, FastAPI e Pydantic em `backend/`; Next e TypeScript em `web/`. Responda e documente em português do Brasil.
+- O agente não agenda entrevistas, não avalia candidatos no lugar da Nara e não decide contratações.
+- Atributos sensíveis não podem ser critérios. Trocar nome ou gênero não pode mudar o resultado.
+- Pare e pergunte antes de mudar um contrato, o escopo ou uma decisão de produto.
+
+## Frentes
+
+| Frente | Pastas | Branch |
+| --- | --- | --- |
+| 1. Agente | `backend/agente`, `backend/modelos` | `frente/agente` |
+| 2. Fontes e dados | `backend/fontes`, `dados` | `frente/fontes` |
+| 3. Contato e Nara | `backend/contato`, `backend/nara_simulada` | `frente/contato` |
+| 4. Produto e qualidade | `web`, `avaliacoes`, `docs/pitch` | `frente/produto` |
+
+`backend/contratos` é compartilhada. Código entra na `main` por pull request pequeno, depois da tarefa T0.
+
+## Pronto significa
+
+Teste da tarefa e lint passando, falhas previsíveis tratadas, rastro e registro de decisão presentes, simulações identificadas e nenhum dado real ou chave no repositório. Mudanças em busca, análise, revisão ou decisão também rodam as avaliações. A lista completa está na seção 6 do padrão.
+
+## Comandos
+
+```bash
+source .venv/bin/activate
+```
+
+```bash
+pytest
+```
+
+```bash
+pytest avaliacoes -m eval
+```
+
+```bash
+ruff check .
+```
+
+```bash
+export SPECIFY_FEATURE_DIRECTORY=specs/001-agente-recrutador
+```
+
+Não rode `specify init` de novo. Implemente uma tarefa por vez, como `/speckit-implement T1.1`.
+
+## Tecnologia e prazos
+
+- Python 3.12, FastAPI e Pydantic em `backend/`; Next e TypeScript em `web/`.
+- Modelos pela API compatível com a OpenAI: base `https://api.featherless.ai/v1`, modelo `zai-org/GLM-5.2`, chave em `FEATHERLESS_API_KEY` e `max_tokens` de pelo menos 1000.
+- Código do projeto a partir de 7/11/2026, às 10h. Parar funcionalidades novas em 8/11, às 11h. Submissão até 8/11, às 13h.
+- Se faltar tempo, corte nesta ordem: vaga fora de tech, GitHub real, MCP, retomada automática e aprendizado automático.
+
+Responda e documente em português do Brasil.
