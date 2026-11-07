@@ -58,6 +58,7 @@ flowchart LR
 | **Comunidades e eventos BR** (palestrantes de Python Brasil, TDC, meetups) | Pessoas ativas na área | Páginas públicas de programação dos eventos | Às vezes | Média |
 | **Banco de talentos do cliente** (decidido: um por empresa) | Ex-candidatos e indicações | Importação ou API do ATS do cliente | Sim | Alta |
 | **Gupy** | Candidatos e vagas do cliente | API pública, com token da empresa cliente | Sim | Alta |
+| **Bright Data e People Data Labs** (decidido) | Perfis profissionais, incluindo dados do LinkedIn, histórico e links | API ou dataset do provedor contratado (seção 4, camada 6) | Só o publicado pela pessoa | Alta: API do provedor |
 | **Catho, InfoJobs (busca de currículos)** | Bases grandes de currículos | Licença do cliente. Não achamos uma API pública de currículos; seria parceria comercial | Sim | Futuro |
 
 **Normalização brasileira:** cidades e estados com variações ("Recife", "Recife - PE", "PE, Brasil"), cargos normalizados pela CBO e sinônimos em português e inglês ("dev backend", "engenheiro de software").
@@ -77,12 +78,11 @@ flowchart LR
 | Robô que abre `linkedin.com` (com ou sem login) | Os termos do LinkedIn proíbem coleta automatizada. Em 2025, o LinkedIn processou o Proxycurl, que encerrou as atividades em julho |
 | Contas falsas, automação de navegador, extensão na conta do recrutador | Mesma proibição, e ainda bloqueia a conta do recrutador |
 | Serviços que operam a conta do recrutador num navegador na nuvem (ex.: Linked API) | É automação da conta, que os termos proíbem. O próprio serviço diz que não é autorizado pelo LinkedIn e que não garante contra restrição da conta. Cada cliente arriscaria a conta do recrutador, e o produto dependeria de um fornecedor que pode cair como o Proxycurl |
-| Fornecedores que revendem dados raspados do LinkedIn | O risco jurídico passa para nós, e o fornecedor pode sumir |
 | VPN para usar a API de portabilidade da UE | A API checa a localização no perfil do membro, não o IP de quem consulta. Ela só entrega os dados de quem autorizou e não tem busca. Usar VPN para isso é burlar os termos |
 | API de busca do Google | A Custom Search JSON API não aceita clientes novos e será desligada em 1º/1/2027 |
 | Raspar a página de resultados do Google, direto ou por APIs de terceiros que fazem isso | Os termos do Google proíbem, o Google bloqueia com captcha e o formato muda sem aviso. É a instabilidade que queremos evitar |
 
-### O que fazemos: cinco camadas
+### O que fazemos: seis camadas
 
 **Camada 1: índice do LinkedIn por API de busca (descoberta).**
 - Buscadores indexam perfis públicos do LinkedIn. A partir dos critérios da vaga, o agente gera consultas para uma API de busca oficial. Exemplo: `site:linkedin.com/in "Recife" "desenvolvedor" "Python"`.
@@ -108,6 +108,15 @@ flowchart LR
 
 **Camada 5: o candidato aprofunda, depois do interesse.**
 - Na pré-triagem do WhatsApp, o agente pode pedir o PDF do perfil do LinkedIn ou o currículo para completar o pacote da Nara. É opcional e acontece depois do contato, não antes, então não volta a ser a lógica da Gupy.
+
+**Camada 6: provedores de dados contratados (decidido: Bright Data e People Data Labs).**
+- Ferramentas de mercado definidas pelo time. A coleta é feita pelo provedor, sob a responsabilidade dele. Nós não fazemos scraping próprio.
+- **Bright Data:** perfis profissionais (incluindo dados do LinkedIn) por dataset ou API do provedor.
+- **People Data Labs:** busca de pessoas por cargo e cidade no Brasil, com histórico, competências, `github_url` e `linkedin_url`.
+- Cada provedor é um conector "fornecedor contratado", com o mesmo contrato dos demais. Trocar ou adicionar provedores não muda o núcleo.
+- O que vem do provedor passa pelo mesmo pipeline: identidade, enriquecimento pelo GitHub e pelo site, evidências e visão cega.
+- Continuam valendo as regras decididas para o contato: só e-mail publicado pela pessoa, origem do contato no primeiro e-mail e botão de saída.
+- Uso dentro dos termos e do plano contratado de cada provedor.
 
 ## 5. Base legal e transparência (LGPD)
 
@@ -385,7 +394,7 @@ As regras do evento exigem dados sintéticos. Todas as fontes e canais da demo s
 
 1. Camada 1 do LinkedIn (índice por API de busca, sem abrir o LinkedIn). É a decisão mais sensível e precisa de validação jurídica. Uma mensagem anterior do time pedia para não usar "serviços de coleta"; confirmar se uma API de busca oficial é aceitável.
 2. Usar só contatos publicados para contato, sem dedução de e-mails.
-3. Fontes brasileiras da seção 3 e o que fica para parcerias.
+3. Fontes brasileiras da seção 3, com Bright Data e People Data Labs como provedores contratados (decidido), e o que fica para parcerias.
 4. Pré-triagem pelo WhatsApp antes da Nara (seção 9).
 5. Postgres como banco, índice e fila no hackathon.
 6. A divisão da seção 14.
