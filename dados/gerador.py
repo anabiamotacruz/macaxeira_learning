@@ -12,7 +12,7 @@ from backend.contratos.modelos import Candidato, EstadoBanco, Experiencia
 
 DATA_REFERENCIA = date(2026, 11, 7)
 SEMENTE_DEMO = 42
-QUANTIDADE_DEMO = 200
+QUANTIDADE_DEMO = 250
 
 # São fatos sintéticos, não rótulos de classificação ou resultados esperados.
 _PROFISSOES = (

@@ -40,6 +40,7 @@ ETAPA_EMAIL = "redigir_email"
 CANAL_EMAIL = "email"
 TAMANHO_CODIGO = 6
 LIMITE_PARAGRAFO = 1000
+TENTATIVA_LEMBRETE = 2
 _MARCADOR = re.compile(r"\{[^}]*\}")
 _ENDERECO = re.compile(r"https?://|www\.|@")
 
@@ -129,6 +130,14 @@ def paragrafo_padrao(vaga: Vaga, analise: Analise, nome_empresa: str) -> str:
     return f"Olá, {MARCADOR_NOME}! A {nome_empresa} tem uma vaga de {vaga.titulo}.{motivo}"
 
 
+def paragrafo_lembrete(vaga: Vaga, nome_empresa: str) -> str:
+    """Abertura do lembrete (T3.7): curta, fixa e sem modelo."""
+    return (
+        f"Olá, {MARCADOR_NOME}! Passando para lembrar da vaga de {vaga.titulo} na "
+        f"{nome_empresa}. Este é o único lembrete."
+    )
+
+
 def _problema_na_redacao(
     redacao: RedacaoEmail, vaga: Vaga, fits: list[tuple[str, str]]
 ) -> str | None:
@@ -200,16 +209,19 @@ def criar_email(
     personalizar: bool = True,
     tentativa: int = 1,
 ) -> EmailConvite:
-    """Monta o e-mail inicial (ou o lembrete, com `tentativa=2`).
+    """Monta o e-mail inicial ou, com `tentativa=2`, o único lembrete (T3.7).
 
     Lança `ContatoBloqueado` quando o contato não foi publicado pela pessoa, não é
     e-mail ou está na lista de supressão. `pode_contatar` continua com o fluxo (T1.1).
     """
+    if tentativa not in (1, TENTATIVA_LEMBRETE):
+        raise ValueError("há só o e-mail inicial e um lembrete por vaga")
     _conferir_ids(vaga, candidato, analise)
     _conferir_contato(vaga.empresa_id, contato, lista)
+    lembrete = tentativa == TENTATIVA_LEMBRETE
 
-    abertura = None
-    if personalizar:
+    abertura = paragrafo_lembrete(vaga, remetente.nome_empresa) if lembrete else None
+    if abertura is None and personalizar:
         fits = _fits(analise, candidato.nome)
         abertura = _redigir(vaga, remetente.nome_empresa, fits, cliente_modelo)
     if abertura is None:
@@ -237,7 +249,8 @@ def criar_email(
     return EmailConvite(
         convite=convite,
         para=contato.endereco,
-        assunto=f"[SIMULADO] Vaga de {vaga.titulo} na {remetente.nome_empresa}",
+        assunto=f"[SIMULADO] {'Lembrete: vaga' if lembrete else 'Vaga'} de {vaga.titulo} "
+        f"na {remetente.nome_empresa}",
         cabecalhos=ListaSupressao.cabecalhos_exclusao(link_exclusao),
         codigo=codigo,
         link_whatsapp=link_whatsapp,
