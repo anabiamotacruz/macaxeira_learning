@@ -228,11 +228,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** `gerar_consultas(vaga: Vaga, cliente_modelo) -> list[str]` e `ampliar_consultas(vaga: Vaga, anteriores: list[str], cliente_modelo) -> list[str]`.
 
-- [ ] Testar `test_inclui_sinonimos_de_cargo`.
-- [ ] Testar `test_nao_usa_criterio_sensivel`.
-- [ ] Testar `test_ampliacao_nao_remove_requisito_eliminatorio`.
-- [ ] Testar `test_resposta_invalida_usa_consulta_basica`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_inclui_sinonimos_de_cargo`.
+- [x] Testar `test_nao_usa_criterio_sensivel`.
+- [x] Testar `test_ampliacao_nao_remove_requisito_eliminatorio`.
+- [x] Testar `test_resposta_invalida_usa_consulta_basica`.
+- [x] Implementar e verificar.
 
 ### T2.8 [P] (onda 1): funil e cache
 
