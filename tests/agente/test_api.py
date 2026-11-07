@@ -234,8 +234,14 @@ def test_reiniciar_vale_para_a_empresa_da_sessao_e_nao_finge_recarga(cliente):
         {"limite_gasto_usd": 0},
         {"limite_gasto_usd": -1},
         {"assinante": "   "},
-        {"politica": {"limiar_verde": 0.4, "piso_nota": 0.5, "max_indicacoes": 1,
-                      "max_ampliacoes": 0}},
+        {
+            "politica": {
+                "limiar_verde": 0.4,
+                "piso_nota": 0.5,
+                "max_indicacoes": 1,
+                "max_ampliacoes": 0,
+            }
+        },
         {"hash_vaga": "forjado"},
         {"versao": 9},
     ],
@@ -306,9 +312,7 @@ def test_lista_pagina_com_limite(cliente, recurso):
 
 @pytest.mark.parametrize("recurso", ["candidatos", "eventos"])
 def test_pagina_alem_do_fim_vem_vazia(cliente, recurso):
-    corpo = cliente.get(
-        f"/vagas/{VAGA}/{recurso}", params={"pagina": 99}, headers=SESSAO
-    ).json()
+    corpo = cliente.get(f"/vagas/{VAGA}/{recurso}", params={"pagina": 99}, headers=SESSAO).json()
     assert corpo["itens"] == []
     assert corpo["total"] > 0
 

@@ -431,9 +431,7 @@ rotas = APIRouter()
     responses=_respostas(_resposta_vaga_nova(), status=201, erros=(401, 422)),
 )
 def criar_vaga(
-    pedido: Annotated[
-        PedidoVaga, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_VAGA))
-    ],
+    pedido: Annotated[PedidoVaga, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_VAGA))],
     empresa: EmpresaDaSessao,
 ) -> RespostaVaga:
     """Cria a vaga da empresa da sessão, que espera o mandato. Exemplo fixo: nada é gravado."""
