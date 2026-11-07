@@ -223,6 +223,18 @@ def _faltas_de_evidencia(
     return faltas
 
 
+def _exigir_mesma_execucao(
+    vaga: Vaga, candidato: Candidato, analise: Analise, mandato: Mandato
+) -> None:
+    _exigir_mesma_empresa(vaga, candidato)
+    if analise.empresa_id != vaga.empresa_id or mandato.empresa_id != vaga.empresa_id:
+        raise ValueError("análise e mandato precisam ser da empresa da vaga")
+    if analise.vaga_id != vaga.id or mandato.vaga_id != vaga.id:
+        raise ValueError("análise e mandato precisam ser da mesma vaga")
+    if analise.candidato_id != candidato.id:
+        raise ValueError("análise precisa ser do mesmo candidato")
+
+
 def classificar_faixa(
     vaga: Vaga,
     candidato: Candidato,
@@ -233,11 +245,16 @@ def classificar_faixa(
 ) -> Faixa:
     """Aplica a regra da faixa verde: indicar, descartar ou pedir uma pessoa.
 
-    Não usa nome, atributo sensível nem confiança declarada pelo modelo. Levanta
-    `MandatoInvalido` se o mandato não vale para a vaga, para o fluxo pausar.
+    Não usa nome, atributo sensível nem confiança declarada pelo modelo. Levanta `ValueError`
+    se as peças são de empresas, vagas ou candidatos diferentes, e `MandatoInvalido` se o
+    mandato não vale para a vaga ou se ela usa critério sensível, para o fluxo pausar.
     """
+    _exigir_mesma_execucao(vaga, candidato, analise, mandato)
     if not mandato_valido(mandato, vaga, agora):
         raise MandatoInvalido("mandato não vale para esta vaga neste momento")
+    problemas = validar_criterios(vaga)
+    if problemas:
+        raise MandatoInvalido(f"vaga com problemas nos critérios: {'; '.join(problemas)}")
 
     politica = mandato.politica
     requisitos = avaliar_requisitos(vaga, candidato)

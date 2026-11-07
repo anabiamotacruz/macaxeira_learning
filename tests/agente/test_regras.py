@@ -1,5 +1,6 @@
 """Regras determinísticas de critérios, requisitos e contato. Dados sintéticos."""
 
+import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -736,3 +737,105 @@ def test_decisao_recusa_momento_sem_fuso() -> None:
             datetime(2026, 11, 7, 12, 0),
             "rastro-1",
         )
+
+
+PERFIL_COM_NOME = "{nome}. Cinco anos com Python. Liderou APIs em produção."
+PARES_NOME_GENERO = [
+    (("Ana Fictícia", "feminino"), ("João Fictício", "masculino")),
+    (("Maria Fictícia", "feminino"), ("Alex Fictício", "não binário")),
+]
+CAMPOS_ANALISE_POR_RESULTADO = {
+    TipoDecisao.INDICAR: {},
+    TipoDecisao.PEDIR_HUMANO: {"ressalvas_revisor": ["exagero possível"]},
+    TipoDecisao.DESCARTAR: {"notas": {"backend": 0.1}},
+}
+
+
+def _candidato_identidade(nome: str, genero: str, **campos) -> Candidato:
+    return _candidato_faixa(
+        nome=nome,
+        perfil_texto=PERFIL_COM_NOME.format(nome=nome),
+        atributos={"python": "sim", "genero": genero, "sexo": genero},
+        **campos,
+    )
+
+
+@pytest.mark.parametrize("resultado", list(CAMPOS_ANALISE_POR_RESULTADO))
+@pytest.mark.parametrize(("pessoa_a", "pessoa_b"), PARES_NOME_GENERO)
+def test_trocar_nome_ou_genero_nao_muda_decisao(
+    pessoa_a: tuple[str, str], pessoa_b: tuple[str, str], resultado: TipoDecisao
+) -> None:
+    analise = _analise(**CAMPOS_ANALISE_POR_RESULTADO[resultado])
+
+    decisao_a = _decidir(candidato=_candidato_identidade(*pessoa_a), analise=analise)
+    decisao_b = _decidir(candidato=_candidato_identidade(*pessoa_b), analise=analise)
+
+    assert decisao_a.tipo is resultado
+    assert decisao_a == decisao_b
+
+
+def _palavras_de(texto: str) -> set[str]:
+    return set(re.findall(r"\w+", texto))
+
+
+def test_entrada_nao_contem_atributo_sensivel() -> None:
+    candidato = _candidato_identidade("Ana Fictícia", "feminino")
+
+    decisao = _decidir(candidato=candidato)
+    texto = f"{decisao.entrada} {decisao.motivo} {decisao.regra} {decisao.responsavel}".casefold()
+
+    assert "ana" not in _palavras_de(texto)
+    assert "feminino" not in texto
+    assert not [chave for chave in decisao.entrada if "genero" in chave or "sexo" in chave]
+    assert "genero" not in texto
+
+
+@pytest.mark.parametrize(
+    "outra_empresa",
+    ["vaga", "candidato", "analise", "mandato"],
+)
+def test_empresa_diferente_levanta_erro(outra_empresa: str) -> None:
+    vaga = _vaga_faixa()
+    pecas = {
+        "vaga": vaga,
+        "candidato": _candidato_faixa(),
+        "analise": _analise(),
+        "mandato": _mandato(vaga),
+    }
+    outra = {
+        "vaga": _vaga_faixa(empresa_id="empresa-b"),
+        "candidato": candidato_simulado(
+            "cand-1", "empresa-b", perfil_texto=PERFIL_VERDE, fonte="github"
+        ),
+        "analise": _analise(empresa_id="empresa-b"),
+        "mandato": _mandato(_vaga_faixa(empresa_id="empresa-b")),
+    }
+    pecas[outra_empresa] = outra[outra_empresa]
+
+    with pytest.raises(ValueError, match="empresa"):
+        decidir(**pecas, hoje=HOJE, agora=AGORA, rastro_id="rastro-1")
+
+
+def test_analise_de_outra_vaga_levanta_erro() -> None:
+    with pytest.raises(ValueError, match="vaga"):
+        _decidir(analise=_analise(vaga_id="vaga-2"))
+
+
+def test_analise_de_outro_candidato_levanta_erro() -> None:
+    with pytest.raises(ValueError, match="candidato"):
+        _decidir(analise=_analise(candidato_id="cand-2"))
+
+
+def test_vaga_com_criterio_sensivel_nao_e_decidida_mesmo_com_mandato() -> None:
+    vaga = _vaga_faixa(requisitos=[_requisito(campo="genero", valor_esperado="feminino")])
+    mandato = assinar(
+        vaga,
+        "Pessoa Recrutadora",
+        5.0,
+        Politica(limiar_verde=0.7, piso_nota=0.3, max_indicacoes=3, max_ampliacoes=1),
+        AGORA,
+        validar_criterios=lambda _vaga: [],
+    )
+
+    with pytest.raises(MandatoInvalido, match="sensível"):
+        decidir(vaga, _candidato_faixa(), _analise(), mandato, HOJE, AGORA, "rastro-1")
