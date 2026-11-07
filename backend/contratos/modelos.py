@@ -8,7 +8,16 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
+
+from backend.contratos.criterios import julgamentos_proibidos, termos_proibidos_em_conversa
 
 
 class Contrato(BaseModel):
@@ -31,6 +40,8 @@ class Requisito(Contrato):
     descricao: str
     campo: str
     valor_esperado: str
+    desenvolvivel: bool = False
+    """Marcado pela empresa: a falta dele pode ser desenvolvida e não elimina sozinha."""
 
 
 class Vaga(Contrato):
@@ -150,6 +161,82 @@ class RespostaCandidato(Contrato):
     texto: str = ""
 
 
+class NivelCriterio(StrEnum):
+    """Escala ancorada: o perfil nega, alega sem exemplo, mostra parte ou mostra direto."""
+
+    NEGA = "nega"
+    GENERICA = "generica"
+    PARCIAL = "parcial"
+    DIRETA = "direta"
+
+
+class SituacaoResposta(StrEnum):
+    CONFIRMA = "confirma"
+    NEGA = "nega"
+    INCERTA = "incerta"
+
+
+class DadoPreTriagem(Contrato):
+    """Uma resposta da pré-triagem, com o trecho da mensagem, a fonte e a data."""
+
+    pergunta_id: Texto
+    criterio: Texto
+    situacao: SituacaoResposta
+    trecho: Texto
+    fonte: Texto
+    coletado_em: date
+    nivel: NivelCriterio | None = None
+    voltar_em: date | None = None
+    motivo: str | None = None
+
+    @model_validator(mode="after")
+    def _sem_dado_sensivel(self) -> Self:
+        if termos_proibidos_em_conversa(self.trecho, self.motivo or ""):
+            raise ValueError("resposta com dado sensível não é guardada")
+        return self
+
+
+class TipoPonto(StrEnum):
+    LACUNA = "lacuna"
+    CONTRADICAO = "contradicao"
+    AFIRMACAO_SEM_EXEMPLO = "afirmacao_sem_exemplo"
+    EXPERIENCIA_PARECIDA = "experiencia_parecida"
+
+
+class PontoExplorar(Contrato):
+    """O que o recrutador e a entrevista podem aprofundar, sempre com trecho e fonte."""
+
+    tipo: TipoPonto
+    criterio: Texto
+    descricao: Texto
+    trecho: Texto
+    fonte: Texto
+    verificado: bool
+    inferencia: bool = False
+    rotulo: Literal["Verificado", "Não verificado"] = "Não verificado"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _rotulo_segue_o_fato(cls, dados: object) -> object:
+        """O rótulo visível nunca é informado: vem de `verificado`, para não poder mentir."""
+        if isinstance(dados, dict):
+            rotulo = "Verificado" if dados.get("verificado") else "Não verificado"
+            return {**dados, "rotulo": rotulo}
+        return dados
+
+    @model_validator(mode="after")
+    def _ponto_permitido(self) -> Self:
+        if termos_proibidos_em_conversa(self.descricao, self.trecho):
+            raise ValueError("ponto a explorar não cita dado sensível")
+        if julgamentos_proibidos(self.descricao, self.trecho):
+            raise ValueError("ponto a explorar não julga personalidade nem fit cultural")
+        if self.tipo == TipoPonto.EXPERIENCIA_PARECIDA and not self.inferencia:
+            raise ValueError("experiência parecida é sempre inferência")
+        if self.inferencia and self.verificado:
+            raise ValueError("inferência nunca aparece como verificada")
+        return self
+
+
 class PacoteContexto(Contrato):
     empresa_id: Texto
     vaga_id: Texto
@@ -165,6 +252,8 @@ class PacoteContexto(Contrato):
     rastro_id: str
     chave_idempotencia: Texto
     simulado: bool
+    pontos_a_explorar: list[PontoExplorar] = []
+    respostas_pre_triagem: list[DadoPreTriagem] = []
 
 
 class ResultadoEntrevista(Contrato):
@@ -211,6 +300,8 @@ class Politica(Contrato):
     max_ampliacoes: Annotated[int, Field(ge=0)]
     modo_entrega: ModoEntrega = ModoEntrega.APOS_ACEITE
     aceitar_declarada: bool = False
+    lapidar_exige_confirmacao: bool = True
+    prazo_garden_dias: Annotated[int, Field(ge=1)] = 180
 
     @model_validator(mode="after")
     def _piso_nao_passa_do_limiar(self) -> Self:
@@ -572,3 +663,401 @@ class PerfilColetado(Contrato):
     fatos: list[FatoColetado] = []
     contatos: list[ContatoColetado] = []
     alertas: list[str] = []
+
+
+class DestinoDecisao(StrEnum):
+    """Para onde a pessoa vai depois da decisão. Agendar e contratar ficam fora do agente."""
+
+    APROVAR = "aprovar"
+    RECUSAR = "recusar"
+    GARDEN_INDISPONIVEL = "garden_indisponivel"
+    GARDEN_A_LAPIDAR = "garden_a_lapidar"
+    REVISAO_HUMANA = "revisao_humana"
+
+
+class OrigemDecisao(StrEnum):
+    ANALISE = "analise"
+    PRE_TRIAGEM = "pre_triagem"
+    CONFIRMACAO_HUMANA = "confirmacao_humana"
+
+
+class TipoCriterio(StrEnum):
+    REQUISITO = "requisito"
+    COMPETENCIA = "competencia"
+
+
+class QualidadeDado(StrEnum):
+    COMPROVADO = "comprovado"
+    DECLARADO = "declarado"
+    INFERIDO = "inferido"
+    SEM_DADO = "sem_dado"
+
+
+class FaixaScore(StrEnum):
+    ALTA = "alta"
+    MEDIA = "media"
+    BAIXA = "baixa"
+
+
+class SeloCalibracao(StrEnum):
+    NAO_CALIBRADO = "nao_calibrado"
+    CERTIFICADO = "certificado"
+
+
+class TrechoCitado(Contrato):
+    trecho: Texto
+    fonte: Texto
+
+
+class NotaCriterio(Contrato):
+    """Um critério como o recrutador o vê. Requisito elimina e não pesa na nota geral."""
+
+    criterio: Texto
+    tipo: TipoCriterio
+    descricao: str
+    peso: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    qualidade: QualidadeDado
+    nota: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
+    nota_considerada: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
+    nivel: NivelCriterio | None = None
+    trechos: list[TrechoCitado] = []
+    status_requisito: Literal["atende", "nao_atende", "sem_dado"] | None = None
+    confirmado_na_analise: bool = False
+    evidencia_aceita: bool = False
+    eliminatorio: bool = False
+    desenvolvivel: bool = False
+
+
+class SinalNota(Contrato):
+    """O que tirou pontos da nota geral. Sinal nunca recusa nem aprova."""
+
+    codigo: Texto
+    criterio: str | None = None
+    reducao: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
+
+class ScoreRecrutador(Contrato):
+    """Nota por critério, nota geral e faixa. Sem limiar certificado, leva o selo não calibrado."""
+
+    criterios: list[NotaCriterio]
+    nota_geral: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None
+    faixa: FaixaScore | None
+    sinais: list[SinalNota]
+    selo: SeloCalibracao
+    qualidade: dict[QualidadeDado, Annotated[int, Field(ge=0)]]
+
+
+class MotivoLacuna(StrEnum):
+    NAO_ATENDE = "nao_atende"
+    SEM_DADO = "sem_dado"
+    SEM_EVIDENCIA_ACEITA = "sem_evidencia_aceita"
+    NAO_CONFIRMADO = "nao_confirmado"
+    SEM_EVIDENCIA = "sem_evidencia"
+
+
+class LacunaCriterio(Contrato):
+    """O que falta num critério da vaga. Nasce em código, do registro, não do texto do modelo."""
+
+    criterio: Texto
+    tipo: TipoCriterio
+    descricao: Texto
+    motivo: MotivoLacuna
+    peso: Annotated[float, Field(ge=0, allow_inf_nan=False)] = 0
+    eliminatorio: bool = False
+    desenvolvivel: bool = False
+
+
+class FatoIndisponibilidade(Contrato):
+    """A própria pessoa disse que não pode agora, e quando ou por que isso muda."""
+
+    trecho: Texto
+    fonte: Texto
+    voltar_em: date | None = None
+    motivo: str | None = None
+
+    @model_validator(mode="after")
+    def _data_ou_motivo(self) -> Self:
+        if self.voltar_em is None and not (self.motivo or "").strip():
+            raise ValueError("indisponibilidade precisa de data ou motivo de volta")
+        return self
+
+
+REGRA_RECUSA_AUTORIZACAO = "sem_autorizacao"
+PREFIXO_RECUSA_REQUISITO = "requisito_eliminatorio:"
+
+
+def regra_de_recusa_objetiva(regra: str) -> bool:
+    """Recusa automática só por autorização ou por requisito comprovadamente não atendido."""
+    if regra == REGRA_RECUSA_AUTORIZACAO:
+        return True
+    return regra.startswith(PREFIXO_RECUSA_REQUISITO) and bool(
+        regra.removeprefix(PREFIXO_RECUSA_REQUISITO).strip()
+    )
+
+
+class DecisaoFinal(Contrato):
+    """Decisão com destino e score. As invariantes do produto valem aqui, para qualquer autor."""
+
+    empresa_id: Texto
+    vaga_id: Texto
+    candidato_id: Texto
+    destino: DestinoDecisao
+    regra: Texto
+    motivo: Texto
+    responsavel: Texto
+    rastro_id: str
+    score: ScoreRecrutador
+    entrada: dict[str, str]
+    evidencias: list[Evidencia]
+    simulado: bool
+    momento: AwareDatetime
+    origem: OrigemDecisao = OrigemDecisao.ANALISE
+    portoes: list[str] = []
+    lacunas: list[LacunaCriterio] = []
+    indisponibilidade: FatoIndisponibilidade | None = None
+    pendente_confirmacao: bool = False
+    reavaliados: list[str] = []
+    alertas: list[str] = []
+
+    @model_validator(mode="after")
+    def _invariantes_do_destino(self) -> Self:
+        if self.destino == DestinoDecisao.RECUSAR and not regra_de_recusa_objetiva(self.regra):
+            raise ValueError("recusa automática só por regra objetiva")
+        if self.destino == DestinoDecisao.APROVAR:
+            self._exigir_aprovacao_completa()
+        if self.destino == DestinoDecisao.GARDEN_INDISPONIVEL and self.indisponibilidade is None:
+            raise ValueError("garden de indisponível precisa do fato dito pela pessoa")
+        if self.destino == DestinoDecisao.GARDEN_A_LAPIDAR and not self.lacunas:
+            raise ValueError("garden a lapidar precisa das lacunas listadas")
+        if self.pendente_confirmacao and self.destino != DestinoDecisao.GARDEN_A_LAPIDAR:
+            raise ValueError("só o garden a lapidar espera confirmação do RH")
+        return self
+
+    def _exigir_aprovacao_completa(self) -> None:
+        if self.portoes:
+            raise ValueError("aprovação não passa por portão duro")
+        if self.score.nota_geral is None:
+            raise ValueError("aprovação precisa de nota geral")
+        for criterio in self.score.criterios:
+            if criterio.tipo == TipoCriterio.REQUISITO and criterio.status_requisito != "atende":
+                raise ValueError("requisito sem dado ou não atendido nunca aprova")
+
+
+class EstadoGarden(StrEnum):
+    AGUARDANDO_AUTORIZACAO = "aguardando_autorizacao"
+    ATIVA = "ativa"
+    PARA_REVISAO = "para_revisao"
+    ENCERRADA = "encerrada"
+
+
+class EntradaGarden(Contrato):
+    """Entrada no garden: depende da autorização da pessoa, tem prazo e pode ser revista."""
+
+    empresa_id: Texto
+    vaga_id: Texto
+    candidato_id: Texto
+    destino: DestinoDecisao
+    regra: Texto
+    estado: EstadoGarden
+    revisar_em: date
+    autorizada_em: date | None = None
+    valida_ate: date | None = None
+    voltar_em: date | None = None
+    motivo_retorno: str | None = None
+    lacunas: list[LacunaCriterio] = []
+    motivo_encerramento: str | None = None
+
+    @model_validator(mode="after")
+    def _estado_coerente(self) -> Self:
+        if self.destino not in (
+            DestinoDecisao.GARDEN_INDISPONIVEL,
+            DestinoDecisao.GARDEN_A_LAPIDAR,
+        ):
+            raise ValueError("entrada no garden só para destinos de garden")
+        ativa = self.estado in (EstadoGarden.ATIVA, EstadoGarden.PARA_REVISAO)
+        if ativa and (self.autorizada_em is None or self.valida_ate is None):
+            raise ValueError("garden ativo exige autorização da pessoa, com prazo")
+        return self
+
+
+class TipoPergunta(StrEnum):
+    DISPONIBILIDADE = "disponibilidade"
+    REQUISITO = "requisito"
+    COMPETENCIA = "competencia"
+
+
+class PerguntaRoteiro(Contrato):
+    """Pergunta da pré-triagem. Pergunta sobre dado sensível não existe, nem para o canal."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: Texto
+    ordem: Annotated[int, Field(ge=1)]
+    tipo: TipoPergunta
+    criterio: Texto
+    texto: Texto
+    motivo: Texto
+    eliminatorio: bool = False
+
+    @model_validator(mode="after")
+    def _sem_dado_sensivel(self) -> Self:
+        if termos_proibidos_em_conversa(self.texto, self.motivo):
+            raise ValueError("pergunta sobre dado sensível é proibida")
+        return self
+
+
+class RoteiroPreTriagem(Contrato):
+    """Só o que falta, em ordem de importância. A pré-triagem não substitui a entrevista."""
+
+    id: Texto
+    empresa_id: Texto
+    vaga_id: Texto
+    candidato_id: Texto
+    motivo_contato: Texto
+    perguntas: list[PerguntaRoteiro]
+    criterios_bloqueados: list[str] = []
+    nao_perguntados: list[str] = []
+    liberado_por: str | None = None
+    simulado: bool
+
+
+class AtualizacaoPerfil(Contrato):
+    """O que a resposta muda no perfil: atributos, fatos com fonte e data, e critérios afetados."""
+
+    dados: dict[str, str]
+    fatos: list[FatoColetado]
+    criterios_afetados: list[str]
+
+
+class SituacaoPreTriagem(StrEnum):
+    PASSOU = "passou"
+    AMBIGUO = "ambiguo"
+    NAO_PASSOU = "nao_passou"
+
+
+class ResultadoPreTriagem(Contrato):
+    """Validação em código. Só quem passou pode receber o link do agente de destino."""
+
+    situacao: SituacaoPreTriagem
+    decisao: DecisaoFinal
+    atualizacao: AtualizacaoPerfil | None = None
+    respostas: list[DadoPreTriagem] = []
+    link_agendamento: str | None = None
+    link_indisponivel: bool = False
+
+    @model_validator(mode="after")
+    def _situacao_coerente(self) -> Self:
+        esperados = {
+            SituacaoPreTriagem.PASSOU: {DestinoDecisao.APROVAR},
+            SituacaoPreTriagem.AMBIGUO: {DestinoDecisao.REVISAO_HUMANA},
+            SituacaoPreTriagem.NAO_PASSOU: {
+                DestinoDecisao.RECUSAR,
+                DestinoDecisao.GARDEN_INDISPONIVEL,
+                DestinoDecisao.GARDEN_A_LAPIDAR,
+            },
+        }
+        if self.decisao.destino not in esperados[self.situacao]:
+            raise ValueError("situação da pré-triagem não bate com o destino da decisão")
+        if self.link_agendamento is not None and self.situacao != SituacaoPreTriagem.PASSOU:
+            raise ValueError("link de agendamento só para quem passou")
+        return self
+
+
+class ContextoOnboarding(Contrato):
+    """O que o canal precisa para conversar. Sem nota, faixa, ranking nem texto do modelo."""
+
+    empresa_id: Texto
+    vaga_id: Texto
+    candidato_id: Texto
+    nome_tratamento: str
+    titulo_vaga: str
+    motivo_contato: Texto
+    origem_contato: str
+    fonte: str
+    autorizacao_valida_ate: date
+    roteiro: RoteiroPreTriagem
+    simulado: bool
+
+
+class InsightVaga(Contrato):
+    """Agregado da vaga, sem pessoas. O trecho é o critério, não o texto de um candidato."""
+
+    criterio: Texto
+    descricao: Texto
+    trecho: Texto
+    fonte: Texto
+    pessoas: Annotated[int, Field(ge=0)]
+    total: Annotated[int, Field(ge=1)]
+
+
+class InsightsDaVaga(Contrato):
+    empresa_id: Texto
+    vaga_id: Texto
+    total: Annotated[int, Field(ge=0)]
+    suprimido: bool
+    insights: list[InsightVaga]
+
+
+class PedidoFeedback(Contrato):
+    """Só existe feedback quando a pessoa pede. `texto` é dado, nunca instrução."""
+
+    empresa_id: Texto
+    vaga_id: Texto
+    candidato_id: Texto
+    canal: Texto
+    pedido_em: AwareDatetime
+    texto: str = ""
+    contestacao: bool = False
+
+
+class MotivoDestino(Contrato):
+    criterio: Texto
+    trecho: Texto
+
+
+class RetornoDestino(Contrato):
+    """O que o agente de destino informou depois da entrevista, e nada além disso."""
+
+    empresa_id: Texto
+    vaga_id: Texto
+    candidato_id: Texto
+    fonte: Texto
+    motivos: list[MotivoDestino]
+    simulado: bool = True
+
+
+class MotivoFeedback(Contrato):
+    """Cada motivo liga um critério a um trecho registrado na decisão."""
+
+    criterio: Texto
+    descricao: Texto
+    trecho: Texto
+    fonte: Texto
+    evidencia_faltante: str
+    o_que_pode_mudar: str
+
+
+class StatusFeedback(StrEnum):
+    GERADO = "gerado"
+    ENCAMINHADO = "encaminhado"
+
+
+class FeedbackCandidato(Contrato):
+    """Vai para a pessoa. Não tem nota, faixa, ranking nem menção a outros candidatos."""
+
+    status: StatusFeedback
+    saudacao: str
+    texto: str
+    motivos: list[MotivoFeedback] = []
+    encaminhado_por: str | None = None
+    responsavel: str | None = None
+
+    @model_validator(mode="after")
+    def _status_coerente(self) -> Self:
+        if self.status == StatusFeedback.GERADO and not self.motivos:
+            raise ValueError("feedback gerado precisa de motivo ligado a critério e trecho")
+        if self.status == StatusFeedback.ENCAMINHADO and (
+            self.motivos or self.encaminhado_por is None
+        ):
+            raise ValueError("encaminhamento não traz motivo e diz por que foi para uma pessoa")
+        return self

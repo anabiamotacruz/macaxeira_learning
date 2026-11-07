@@ -200,6 +200,66 @@ MARCADORES_DE_BENEFICIO = frozenset(
 )
 """Frase sobre benefício cita filhos ou maternidade sem restringir quem concorre."""
 
+TERMOS_PROIBIDOS_EM_CONVERSA: tuple[tuple[str, ...], ...] = tuple(
+    tuple(termo.split())
+    for termo in (
+        "afrodescendente",
+        "biometria",
+        "bissexual",
+        "cadeirante",
+        "cirurgia",
+        "dado genetico",
+        "dados geneticos",
+        "divorciada",
+        "divorciado",
+        "doenca",
+        "doencas",
+        "doente",
+        "engravidar",
+        "filiacao partidaria",
+        "filiada",
+        "filiado",
+        "licenca maternidade",
+        "licenca paternidade",
+        "mae",
+        "medicamento",
+        "medicamentos",
+        "opiniao politica",
+        "pai",
+        "partido politico",
+        "paternidade",
+        "saude",
+        "sindicalizada",
+        "sindicalizado",
+        "sindicato",
+        "tratamento medico",
+        "viuva",
+        "viuvo",
+    )
+)
+"""Além de `TERMOS_SENSIVEIS`, só para conversa com a pessoa: perguntas, respostas e feedback.
+
+Não vale como critério da vaga: `saude` é setor de muita vaga. Numa pergunta, o erro é seguro: ela
+não é feita, e o critério fica para uma pessoa."""
+
+_IDADE_EM_CONVERSA = re.compile(
+    r"\bquantos anos (voce )?tem\b"
+    r"|\btenho \d{1,3} anos\b(?! (de|em|com|no|na|como|atuando|trabalhando))"
+)
+
+JULGAMENTOS_PROIBIDOS: tuple[tuple[str, ...], ...] = tuple(
+    tuple(termo.split())
+    for termo in (
+        "carisma",
+        "fit",
+        "fit cultural",
+        "personalidade",
+        "perfil comportamental",
+        "temperamento",
+    )
+)
+"""Julgamento sobre a pessoa, sem evidência de critério: não entra em ponto a explorar."""
+
 _SUFIXOS_DE_GENERO = (("doras", "dores"), ("dora", "dor"), ("eiras", "eiros"), ("eira", "eiro"))
 _MENOR_PALAVRA_COM_SUFIXO = 6
 _MASCULINOS_EM_OR = (
@@ -269,6 +329,28 @@ def termos_sensiveis(*textos: str) -> list[str]:
         achados.update(" ".join(t) for t in TERMOS_SENSIVEIS if contem_termo(palavras, t))
         if LIMITE_DE_IDADE.search(" ".join(palavras)):
             achados.add("idade")
+    return sorted(achados)
+
+
+def termos_proibidos_em_conversa(*textos: str) -> list[str]:
+    """Os termos sensíveis, inclusive os que só valem em conversa, como `saude` e `mae`."""
+    achados = set(termos_sensiveis(*textos))
+    for texto in textos:
+        palavras = _sem_expressoes_tecnicas(separar_palavras(texto))
+        achados.update(
+            " ".join(t) for t in TERMOS_PROIBIDOS_EM_CONVERSA if contem_termo(palavras, t)
+        )
+        if _IDADE_EM_CONVERSA.search(" ".join(palavras)):
+            achados.add("idade")
+    return sorted(achados)
+
+
+def julgamentos_proibidos(*textos: str) -> list[str]:
+    """Citações de personalidade ou `fit cultural`, que não são critério nem evidência."""
+    achados: set[str] = set()
+    for texto in textos:
+        palavras = separar_palavras(texto)
+        achados.update(" ".join(t) for t in JULGAMENTOS_PROIBIDOS if contem_termo(palavras, t))
     return sorted(achados)
 
 
