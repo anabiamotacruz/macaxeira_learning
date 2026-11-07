@@ -18,10 +18,11 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.security import APIKeyHeader
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.agente import exemplos_api as exemplos
@@ -95,12 +96,16 @@ class Erro(Contrato):
 
 
 class RespostaErro(Contrato):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     erro: Erro
     simulado: Literal[True] = True
 
 
 class RespostaSimulada(Contrato):
     """Base das respostas de sucesso: identifica a simulação e o exemplo fixo."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     simulado: Literal[True] = True
     exemplo_fixo: Literal[True] = True
@@ -686,6 +691,31 @@ def _id_da_operacao(rota: APIRoute) -> str:
     return rota.name
 
 
+def _gerar_openapi(aplicacao: FastAPI) -> dict[str, Any]:
+    """Gera o OpenAPI e devolve os exemplos completos das rotas.
+
+    O FastAPI remove valores nulos do esquema gerado. Os exemplos precisam deles: `valor: null`
+    é como uma taxa não medida aparece, e o painel precisa ver esse formato.
+    """
+    if aplicacao.openapi_schema:
+        return aplicacao.openapi_schema
+    esquema = get_openapi(
+        title=aplicacao.title,
+        version=aplicacao.version,
+        description=aplicacao.description,
+        routes=aplicacao.routes,
+    )
+    for rota in rotas.routes:
+        for metodo in rota.methods:
+            respostas = esquema["paths"][rota.path_format][metodo.lower()]["responses"]
+            for status, resposta in rota.responses.items():
+                respostas[str(status)]["content"]["application/json"]["example"] = resposta[
+                    "content"
+                ]["application/json"]["example"]
+    aplicacao.openapi_schema = esquema
+    return esquema
+
+
 def criar_app() -> FastAPI:
     aplicacao = FastAPI(
         title="API do agente recrutador (proposta simulada)",
@@ -698,6 +728,7 @@ def criar_app() -> FastAPI:
     aplicacao.add_exception_handler(RequestValidationError, _tratar_validacao)
     aplicacao.add_exception_handler(StarletteHTTPException, _tratar_http)
     aplicacao.add_exception_handler(Exception, _tratar_inesperado)
+    aplicacao.openapi = lambda: _gerar_openapi(aplicacao)
     return aplicacao
 
 
