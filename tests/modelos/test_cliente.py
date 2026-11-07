@@ -15,6 +15,7 @@ from backend.modelos.cliente import (
     TETO_GASTO_PADRAO_USD,
     ClienteFeatherless,
 )
+from backend.modelos.rastro import RastroLocal
 
 CHAVE = "rc_chave_sintetica_de_teste_0123456789"
 VALIDA = '{"nota": 0.8, "resumo": "ok"}'
@@ -465,3 +466,226 @@ def test_variavel_vazia_de_teto_conta_como_ausente(monkeypatch):
     monkeypatch.setenv("LIMITE_GASTO_SESSAO_USD", "")
 
     assert cliente_com(Transporte()).limite_gasto_usd == TETO_GASTO_PADRAO_USD
+
+
+class Relogio:
+    """Avança um passo fixo a cada leitura."""
+
+    def __init__(self, passo: float = 1.5) -> None:
+        self.agora = 0.0
+        self.passo = passo
+
+    def __call__(self) -> float:
+        self.agora += self.passo
+        return self.agora
+
+
+def resposta_com(conteudo: str = VALIDA, **extras) -> httpx2.Response:
+    return httpx2.Response(200, json=corpo(conteudo, **extras))
+
+
+USO = {"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500}
+CUSTO_DO_USO = (1000 * 1.4 + 500 * 4.4) / 1_000_000
+
+
+def test_registra_tokens_custo_e_tempo_por_etapa():
+    transporte = Transporte(
+        resposta_com(usage=USO),
+        resposta_com(usage=USO),
+        resposta_com(usage={"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}),
+    )
+    cliente = cliente_com(transporte, relogio=Relogio())
+
+    cliente.completar("s", "u", Resumo, "analise")
+    cliente.completar("s", "u", Resumo, "analise")
+    cliente.completar("s", "u", Resumo, "revisao")
+
+    metricas = cliente.metricas()
+    assert metricas["analise"].chamadas == 2
+    assert metricas["analise"].tokens_entrada == 2000
+    assert metricas["analise"].tokens_saida == 1000
+    assert metricas["analise"].custo_usd == pytest.approx(2 * CUSTO_DO_USO)
+    assert metricas["analise"].tempo_s == pytest.approx(3.0)
+    assert metricas["analise"].falhas == 0
+    assert metricas["revisao"].tokens_saida == 20
+    assert metricas["revisao"].tempo_s == pytest.approx(1.5)
+    assert cliente.custo_total_usd == pytest.approx(
+        2 * CUSTO_DO_USO + (10 * 1.4 + 20 * 4.4) / 1_000_000
+    )
+
+
+def test_custo_informado_pelo_provedor_nao_e_estimado():
+    cliente = cliente_com(Transporte(resposta_com(usage={**USO, "cost": 0.0123})))
+
+    completar(cliente)
+
+    assert cliente.metricas()["analise"].custo_usd == 0.0123
+    assert cliente.metricas()["analise"].custo_estimado is False
+    assert cliente.custo_estimado is False
+    assert cliente.custo_total_usd == 0.0123
+
+
+def test_usage_sem_custo_marca_como_estimado():
+    cliente = cliente_com(Transporte(resposta_com(usage=USO)))
+
+    completar(cliente)
+
+    assert cliente.metricas()["analise"].custo_usd == pytest.approx(CUSTO_DO_USO)
+    assert cliente.metricas()["analise"].custo_estimado is True
+    assert cliente.custo_estimado is True
+
+
+def test_resposta_sem_usage_nao_quebra_e_marca_como_estimado():
+    cliente = cliente_com(Transporte(VALIDA))
+
+    assert completar(cliente).nota == 0.8
+
+    metricas = cliente.metricas()["analise"]
+    assert metricas.custo_estimado is True
+    assert metricas.tokens_entrada > 0
+    assert metricas.tokens_saida > 0
+    assert metricas.custo_usd > 0
+
+
+@pytest.mark.parametrize("custo", ["0.01", -1, True, None])
+def test_custo_malformado_vira_estimativa(custo):
+    cliente = cliente_com(Transporte(resposta_com(usage={**USO, "cost": custo})))
+
+    completar(cliente)
+
+    assert cliente.metricas()["analise"].custo_usd == pytest.approx(CUSTO_DO_USO)
+    assert cliente.custo_estimado is True
+
+
+def test_usage_parcial_nao_quebra():
+    cliente = cliente_com(Transporte(resposta_com(usage={"prompt_tokens": 100})))
+
+    completar(cliente)
+
+    metricas = cliente.metricas()["analise"]
+    assert metricas.tokens_entrada == 100
+    assert metricas.tokens_saida > 0
+    assert metricas.custo_estimado is True
+
+
+def test_mistura_de_informado_e_estimado_fica_estimada():
+    cliente = cliente_com(Transporte(resposta_com(usage={**USO, "cost": 0.01}), VALIDA))
+
+    completar(cliente)
+    completar(cliente)
+
+    assert cliente.metricas()["analise"].custo_estimado is True
+    assert cliente.custo_estimado is True
+
+
+def test_resposta_recusada_tambem_conta_custo():
+    transporte = Transporte(
+        resposta_com("inválida", usage={**USO, "cost": 0.01}),
+        resposta_com("inválida", usage={**USO, "cost": 0.02}),
+    )
+    cliente = cliente_com(transporte)
+
+    with pytest.raises(RespostaInvalida):
+        completar(cliente)
+
+    metricas = cliente.metricas()["analise"]
+    assert metricas.chamadas == 2
+    assert metricas.falhas == 2
+    assert cliente.custo_total_usd == pytest.approx(0.03)
+
+
+def test_falha_do_provedor_conta_como_falha_sem_custo():
+    cliente = cliente_com(Transporte(recusa(500)), relogio=Relogio())
+
+    with pytest.raises(ModeloIndisponivel):
+        completar(cliente)
+
+    metricas = cliente.metricas()["analise"]
+    assert (metricas.chamadas, metricas.falhas, metricas.custo_usd) == (1, 1, 0.0)
+    assert metricas.tempo_s == pytest.approx(1.5)
+
+
+def test_limite_considera_o_gasto_acumulado():
+    transporte = Transporte(resposta_com(usage={**USO, "cost": 0.015}), VALIDA)
+    cliente = cliente_com(transporte, limite_gasto_usd=0.02)
+
+    completar(cliente)
+    with pytest.raises(LimiteGastoAtingido):
+        completar(cliente)
+
+    assert len(transporte.pedidos) == 1
+
+
+def test_metricas_devolve_copia():
+    cliente = cliente_com(Transporte(resposta_com(usage=USO)))
+    completar(cliente)
+
+    cliente.metricas()["analise"].chamadas = 99
+
+    assert cliente.metricas()["analise"].chamadas == 1
+
+
+def test_sem_chamadas_nao_ha_metricas_nem_custo():
+    cliente = cliente_com(Transporte())
+
+    assert cliente.metricas() == {}
+    assert cliente.custo_total_usd == 0.0
+    assert cliente.custo_estimado is False
+
+
+def test_chamada_gera_rastro_sem_chave_nem_texto():
+    rastro = RastroLocal()
+    transporte = Transporte(resposta_com(f'{{"nota": 0.8, "resumo": "{CHAVE}"}}', usage=USO))
+
+    completar(cliente_com(transporte, rastro=rastro, relogio=Relogio()), TEXTO_CANDIDATO)
+
+    registro = rastro.registros[0]
+    assert registro.etapa == "analise"
+    assert registro.modelo == MODELO_PADRAO
+    assert registro.resultado == "ok"
+    assert registro.tokens_entrada == 1000
+    assert registro.custo_estimado is True
+    assert registro.tempo_s == pytest.approx(1.5)
+    assert CHAVE not in repr(registro)
+    assert TEXTO_CANDIDATO not in repr(registro)
+
+
+def test_rastro_identifica_correcao_e_falha():
+    rastro = RastroLocal()
+    transporte = Transporte("inválida", recusa(401))
+
+    with pytest.raises(ModeloIndisponivel):
+        completar(cliente_com(transporte, rastro=rastro))
+
+    assert [r.resultado for r in rastro.registros] == ["resposta_invalida", "indisponivel"]
+    assert "401" in rastro.registros[1].erro
+
+
+class RastroQuebrado:
+    def iniciar(self, **dados):
+        raise RuntimeError(f"rastro fora do ar {CHAVE}")
+
+    def concluir(self, marca, registro, saida):
+        raise RuntimeError(f"rastro fora do ar {CHAVE}")
+
+
+def test_falha_do_rastro_nao_derruba_a_chamada_nem_vaza_a_chave(caplog):
+    with caplog.at_level("WARNING"):
+        resultado = completar(cliente_com(Transporte(VALIDA), rastro=RastroQuebrado()))
+
+    assert resultado.nota == 0.8
+    assert "RuntimeError" in caplog.text
+    assert CHAVE not in caplog.text
+
+
+def test_falha_do_rastro_nao_esconde_o_erro_do_modelo():
+    with pytest.raises(ModeloIndisponivel):
+        completar(cliente_com(Transporte(recusa(500)), rastro=RastroQuebrado()))
+
+
+def test_sem_langfuse_configurado_a_chamada_funciona_com_rastro_local():
+    cliente = cliente_com(Transporte(VALIDA))
+
+    assert completar(cliente).nota == 0.8
+    assert isinstance(cliente.rastro, RastroLocal)
+    assert len(cliente.rastro.registros) == 1
