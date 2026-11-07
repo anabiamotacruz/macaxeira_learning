@@ -8,7 +8,7 @@ from backend.contratos.erros import (
     ModeloIndisponivel,
     RespostaInvalida,
 )
-from backend.modelos.resiliencia import com_tentativas
+from backend.modelos.resiliencia import TEMPO_LIMITE_PADRAO_S, TempoLimiteExcedido, com_tentativas
 
 
 class Instavel:
@@ -97,7 +97,7 @@ def test_lista_de_erros_temporarios_pode_ser_trocada():
 
 @pytest.mark.parametrize(
     "opcoes",
-    [{"tentativas": 0}, {"espera": -1.0}],
+    [{"tentativas": 0}, {"espera": -1.0}, {"tempo_limite": 0.0}],
 )
 def test_parametros_invalidos_sao_recusados(opcoes):
     funcao = Instavel()
@@ -106,3 +106,74 @@ def test_parametros_invalidos_sao_recusados(opcoes):
         com_tentativas(funcao, **opcoes)
 
     assert funcao.chamadas == 0
+
+
+class Relogio:
+    def __init__(self) -> None:
+        self.agora = 100.0
+
+    def __call__(self) -> float:
+        return self.agora
+
+
+def funcao_lenta(relogio: Relogio, segundos: float, resultado: str = "ok"):
+    def executar() -> str:
+        relogio.agora += segundos
+        return resultado
+
+    return executar
+
+
+def test_tempo_limite_gera_erro_claro():
+    relogio = Relogio()
+
+    with pytest.raises(TempoLimiteExcedido) as erro:
+        com_tentativas(
+            funcao_lenta(relogio, 31.0),
+            tentativas=1,
+            etapa="busca_github",
+            relogio=relogio,
+        )
+
+    assert TEMPO_LIMITE_PADRAO_S == 30.0
+    assert "busca_github" in str(erro.value)
+    assert "30" in str(erro.value)
+
+
+def test_dentro_do_limite_devolve_o_resultado():
+    relogio = Relogio()
+
+    assert com_tentativas(funcao_lenta(relogio, 30.0), relogio=relogio) == "ok"
+
+
+def test_tempo_esgotado_no_cliente_http_vira_erro_claro():
+    funcao, espera = Instavel(TimeoutError("httpx"), TimeoutError("httpx")), Espera()
+
+    with pytest.raises(TempoLimiteExcedido) as erro:
+        com_tentativas(funcao, tentativas=2, tempo_limite=5.0, etapa="analise", dormir=espera)
+
+    assert funcao.chamadas == 2
+    assert "analise" in str(erro.value)
+    assert "5" in str(erro.value)
+    assert erro.value.__context__ is None
+
+
+def test_tempo_limite_e_temporario_e_repete():
+    relogio, espera = Relogio(), Espera()
+    atrasos = iter([31.0, 1.0])
+
+    def as_vezes_lenta() -> str:
+        relogio.agora += next(atrasos)
+        return "ok"
+
+    assert com_tentativas(as_vezes_lenta, relogio=relogio, dormir=espera) == "ok"
+    assert espera.pedidas == [1.0]
+
+
+def test_tempo_esgotado_repete_mesmo_fora_da_lista_de_temporarios():
+    class ErroDaFonte(Exception):
+        pass
+
+    funcao, espera = Instavel(TimeoutError()), Espera()
+
+    assert com_tentativas(funcao, temporarios=(ErroDaFonte,), dormir=espera) == "ok"
