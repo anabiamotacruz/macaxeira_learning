@@ -128,7 +128,9 @@ class FonteProvedores:
             return EstadoFontes(SituacaoFontes.SOMENTE_SINTETICOS, ROTULO_SINTETICOS, ())
         nomes = tuple(p.nome for p in self.cadeia.provedores)
         if not nomes:
-            return EstadoFontes(SituacaoFontes.SEM_FONTES_EXTERNAS, ROTULO_SEM_FONTES, ())
+            return EstadoFontes(
+                SituacaoFontes.SEM_FONTES_EXTERNAS, ROTULO_SEM_FONTES, (), self._avisos
+            )
         return EstadoFontes(SituacaoFontes.ATIVA, ROTULO_ATIVA, nomes, self._avisos)
 
     def metricas(self) -> dict:

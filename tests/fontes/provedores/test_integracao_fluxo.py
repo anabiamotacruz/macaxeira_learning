@@ -15,6 +15,8 @@ from backend.contratos.simulacoes import (
     FonteSimulada,
     MensageiroSimulado,
 )
+from backend.fontes.provedores.brave import URL_BUSCA
+from backend.fontes.provedores.bright_data import URL_API
 from backend.fontes.provedores.configuracao import montar_fonte_externa
 from backend.fontes.provedores.fonte import FonteProvedores
 from backend.fontes.provedores.modelos import IdentidadeConsulta
@@ -28,6 +30,7 @@ from tests.agente.apoio import (
     vaga_exemplo,
 )
 from tests.fontes.provedores.apoio import (
+    CHAVE_BRAVE,
     CHAVE_PDL,
     TOKEN_BRIGHT,
     TransporteSimulado,
@@ -37,9 +40,9 @@ from tests.fontes.provedores.apoio import (
 )
 
 AMBIENTE = {
+    "BRAVE_API_KEY": CHAVE_BRAVE,
     "BRIGHTDATA_API_TOKEN": TOKEN_BRIGHT,
     "BRIGHTDATA_ZONA_WEB": "zona_web",
-    "BRIGHTDATA_ZONA_BUSCA": "zona_busca",
     "PDL_API_KEY": CHAVE_PDL,
 }
 EMAIL = "pessoa@exemplo-ficticio.com.br"
@@ -111,14 +114,15 @@ def test_provedores_fora_do_ar_deixam_o_fluxo_com_cobertura_parcial(tmp_path):
 def test_pessoa_vinda_de_provedor_nao_vai_ao_modelo_nem_recebe_convite(tmp_path):
     busca = resposta_json(
         {
-            "organic": [
-                {
-                    "global_rank": 1,
-                    "title": "Portfólio fictício",
-                    "link": "https://site-ficticio.com.br/",
-                    "description": "Cinco anos com Python",
-                }
-            ]
+            "web": {
+                "results": [
+                    {
+                        "title": "Portfólio fictício",
+                        "url": "https://site-ficticio.com.br/",
+                        "description": "Cinco anos com Python",
+                    }
+                ]
+            }
         }
     )
     pagina = resposta_json(
@@ -132,8 +136,20 @@ def test_pessoa_vinda_de_provedor_nao_vai_ao_modelo_nem_recebe_convite(tmp_path)
     _, analisador, mensageiro = rodar(tmp_path, [fonte_externa(transporte)])
 
     assert len(transporte.pedidos) == 2
+    assert transporte.pedidos[0].url == URL_BUSCA
+    assert transporte.pedidos[1].url == URL_API
     assert analisador.analisados == []
     assert mensageiro.enviados == {}
+
+
+def test_chave_recusada_na_busca_deixa_o_fluxo_com_cobertura_parcial(tmp_path):
+    transporte = TransporteSimulado(*[resposta_json({}, 401) for _ in range(50)])
+    outra = FonteSimulada([candidato_exemplo("c1")])
+    fluxo, analisador, _ = rodar(tmp_path, [fonte_externa(transporte), outra])
+
+    assert {p.url for p in transporte.pedidos} == {URL_BUSCA}
+    assert analisador.analisados == ["c1"]
+    assert any(e.etapa == "cobertura" for e in fluxo.eventos)
 
 
 def test_log_do_cliente_http_real_nao_recebe_chave_nem_dado_pessoal(caplog):

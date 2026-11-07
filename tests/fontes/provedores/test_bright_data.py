@@ -101,6 +101,12 @@ def test_aceita_texto_e_url_mas_nao_identidade():
     assert not p.aceita(ConsultaProvedor(identidade=IdentidadeConsulta(email="p@x.com")))
 
 
+def test_sem_zona_de_busca_nao_aceita_texto_mas_continua_lendo_pagina():
+    p, _ = provedor(zona_busca=None)
+    assert not p.aceita(ConsultaProvedor(texto="python recife"))
+    assert p.aceita(ConsultaProvedor(url=URL_PAGINA))
+
+
 @pytest.mark.parametrize(
     "url",
     [

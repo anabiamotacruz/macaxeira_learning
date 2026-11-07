@@ -4,6 +4,10 @@ Referências: docs.brightdata.com/api-reference/rest-api/unlocker/unlock-website
 /products/web-unlocker/features, /products/web-unlocker/error-codes e
 /products/serp-api/parsed-json-results.
 
+A busca padrão do sistema é a Brave. A SERP daqui só entra com `zona_busca`, que a configuração só
+passa com `BRIGHTDATA_ZONA_BUSCA` e `BRIGHTDATA_BUSCA_HABILITADA=1`. Essa opção usa alvo Google, que
+a arquitetura deixa de fora, e a montagem avisa no estado das fontes sempre que ela estiver ligada.
+
 Sobre desbloqueio: a API não tem parâmetro para desligar CAPTCHA nem desbloqueio. O resolvedor de
 CAPTCHA se desliga só no painel, em Configuration da zona; a troca de proxies e o tratamento de
 impressão digital continuam ligados, pois são o próprio produto. Por isso este código nunca manda
@@ -144,7 +148,7 @@ class ProvedorBrightData:
         self._custo = custo_requisicao_usd
 
     def aceita(self, consulta: ConsultaProvedor) -> bool:
-        return consulta.url is not None or consulta.texto is not None
+        return consulta.url is not None or (consulta.texto is not None and bool(self._zona_busca))
 
     def custo_maximo(self, consulta: ConsultaProvedor) -> float:
         saltos = MAX_REDIRECIONAMENTOS + 1 if consulta.url is not None else 1
