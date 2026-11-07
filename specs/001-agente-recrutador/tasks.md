@@ -157,20 +157,18 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `gerar(semente: int, quantidade: int) -> list[Candidato]`, cerca de 200 perfis, pelo menos 3 vagas de tech e `respostas_certas.json` separado.
 
-- [x] Testar `test_geracao_reproduzivel_com_mesma_semente`.
-- [x] Testar `test_todos_os_perfis_sao_simulados`.
-- [x] Testar `test_contem_armadilhas`: cargo incomum, currículo forte sem requisito, exagero, instrução no currículo e opt-out.
-- [x] Testar `test_contem_sujeira`: sinônimos, erros, duplicatas, dados faltantes, autorizações vencidas e perfis desatualizados.
-- [x] Testar `test_gera_duas_empresas_separadas`.
-- [x] Implementar e verificar.
+- [ ] Testar `test_geracao_reproduzivel_com_mesma_semente`.
+- [ ] Testar `test_todos_os_perfis_sao_simulados`.
+- [ ] Testar `test_contem_armadilhas`: cargo incomum, currículo forte sem requisito, exagero, instrução no currículo e opt-out.
+- [ ] Testar `test_contem_sujeira`: sinônimos, erros, duplicatas, dados faltantes, autorizações vencidas e perfis desatualizados.
+- [ ] Testar `test_gera_duas_empresas_separadas`.
+- [ ] Implementar e verificar.
 
 ### T2.6 [P] (onda 1): banco de talentos
 
 **Arquivo:** `backend/fontes/banco_talentos.py`. **Teste:** `tests/fontes/test_banco_talentos.py`.
 
 **Produz:** implementação de `BancoTalentos`.
-
-**Pendente:** testes preliminares preservados no histórico do commit `c4c4ef4`, fora desta entrega da T2.1. Retomar os testes junto com a implementação do banco, após definir a integração com o `Repositorio` da T1.8.
 
 - [ ] Testar `test_importa_base_e_remove_duplicatas`, com a origem registrada.
 - [ ] Testar `test_empresas_nao_veem_dados_uma_da_outra`.
