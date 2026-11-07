@@ -13,6 +13,7 @@ from datetime import date, datetime
 from pathlib import Path
 from threading import RLock
 
+from backend.contratos.criterios import sem_genero
 from backend.contratos.modelos import Candidato, EstadoBanco
 
 POR_PAGINA = 20
@@ -40,22 +41,6 @@ ATRIBUTOS_PESQUISAVEIS = frozenset(
     }
 )
 """Só estes atributos entram na busca. Sensível, contato ou campo novo ficam de fora por padrão."""
-
-_SUFIXOS_DE_GENERO = (("doras", "dores"), ("dora", "dor"), ("eiras", "eiros"), ("eira", "eiro"))
-_MENOR_PALAVRA_COM_SUFIXO = 6
-_MASCULINOS_EM_OR = (
-    "assessor auditor autor consultor diretor doutor editor gestor inspetor instrutor mentor "
-    "professor redator revisor supervisor tutor"
-).split()
-_MASCULINOS_EM_O = (
-    "arquiteto estagiario estagiário especializado formado graduado pleno tecnico técnico"
-).split()
-_FEMININOS = {
-    **{f"{m}a": m for m in _MASCULINOS_EM_OR},
-    **{f"{m}as": f"{m}es" for m in _MASCULINOS_EM_OR},
-    **{f"{m[:-1]}a": m for m in _MASCULINOS_EM_O},
-    **{f"{m[:-1]}as": f"{m}s" for m in _MASCULINOS_EM_O},
-}
 
 PERFIL_POR_ID = "SELECT dados FROM perfis WHERE empresa_id = ? AND candidato_id = ?"
 PERFIL_POR_EMAIL = "SELECT dados FROM perfis WHERE empresa_id = ? AND email = ?"
@@ -111,21 +96,6 @@ def _identidade_segura(
     if por_email is not None:
         return por_email.id == por_id.id
     return _email(por_id) is None
-
-
-def sem_genero(palavra: str) -> str:
-    """Leva o feminino ao masculino, por lista fechada e pelos sufixos `-dora` e `-eira`.
-
-    Trocar `-a` por `-o` em qualquer palavra não é seguro: misturaria `banco` e `banca`, `for`
-    e `fora`. Palavra fora da lista e dos sufixos, como `advogada`, continua diferente.
-    """
-    if palavra in _FEMININOS:
-        return _FEMININOS[palavra]
-    if len(palavra) >= _MENOR_PALAVRA_COM_SUFIXO:
-        for feminino, masculino in _SUFIXOS_DE_GENERO:
-            if palavra.endswith(feminino):
-                return palavra.removesuffix(feminino) + masculino
-    return palavra
 
 
 def _termos(texto: str) -> set[str]:
@@ -189,6 +159,11 @@ class BancoTalentos:
         if perfil is None:
             raise KeyError(candidato_id)
         return perfil
+
+    def obter(self, empresa_id: str, candidato_id: str) -> Candidato | None:
+        """O estado atual da pessoa. `None` para quem não está no banco ou foi removido."""
+        with self._trava:
+            return self._perfil(PERFIL_POR_ID, _exigir_empresa(empresa_id), candidato_id)
 
     def _salvar(self, candidato: Candidato) -> Candidato:
         valido = Candidato.model_validate(candidato.model_dump())

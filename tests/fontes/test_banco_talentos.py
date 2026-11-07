@@ -525,3 +525,22 @@ def test_atributo_profissional_continua_pesquisavel(banco, chave, valor):
     banco.importar("empresa-1", [registro(atributos={chave: valor})])
 
     assert [c.id for c in banco.buscar("empresa-1", valor)] == ["pessoa-1"]
+
+
+def test_obter_devolve_o_estado_atual_e_isola_empresas(banco):
+    banco.importar("empresa-1", [registro()])
+    assert banco.obter("empresa-1", "pessoa-1").opt_out is False
+
+    banco.registrar_opt_out("empresa-1", "pessoa-1")
+
+    assert banco.obter("empresa-1", "pessoa-1").opt_out is True
+    assert banco.obter("empresa-2", "pessoa-1") is None
+    assert banco.obter("empresa-1", "ninguem") is None
+
+
+def test_obter_nao_devolve_quem_foi_removido(banco):
+    banco.importar("empresa-1", [registro()])
+
+    banco.remover("empresa-1", "pessoa-1")
+
+    assert banco.obter("empresa-1", "pessoa-1") is None
