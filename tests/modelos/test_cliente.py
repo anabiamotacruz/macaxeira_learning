@@ -1,6 +1,9 @@
 """Testes do cliente de modelos. O transporte HTTP é simulado: nenhum teste usa rede."""
 
 import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx2
 import pytest
@@ -819,3 +822,118 @@ def test_resposta_cortada_gera_aviso_sem_expor_o_texto(caplog):
 
     assert "cortada" in caplog.text
     assert VALIDA not in caplog.text
+
+
+class _TransporteParado:
+    """Segura cada chamada até `liberar`, para o teste ver quantas estão em andamento juntas."""
+
+    def __init__(self) -> None:
+        self.trava = threading.Lock()
+        self.chegaram = 0
+        self.liberar = threading.Event()
+
+    def __call__(self, pedido: httpx2.Request) -> httpx2.Response:
+        with self.trava:
+            self.chegaram += 1
+        assert self.liberar.wait(5)
+        return httpx2.Response(
+            200, json=corpo(VALIDA, usage={"prompt_tokens": 10, "completion_tokens": 10})
+        )
+
+
+def _em_threads(funcao, quantas: int) -> tuple[list[threading.Thread], list]:
+    resultados: list = [None] * quantas
+
+    def rodar(indice: int) -> None:
+        try:
+            resultados[indice] = funcao(indice)
+        except LimiteGastoAtingido as erro:
+            resultados[indice] = erro
+
+    threads = [threading.Thread(target=rodar, args=(i,)) for i in range(quantas)]
+    for thread in threads:
+        thread.start()
+    return threads, resultados
+
+
+def test_chamadas_simultaneas_nao_passam_do_limite_de_gasto(monkeypatch):
+    monkeypatch.setenv("FEATHERLESS_API_KEY", CHAVE)
+    transporte = _TransporteParado()
+    pior_caso = 1000 * PRECOS_USD[MODELO_PADRAO][1] / 1_000_000
+    cliente = ClienteFeatherless(
+        limite_gasto_usd=pior_caso * 2.5,
+        max_tokens=1000,
+        http_client=httpx2.Client(transport=httpx2.MockTransport(transporte)),
+    )
+
+    threads, resultados = _em_threads(
+        lambda _: cliente.completar("sistema", "usuario", Resumo, "analise"), 4
+    )
+    espera = time.monotonic() + 5
+    while time.monotonic() < espera:
+        if sum(isinstance(r, LimiteGastoAtingido) for r in resultados) == 2:
+            break
+        time.sleep(0.01)
+    transporte.liberar.set()
+    for thread in threads:
+        thread.join(5)
+
+    assert transporte.chegaram == 2
+    assert sum(isinstance(r, Resumo) for r in resultados) == 2
+    assert sum(isinstance(r, LimiteGastoAtingido) for r in resultados) == 2
+    assert cliente.custo_total_usd <= cliente.limite_gasto_usd
+
+
+def test_reserva_volta_depois_da_chamada_mesmo_em_falha(monkeypatch):
+    monkeypatch.setenv("FEATHERLESS_API_KEY", CHAVE)
+    pior_caso = 1000 * PRECOS_USD[MODELO_PADRAO][1] / 1_000_000
+    respostas = [httpx2.Response(500), httpx2.Response(500)]
+    cliente = ClienteFeatherless(
+        limite_gasto_usd=pior_caso * 1.5,
+        max_tokens=1000,
+        max_repeticoes=0,
+        http_client=httpx2.Client(
+            transport=httpx2.MockTransport(lambda _: respostas.pop(0) if respostas else _ok())
+        ),
+    )
+
+    with pytest.raises(ModeloIndisponivel):
+        cliente.completar("sistema", "usuario", Resumo, "analise")
+    with pytest.raises(ModeloIndisponivel):
+        cliente.completar("sistema", "usuario", Resumo, "analise")
+
+    assert isinstance(cliente.completar("sistema", "usuario", Resumo, "analise"), Resumo)
+
+
+def _ok() -> httpx2.Response:
+    return httpx2.Response(200, json=corpo(VALIDA))
+
+
+def test_cliente_nao_cruza_respostas_nem_perde_metricas_entre_threads(monkeypatch):
+    monkeypatch.setenv("FEATHERLESS_API_KEY", CHAVE)
+
+    def eco(pedido: httpx2.Request) -> httpx2.Response:
+        usuario = json.loads(pedido.content)["messages"][1]["content"]
+        conteudo = json.dumps({"nota": 0.5, "resumo": usuario})
+        uso = {"prompt_tokens": 7, "completion_tokens": 3}
+        return httpx2.Response(200, json=corpo(conteudo, usage=uso))
+
+    rastro = RastroLocal()
+    cliente = ClienteFeatherless(
+        limite_gasto_usd=5.0,
+        http_client=httpx2.Client(transport=httpx2.MockTransport(eco)),
+        rastro=rastro,
+    )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        resumos = list(
+            executor.map(
+                lambda i: cliente.completar("s", f"pessoa-{i}", Resumo, "analise").resumo,
+                range(60),
+            )
+        )
+
+    assert resumos == [f"pessoa-{i}" for i in range(60)]
+    metricas = cliente.metricas()["analise"]
+    assert (metricas.chamadas, metricas.tokens_entrada, metricas.tokens_saida) == (60, 420, 180)
+    assert len(rastro.registros) == 60

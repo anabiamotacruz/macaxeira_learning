@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -261,7 +262,12 @@ def _descrever_falha(erro: OpenAIError) -> str:
 
 class ClienteFeatherless:
     """Implementa `ClienteModelo`: valida a saída, corrige uma vez, respeita o limite de gasto
-    e registra tokens, custo e tempo de cada chamada."""
+    e registra tokens, custo e tempo de cada chamada.
+
+    Pode ser usado por várias threads: o SDK e o transporte HTTP são compartilháveis, e métricas e
+    reservas ficam sob a trava. Cada chamada reserva o pior caso antes de sair: chamadas ao mesmo
+    tempo não passam do limite, mesmo sem o gasto de nenhuma delas conhecido ainda.
+    """
 
     def __init__(
         self,
@@ -291,6 +297,7 @@ class ClienteFeatherless:
         self.rastro = criar_rastro() if rastro is None else rastro
         self._trava = threading.Lock()
         self._metricas: dict[str, MetricasEtapa] = {}
+        self._reservado_usd = 0.0
         if limite_gasto_usd is not None:
             self.definir_limite_mandato(limite_gasto_usd)
         self._api = OpenAI(
@@ -365,21 +372,21 @@ class ClienteFeatherless:
         """Uma chamada, com alternativa se o modelo falhar. Devolve instância ou problema."""
         falhas: list[str] = []
         for modelo in dict.fromkeys(filter(None, (self.modelo, self.modelo_alternativo))):
-            self._verificar_limite(modelo, sistema, usuario, etapa)
-            marca = self._iniciar_rastro(etapa, modelo, sistema, usuario)
-            inicio = self._relogio()
-            resposta, falha, chave_recusada = self._chamar(modelo, sistema, usuario)
-            tempo_s = self._relogio() - inicio
-            if falha is None:
-                texto = _texto_da_resposta(resposta)
-                instancia, problema = _validar(texto, esquema)
-                resultado = "ok" if instancia is not None else "resposta_invalida"
-                consumo = _medir_consumo(resposta, modelo, sistema + usuario, texto)
-                registro = _registro(etapa, modelo, resultado, consumo, tempo_s, problema)
-                self._contabilizar(registro, marca, texto, cortada=_foi_cortada(resposta))
-                return instancia, problema
-            registro = _registro(etapa, modelo, "indisponivel", _Consumo(), tempo_s, falha)
-            self._contabilizar(registro, marca, None)
+            with self._reserva(modelo, sistema, usuario, etapa):
+                marca = self._iniciar_rastro(etapa, modelo, sistema, usuario)
+                inicio = self._relogio()
+                resposta, falha, chave_recusada = self._chamar(modelo, sistema, usuario)
+                tempo_s = self._relogio() - inicio
+                if falha is None:
+                    texto = _texto_da_resposta(resposta)
+                    instancia, problema = _validar(texto, esquema)
+                    resultado = "ok" if instancia is not None else "resposta_invalida"
+                    consumo = _medir_consumo(resposta, modelo, sistema + usuario, texto)
+                    registro = _registro(etapa, modelo, resultado, consumo, tempo_s, problema)
+                    self._contabilizar(registro, marca, texto, cortada=_foi_cortada(resposta))
+                    return instancia, problema
+                registro = _registro(etapa, modelo, "indisponivel", _Consumo(), tempo_s, falha)
+                self._contabilizar(registro, marca, None)
             falhas.append(f"{modelo}: {falha}")
             if chave_recusada:
                 # A alternativa usa a mesma chave, então também seria recusada.
@@ -407,17 +414,30 @@ class ClienteFeatherless:
             return None, _descrever_falha(erro), isinstance(erro, AuthenticationError)
         return resposta, None, False
 
-    def _verificar_limite(self, modelo: str, sistema: str, usuario: str, etapa: str) -> None:
-        """Recusa a chamada se o pior caso dela, com toda a saída permitida, passar do limite."""
+    @contextmanager
+    def _reserva(self, modelo: str, sistema: str, usuario: str, etapa: str) -> Iterator[None]:
+        """Recusa a chamada se o pior caso, somado ao gasto e às reservas, passar do limite.
+
+        A reserva só volta depois de o custo real entrar na conta. Até lá os dois contam juntos, o
+        que erra para o lado seguro.
+        """
         tokens_entrada = _tokens_estimados(sistema + usuario)
         previsto = _custo_usd(modelo, tokens_entrada, self.max_tokens)
         limite = self.limite_gasto_usd
-        gasto = self.custo_total_usd
-        if gasto + previsto > limite:
-            raise LimiteGastoAtingido(
-                f"etapa {etapa!r}: gasto de US$ {gasto:.6f} mais a previsão de "
-                f"US$ {previsto:.6f} passa do limite de US$ {limite}"
-            )
+        with self._trava:
+            gasto = sum(metricas.custo_usd for metricas in self._metricas.values())
+            comprometido = gasto + self._reservado_usd
+            if comprometido + previsto > limite:
+                raise LimiteGastoAtingido(
+                    f"etapa {etapa!r}: gasto e reservas de US$ {comprometido:.6f} mais a previsão "
+                    f"de US$ {previsto:.6f} passam do limite de US$ {limite}"
+                )
+            self._reservado_usd += previsto
+        try:
+            yield
+        finally:
+            with self._trava:
+                self._reservado_usd -= previsto
 
     def _contabilizar(
         self, registro: RegistroChamada, marca: Any, saida: str | None, *, cortada: bool = False
