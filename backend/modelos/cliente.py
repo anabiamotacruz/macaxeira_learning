@@ -30,7 +30,8 @@ URL_BASE_PADRAO = "https://api.featherless.ai/v1"
 MODELO_PADRAO = "zai-org/GLM-5.2"
 ETAPA_CHAMADA_MODELO = "chamada_modelo"
 MAX_TOKENS_MINIMO = 1000
-MAX_TOKENS_PADRAO = 6000
+MAX_TOKENS_PADRAO = 8000
+"""Folga sobre os 6000 que bastaram na sondagem. `MAX_TOKENS_MODELO` ajusta sem mudar o código."""
 TEMPO_LIMITE_PADRAO_S = 120.0
 REPETICOES_DO_SDK = 1
 MAX_PROBLEMAS_DESCRITOS = 5
@@ -67,6 +68,8 @@ class MetricasEtapa:
     custo_usd: float = 0.0
     custo_estimado: bool = False
     tempo_s: float = 0.0
+    respostas_cortadas: int = 0
+    maior_saida_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,28 @@ def _teto_do_ambiente() -> float:
     if not _limite_valido(teto):
         raise ValueError("LIMITE_GASTO_SESSAO_USD precisa ser um número finito e não negativo")
     return teto
+
+
+def _max_tokens_do_ambiente() -> int:
+    texto = _variavel("MAX_TOKENS_MODELO")
+    if texto is None:
+        return MAX_TOKENS_PADRAO
+    try:
+        valor = int(texto)
+    except ValueError:
+        valor = 0
+    if valor < MAX_TOKENS_MINIMO:
+        raise ValueError(
+            f"MAX_TOKENS_MODELO precisa ser um inteiro de pelo menos {MAX_TOKENS_MINIMO}"
+        )
+    return valor
+
+
+def _foi_cortada(resposta: Any) -> bool:
+    try:
+        return resposta.choices[0].finish_reason == "length"
+    except (AttributeError, IndexError, TypeError):
+        return False
 
 
 def _custo_usd(modelo: str, tokens_entrada: int, tokens_saida: int) -> float:
@@ -244,13 +269,14 @@ class ClienteFeatherless:
         modelo: str | None = None,
         modelo_alternativo: str | None = None,
         limite_gasto_usd: float | None = None,
-        max_tokens: int = MAX_TOKENS_PADRAO,
+        max_tokens: int | None = None,
         tempo_limite_s: float = TEMPO_LIMITE_PADRAO_S,
         max_repeticoes: int = REPETICOES_DO_SDK,
         http_client: httpx2.Client | None = None,
         relogio: Callable[[], float] = time.monotonic,
         rastro: Rastro | None = None,
     ) -> None:
+        max_tokens = _max_tokens_do_ambiente() if max_tokens is None else max_tokens
         if max_tokens < MAX_TOKENS_MINIMO:
             raise ValueError(f"max_tokens precisa ser de pelo menos {MAX_TOKENS_MINIMO}")
         chave = _variavel("FEATHERLESS_API_KEY")
@@ -350,7 +376,7 @@ class ClienteFeatherless:
                 resultado = "ok" if instancia is not None else "resposta_invalida"
                 consumo = _medir_consumo(resposta, modelo, sistema + usuario, texto)
                 registro = _registro(etapa, modelo, resultado, consumo, tempo_s, problema)
-                self._contabilizar(registro, marca, texto)
+                self._contabilizar(registro, marca, texto, cortada=_foi_cortada(resposta))
                 return instancia, problema
             registro = _registro(etapa, modelo, "indisponivel", _Consumo(), tempo_s, falha)
             self._contabilizar(registro, marca, None)
@@ -393,7 +419,15 @@ class ClienteFeatherless:
                 f"US$ {previsto:.6f} passa do limite de US$ {limite}"
             )
 
-    def _contabilizar(self, registro: RegistroChamada, marca: Any, saida: str | None) -> None:
+    def _contabilizar(
+        self, registro: RegistroChamada, marca: Any, saida: str | None, *, cortada: bool = False
+    ) -> None:
+        if cortada:
+            logger.warning(
+                "resposta cortada pelo limite de %s tokens: etapa=%s",
+                self.max_tokens,
+                registro.etapa,
+            )
         with self._trava:
             metricas = self._metricas.setdefault(registro.etapa, MetricasEtapa())
             metricas.chamadas += 1
@@ -403,6 +437,8 @@ class ClienteFeatherless:
             metricas.custo_usd += registro.custo_usd
             metricas.custo_estimado = metricas.custo_estimado or registro.custo_estimado
             metricas.tempo_s += registro.tempo_s
+            metricas.respostas_cortadas += cortada
+            metricas.maior_saida_tokens = max(metricas.maior_saida_tokens, registro.tokens_saida)
         # O rastro nunca derruba a chamada; o log só traz o tipo, pois o texto pode ter segredo.
         try:
             self.rastro.concluir(marca, registro, saida)

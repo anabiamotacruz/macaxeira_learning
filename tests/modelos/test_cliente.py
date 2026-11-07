@@ -771,3 +771,51 @@ def test_max_tokens_padrao_deixa_espaco_para_o_raciocinio_do_modelo():
     from backend.modelos.cliente import MAX_TOKENS_PADRAO
 
     assert MAX_TOKENS_PADRAO >= 6000
+
+
+def test_max_tokens_pode_ser_ajustado_pelo_ambiente(monkeypatch):
+    monkeypatch.setenv("MAX_TOKENS_MODELO", "12000")
+    transporte = Transporte(VALIDA)
+
+    completar(cliente_com(transporte))
+
+    assert transporte.corpo()["max_tokens"] == 12000
+
+
+def test_valor_explicito_de_max_tokens_vence_o_ambiente(monkeypatch):
+    monkeypatch.setenv("MAX_TOKENS_MODELO", "12000")
+
+    assert cliente_com(Transporte(), max_tokens=3000).max_tokens == 3000
+
+
+@pytest.mark.parametrize("valor", ["abc", "999", "-1"])
+def test_max_tokens_invalido_no_ambiente_e_recusado(monkeypatch, valor):
+    monkeypatch.setenv("MAX_TOKENS_MODELO", valor)
+
+    with pytest.raises(ValueError, match="MAX_TOKENS_MODELO"):
+        cliente_com(Transporte())
+
+
+def test_mede_resposta_cortada_e_maior_saida():
+    cortada = corpo(VALIDA, usage={**USO, "completion_tokens": 700})
+    cortada["choices"][0]["finish_reason"] = "length"
+    transporte = Transporte(httpx2.Response(200, json=cortada), resposta_com(usage=USO))
+    cliente = cliente_com(transporte)
+
+    completar(cliente)
+    completar(cliente)
+
+    metricas = cliente.metricas()["analise"]
+    assert metricas.respostas_cortadas == 1
+    assert metricas.maior_saida_tokens == 700
+
+
+def test_resposta_cortada_gera_aviso_sem_expor_o_texto(caplog):
+    cortada = corpo(VALIDA, usage=USO)
+    cortada["choices"][0]["finish_reason"] = "length"
+
+    with caplog.at_level("WARNING"):
+        completar(cliente_com(Transporte(httpx2.Response(200, json=cortada))))
+
+    assert "cortada" in caplog.text
+    assert VALIDA not in caplog.text
