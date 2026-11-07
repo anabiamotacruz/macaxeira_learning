@@ -6,18 +6,22 @@ no `Repositorio`, e um novo objeto sobre o mesmo arquivo continua de onde o outr
 """
 
 import hashlib
+import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import StrEnum
 
-from pydantic import AwareDatetime
+from pydantic import AwareDatetime, Field
 
 from backend.agente.auditoria import (
     MOTIVO_AUDITORIA_REPROVADA,
     Auditoria,
+    ContextoRastro,
     DecisaoIncompleta,
     DecisoesAutomaticasPausadas,
+    contexto_rastro,
+    rastreado,
 )
 from backend.agente.mandato import (
     Mandato,
@@ -190,6 +194,7 @@ class ProgressoFluxo(Contrato):
     """O trabalho feito até aqui. Modelo local: não cruza frentes."""
 
     iniciado_em: AwareDatetime
+    execucao_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     ampliacoes: int = 0
     inicio_rodada: int = 0
     fontes_fora: list[str] = []
@@ -233,6 +238,46 @@ def _ordem_de_decisao(decisao: Decisao) -> tuple[float, str]:
     if decisao.tipo == TipoDecisao.INDICAR:
         return (-float(decisao.entrada["nota"]), decisao.candidato_id)
     return (1.0, decisao.candidato_id)
+
+
+@rastreado("consultas")
+def _pedir_consultas(consultas: Callable[[Vaga, int], list[str]], vaga: Vaga, rodada: int):
+    return consultas(vaga, rodada)
+
+
+@rastreado("busca_fonte")
+def _buscar_na_fonte(fonte: FonteCandidatos, empresa_id: str, consulta: str, pagina: int):
+    return fonte.buscar(empresa_id, consulta, pagina=pagina)
+
+
+@rastreado("analise")
+def _analisar(analisador: Analisador, vaga: Vaga, candidato: Candidato) -> Analise:
+    return analisador.analisar(vaga, candidato)
+
+
+@rastreado("revisao")
+def _revisar(revisor: Revisor, vaga: Vaga, candidato: Candidato, analise: Analise) -> Analise:
+    return revisor.revisar(vaga, candidato, analise)
+
+
+@rastreado("link_agendamento")
+def _pedir_link(destino: AgenteRecrutador, vaga_id: str, candidato_id: str) -> str | None:
+    return destino.link_agendamento(vaga_id, candidato_id)
+
+
+@rastreado("envio_convite")
+def _enviar_convite(mensageiro: Mensageiro, convite: Convite) -> bool:
+    return mensageiro.enviar(convite)
+
+
+@rastreado("entrega_destino")
+def _entregar_pacote(destino: AgenteRecrutador, pacote: PacoteContexto) -> bool:
+    return destino.entregar(pacote)
+
+
+@rastreado("registro_opt_out")
+def _gravar_opt_out(banco: BancoTalentos, empresa_id: str, candidato_id: str) -> None:
+    banco.registrar_opt_out(empresa_id, candidato_id)
 
 
 class FluxoVaga:
@@ -340,12 +385,13 @@ class FluxoVaga:
         candidato_id = registro.convite.candidato_id
         self._evento("resposta", f"resposta: {resposta.tipo}", candidato_id)
 
-        if resposta.tipo == TipoResposta.OPT_OUT:
-            self._registrar_opt_out(progresso, candidato_id)
-        elif registro.estado in (EstadoConvite.ENCERRADO, EstadoConvite.CANCELADO):
-            self._evento("resposta", "resposta tardia: convite já encerrado", candidato_id)
-        elif registro.estado == EstadoConvite.AGUARDANDO:
-            self._aplicar_resposta(progresso, registro, resposta.tipo)
+        with self._contexto(progresso, candidato_id):
+            if resposta.tipo == TipoResposta.OPT_OUT:
+                self._registrar_opt_out(progresso, candidato_id)
+            elif registro.estado in (EstadoConvite.ENCERRADO, EstadoConvite.CANCELADO):
+                self._evento("resposta", "resposta tardia: convite já encerrado", candidato_id)
+            elif registro.estado == EstadoConvite.AGUARDANDO:
+                self._aplicar_resposta(progresso, registro, resposta.tipo)
         self._salvar_progresso(progresso)
 
         if self.estado == EstadoFluxo.CONVIDANDO:
@@ -569,7 +615,7 @@ class FluxoVaga:
 
     def _entregar_fora_da_execucao(self) -> None:
         """Entrega tardia, com a vaga concluída: uma falha fica pendente e não reabre a vaga."""
-        with self._pausando_em_falha():
+        with self._contexto(self._progresso()), self._pausando_em_falha():
             self._entregar_pendentes()
 
     def _sair_da_pausa(self, motivo: str | None, anterior: str | None, cursor: int) -> None:
@@ -618,6 +664,23 @@ class FluxoVaga:
 
     def _salvar_progresso(self, progresso: ProgressoFluxo) -> None:
         self._repo.salvar_progresso(self.vaga.empresa_id, self.vaga.id, progresso.model_dump_json())
+
+    def _contexto(self, progresso: ProgressoFluxo, candidato_id: str | None = None):
+        """Rastro das chamadas: a execução vem do progresso salvo, e sobrevive a um reinício."""
+        return contexto_rastro(
+            empresa_id=self.vaga.empresa_id,
+            execucao_id=progresso.execucao_id,
+            vaga_id=self.vaga.id,
+            candidato_id=candidato_id,
+        )
+
+    def _rastro_id(self, progresso: ProgressoFluxo, candidato_id: str) -> str:
+        return ContextoRastro(
+            execucao_id=progresso.execucao_id,
+            empresa_id=self.vaga.empresa_id,
+            vaga_id=self.vaga.id,
+            candidato_id=candidato_id,
+        ).rastro_id
 
     def _cursor(self) -> int:
         execucao = self._repo.carregar_estado(self.vaga.empresa_id, self.vaga.id)
@@ -724,7 +787,7 @@ class FluxoVaga:
             EstadoFluxo.CONVIDANDO: self._passo_convidar,
             EstadoFluxo.ENTREGANDO: self._passo_entregar,
         }
-        with self._pausando_em_falha():
+        with self._contexto(self._progresso()), self._pausando_em_falha():
             continuar = True
             while continuar and self.estado in passos:
                 if self.estado != EstadoFluxo.ENTREGANDO:
@@ -760,14 +823,14 @@ class FluxoVaga:
         """
         vistos = {c.id for c in progresso.candidatos}
         fontes = (self._banco, *self._fontes)
-        consultas = self._consultas(self.vaga, progresso.ampliacoes)
+        consultas = _pedir_consultas(self._consultas, self.vaga, progresso.ampliacoes)
         novos: list[Candidato] = []
         fora: list[str] = []
         for fonte in fontes:
             try:
                 for consulta in consultas:
-                    achados = fonte.buscar(
-                        self.vaga.empresa_id, consulta, pagina=progresso.ampliacoes + 1
+                    achados = _buscar_na_fonte(
+                        fonte, self.vaga.empresa_id, consulta, progresso.ampliacoes + 1
                     )
                     novos.extend(self._filtrar_achados(achados, vistos))
             except FonteIndisponivel:
@@ -801,7 +864,8 @@ class FluxoVaga:
             self._conferir_gasto()
             candidato = progresso.candidatos[indice]
             try:
-                analise = self._analisador.analisar(self.vaga, candidato)
+                with self._contexto(progresso, candidato.id):
+                    analise = _analisar(self._analisador, self.vaga, candidato)
                 self._exigir_coerencia(analise, candidato)
             except RespostaInvalida:
                 self._contar_invalida(progresso, candidato, indice, "análise inválida")
@@ -823,7 +887,8 @@ class FluxoVaga:
                 continue
             self._conferir_gasto()
             try:
-                revisada = self._revisor.revisar(self.vaga, candidato, analise)
+                with self._contexto(progresso, candidato.id):
+                    revisada = _revisar(self._revisor, self.vaga, candidato, analise)
                 self._exigir_coerencia(revisada, candidato)
             except RespostaInvalida:
                 ressalvas = [*analise.ressalvas_revisor, RESSALVA_REVISOR_INVALIDO]
@@ -921,7 +986,7 @@ class FluxoVaga:
     def _decidir_candidato(
         self, progresso: ProgressoFluxo, candidato: Candidato, mandato: Mandato, agora: datetime
     ) -> Decisao:
-        rastro_id = f"rastro:{self.vaga.id}:{candidato.id}"
+        rastro_id = self._rastro_id(progresso, candidato.id)
         analise = progresso.analises.get(candidato.id)
         if analise is None:
             return decisao_sem_analise(self.vaga, candidato, mandato, agora, rastro_id)
@@ -964,15 +1029,16 @@ class FluxoVaga:
         """Envia o primeiro convite da pessoa ou repete o que falhou, com a mesma chave."""
         registros = [r for r in progresso.convites if r.convite.candidato_id == candidato_id]
         ultimo = registros[-1] if registros else None
-        if ultimo is None:
-            registro = self._novo_convite(progresso, candidato_id, tentativa=1)
-        elif ultimo.estado == EstadoConvite.CANCELADO:
-            registro = self._novo_convite(progresso, candidato_id, ultimo.tentativa + 1)
-        elif ultimo.estado == EstadoConvite.A_ENVIAR:
-            registro = ultimo
-        else:
-            return
-        self._enviar(progresso, registro)
+        with self._contexto(progresso, candidato_id):
+            if ultimo is None:
+                registro = self._novo_convite(progresso, candidato_id, tentativa=1)
+            elif ultimo.estado == EstadoConvite.CANCELADO:
+                registro = self._novo_convite(progresso, candidato_id, ultimo.tentativa + 1)
+            elif ultimo.estado == EstadoConvite.A_ENVIAR:
+                registro = ultimo
+            else:
+                return
+            self._enviar(progresso, registro)
 
     def _novo_convite(
         self, progresso: ProgressoFluxo, candidato_id: str, tentativa: int
@@ -998,7 +1064,7 @@ class FluxoVaga:
     def _link_de_agendamento(self, candidato_id: str) -> str | None:
         """O agendamento é opcional: sem link, o convite segue e o fluxo não trava."""
         try:
-            return self._destino.link_agendamento(self.vaga.id, candidato_id)
+            return _pedir_link(self._destino, self.vaga.id, candidato_id)
         except (ErroContrato, OSError) as erro:
             self._evento("convite", f"destino sem link: {type(erro).__name__}", candidato_id)
             return None
@@ -1028,7 +1094,8 @@ class FluxoVaga:
             registro.estado = EstadoConvite.ENCERRADO
             self._evento("convite", "contato bloqueado pelas regras", candidato.id)
         elif self._acao_idempotente(
-            registro.convite.chave_idempotencia, lambda: self._mensageiro.enviar(registro.convite)
+            registro.convite.chave_idempotencia,
+            lambda: _enviar_convite(self._mensageiro, registro.convite),
         ):
             registro.estado = EstadoConvite.AGUARDANDO
             self._evento("convite", "convite enviado", candidato.id)
@@ -1060,7 +1127,7 @@ class FluxoVaga:
             if registro.convite.candidato_id == candidato_id:
                 registro.estado = EstadoConvite.ENCERRADO
         try:
-            self._banco.registrar_opt_out(self.vaga.empresa_id, candidato_id)
+            _gravar_opt_out(self._banco, self.vaga.empresa_id, candidato_id)
         except KeyError:
             self._evento("resposta", "opt-out de pessoa fora do banco de talentos", candidato_id)
 
@@ -1099,7 +1166,11 @@ class FluxoVaga:
         chave = f"entrega:{self.vaga.empresa_id}:{self.vaga.id}:{candidato.id}"
         decisao = self._ultimas_decisoes()[candidato.id]
         pacote = self._pacote(candidato, progresso.analises[candidato.id], decisao.rastro_id, chave)
-        if not self._acao_idempotente(chave, lambda: self._destino.entregar(pacote)):
+        with self._contexto(progresso, candidato.id):
+            entregue = self._acao_idempotente(
+                chave, lambda: _entregar_pacote(self._destino, pacote)
+            )
+        if not entregue:
             raise _PausaNecessaria(MotivoPausa.DESTINO_INDISPONIVEL)
         progresso.entregues.append(candidato.id)
         self._salvar_progresso(progresso)

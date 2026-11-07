@@ -6,9 +6,11 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field
 
+from backend.agente import auditoria
 from backend.contratos.erros import LimiteGastoAtingido, ModeloIndisponivel, RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
 from backend.modelos.cliente import (
+    ETAPA_CHAMADA_MODELO,
     MAX_TOKENS_MINIMO,
     MODELO_PADRAO,
     PRECOS_USD,
@@ -716,3 +718,23 @@ def test_corpo_que_nao_e_json_nao_quebra():
 
     with pytest.raises((RespostaInvalida, ModeloIndisponivel)):
         completar(cliente_com(transporte))
+
+
+def test_chamada_de_modelo_entra_no_rastro_da_execucao():
+    with auditoria.contexto_rastro(empresa_id="empresa-a", vaga_id="v1", candidato_id="c1"):
+        completar(cliente_com(Transporte(VALIDA)), TEXTO_CANDIDATO)
+
+    registro = auditoria.RASTRO_LOCAL.listar("empresa-a", "v1", "c1")[-1]
+    assert registro.etapa == ETAPA_CHAMADA_MODELO
+    assert registro.sucesso is True
+    assert TEXTO_CANDIDATO not in registro.model_dump_json()
+
+
+def test_chamada_de_modelo_com_falha_entra_no_rastro_so_com_o_tipo():
+    with auditoria.contexto_rastro(empresa_id="empresa-a", vaga_id="v1", candidato_id="c1"):
+        with pytest.raises(RespostaInvalida):
+            completar(cliente_com(Transporte(TEXTO_CANDIDATO, TEXTO_CANDIDATO)))
+
+    registro = auditoria.RASTRO_LOCAL.listar("empresa-a", "v1", "c1")[-1]
+    assert registro.erro_tipo == "RespostaInvalida"
+    assert TEXTO_CANDIDATO not in registro.model_dump_json()

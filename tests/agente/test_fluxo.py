@@ -7,9 +7,12 @@ from pydantic import ValidationError
 
 from backend.agente.auditoria import (
     MOTIVO_AUDITORIA_REPROVADA,
+    RASTRO_LOCAL,
     Auditoria,
     DecisaoIncompleta,
     DecisoesAutomaticasPausadas,
+    ExplicacaoInexistente,
+    RegistroRastro,
 )
 from backend.agente.fluxo import (
     ESTADOS_ATIVOS,
@@ -56,6 +59,7 @@ from backend.contratos.simulacoes import (
     MensageiroSimulado,
 )
 from tests.agente.apoio import (
+    PERFIL_EXEMPLO,
     AnalisadorComEvidencias,
     NaraFalhaDepoisDeAceitar,
     NaraForaDoAr,
@@ -2337,3 +2341,110 @@ def test_barreira_segura_a_entrega_tardia_ate_a_liberacao(tmp_path: Path) -> Non
 
 def test_motivo_da_auditoria_e_o_mesmo_nos_dois_modulos() -> None:
     assert MotivoPausa.AUDITORIA_REPROVADA == MOTIVO_AUDITORIA_REPROVADA
+
+
+# Ligação com o rastro
+
+
+class AnalisadorDoisPassos(AnalisadorComEvidencias):
+    """Na primeira execução, pausa a vaga no segundo candidato."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ativo = True
+
+    def analisar(self, vaga: Vaga, candidato: Candidato) -> Analise:
+        if self.ativo and candidato.id == "c2":
+            raise ModeloIndisponivel("modelo fora do ar")
+        return super().analisar(vaga, candidato)
+
+
+def _rastro_da_vaga() -> list[RegistroRastro]:
+    return [r for r in RASTRO_LOCAL._registros if r.vaga_id == "v1"]
+
+
+def test_decisao_cita_o_rastro_das_chamadas_do_candidato(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+
+    _assinar_fluxo(m.fluxo())
+
+    decisao = _decisoes(m)["c1"]
+    do_candidato = [r for r in _rastro_da_vaga() if r.rastro_id == decisao.rastro_id]
+    assert {"analise", "revisao"} <= {r.etapa for r in do_candidato}
+    assert {r.candidato_id for r in do_candidato} == {"c1"}
+    assert decisao.rastro_id.endswith(":v1:c1")
+    assert "rastro:" not in decisao.rastro_id
+
+
+def test_toda_chamada_externa_do_fluxo_gera_rastro(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [candidato_exemplo("c1")], vaga=vaga_exemplo(meta_candidatos=1))
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+
+    etapas = {r.etapa for r in _rastro_da_vaga()}
+    assert {
+        "consultas",
+        "busca_fonte",
+        "analise",
+        "revisao",
+        "link_agendamento",
+        "envio_convite",
+        "entrega_destino",
+    } <= etapas
+
+
+def test_rastro_guarda_a_falha_sem_guardar_a_mensagem(tmp_path: Path) -> None:
+    m = Montagem(
+        tmp_path,
+        [candidato_exemplo("c1")],
+        analisador=AnalisadorQueFalha(RespostaInvalida("texto do candidato"), {"c1"}),
+    )
+
+    _assinar_fluxo(m.fluxo())
+
+    analise = next(r for r in _rastro_da_vaga() if r.etapa == "analise")
+    assert analise.sucesso is False
+    assert analise.erro_tipo == "RespostaInvalida"
+    assert "texto do candidato" not in analise.model_dump_json()
+
+
+def test_rastro_nao_guarda_texto_do_perfil_nem_nome(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, [candidato_exemplo("c1", nome="Nome Sigiloso")])
+
+    _assinar_fluxo(m.fluxo())
+
+    texto = " ".join(r.model_dump_json() for r in _rastro_da_vaga())
+    assert "Nome Sigiloso" not in texto
+    assert PERFIL_EXEMPLO not in texto
+
+
+def test_retomada_mantem_a_mesma_execucao_no_rastro(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos(), analisador=AnalisadorDoisPassos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert fluxo.estado is E.PAUSADA
+
+    m.analisador.ativo = False
+    m.fluxo().retomar()
+
+    assert len({r.execucao_id for r in _rastro_da_vaga()}) == 1
+
+
+def test_explicacao_liga_decisao_e_rastro_do_fluxo(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    _assinar_fluxo(m.fluxo())
+
+    explicacao = Auditoria(m.repo).explicar_candidato("empresa-a", "c1", "v1")
+
+    assert explicacao["rastro_ids"] == [_decisoes(m)["c1"].rastro_id]
+    assert {"analise", "revisao"} <= {r["etapa"] for r in explicacao["rastro"]}
+    assert explicacao["mandatos_citados"][0]["versao"] == 1
+
+
+def test_rastro_de_uma_vaga_nao_aparece_para_outra_empresa(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    _assinar_fluxo(m.fluxo())
+
+    with pytest.raises(ExplicacaoInexistente):
+        Auditoria(m.repo).explicar_candidato("empresa-b", "c1", "v1")

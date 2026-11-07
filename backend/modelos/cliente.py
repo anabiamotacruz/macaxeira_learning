@@ -19,6 +19,7 @@ import httpx2
 from openai import APIStatusError, AuthenticationError, OpenAI, OpenAIError
 from pydantic import BaseModel, ValidationError
 
+from backend.agente.auditoria import rastreado
 from backend.contratos.erros import LimiteGastoAtingido, ModeloIndisponivel, RespostaInvalida
 from backend.modelos.prompts import CORRECAO, REGRA_DADOS, SAIDA_JSON
 from backend.modelos.rastro import Rastro, RegistroChamada, criar_rastro
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 URL_BASE_PADRAO = "https://api.featherless.ai/v1"
 MODELO_PADRAO = "zai-org/GLM-5.2"
+ETAPA_CHAMADA_MODELO = "chamada_modelo"
 MAX_TOKENS_MINIMO = 1000
 MAX_TOKENS_PADRAO = 2000
 TEMPO_LIMITE_PADRAO_S = 120.0
@@ -303,6 +305,7 @@ class ClienteFeatherless:
             raise ValueError("limite de gasto precisa ser um número finito e não negativo")
         self._limite_mandato_usd = limite_usd
 
+    @rastreado(ETAPA_CHAMADA_MODELO)
     def completar(
         self, sistema: str, usuario: str, esquema: type[BaseModel], etapa: str
     ) -> BaseModel:
