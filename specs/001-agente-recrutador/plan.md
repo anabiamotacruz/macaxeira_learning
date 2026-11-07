@@ -39,7 +39,7 @@ backend/
   agente/         regras.py, fluxo.py, configuracao.py, persistencia.py, auditoria.py, rotina_banco.py, aprendizado.py, api.py, mcp.py
   modelos/        cliente.py, resiliencia.py
   fontes/         banco_talentos.py, consultas.py, funil.py, documentos.py, rede_simulada.py, analisador.py, revisor.py, github_teste.py
-  contato/        mensageiro.py, conversa.py, cadastro.py, entrada.py, recontato.py, pacote.py
+  contato/        mensageiro.py, conversa.py, cadastro.py, recontato.py, pacote.py
   nara_simulada/  servico.py
 dados/            gerador.py, sinteticos/
 avaliacoes/       casos/, test_avaliacoes.py, relatorio.py
