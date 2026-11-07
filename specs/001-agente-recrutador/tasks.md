@@ -240,11 +240,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** `priorizar(vaga: Vaga, candidatos: list[Candidato], limite: int = 20) -> list[Candidato]` e `CacheAnalise`, com chave por vaga, perfil e versão da configuração.
 
-- [ ] Testar `test_ordem_reproduzivel`.
-- [ ] Testar `test_exclui_sem_autorizacao_ou_requisito`.
-- [ ] Testar `test_ordem_nao_muda_com_nome_ou_genero`.
-- [ ] Testar `test_cache_evita_nova_analise_e_expira_ao_mudar_vaga`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_ordem_reproduzivel`.
+- [x] Testar `test_exclui_sem_autorizacao_ou_requisito`.
+- [x] Testar `test_ordem_nao_muda_com_nome_ou_genero`.
+- [x] Testar `test_cache_evita_nova_analise_e_expira_ao_mudar_vaga`.
+- [x] Implementar e verificar.
 
 ### T2.3 (onda 2): analisador
 
