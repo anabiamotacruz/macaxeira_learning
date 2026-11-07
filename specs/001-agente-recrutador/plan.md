@@ -13,7 +13,7 @@
 ## Restrições globais
 
 - Código do projeto a partir de 7/11/2026, às 10h. Submissão até 8/11/2026, às 13h.
-- Somente dados sintéticos. Sem scraping do LinkedIn.
+- O conector coleta o LinkedIn pela Bright Data. Fora essa coleta, somente dados sintéticos.
 - Um banco por empresa. Sem autorização válida, o perfil não entra na busca.
 - O agente não agenda entrevistas nem decide contratações.
 - Regras, autorização, limites de contato e cálculos são determinísticos.

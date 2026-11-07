@@ -28,7 +28,7 @@ Essa dor ainda precisa ser confirmada com recrutadores e com a Tako.
 
 - Agendar ou conduzir entrevistas, ou avaliar candidatos no lugar da Nara.
 - Decidir contratações.
-- Integrar de verdade com a Nara, ATS, LinkedIn ou WhatsApp no hackathon.
+- Integrar de verdade com a Nara, ATS ou WhatsApp no hackathon. O LinkedIn é coletado pelo conector, via Bright Data.
 - Criar uma rede compartilhada de candidatos entre empresas. Isso fica como visão futura.
 - Otimizar sites em geral. Do conceito original, fica apenas a melhoria contínua da busca e dos convites.
 
@@ -38,12 +38,11 @@ Essa dor ainda precisa ser confirmada com recrutadores e com a Tako.
 - Indicações sem evidência ou sem explicação.
 - Filtrar por gênero, idade, raça, religião, estado civil ou outro dado sensível.
 - Apresentar uma simulação como se fosse integração real.
-- Fazer scraping do LinkedIn. Os termos da plataforma proíbem coleta automatizada, e o produto ficaria frágil.
 
 ## 3. Restrições
 
 - **Prazo:** o código do projeto começa em 7/11, às 10h. A submissão termina em 8/11, às 13h.
-- **Dados:** somente sintéticos, sem dados pessoais reais de candidatos.
+- **Dados:** somente sintéticos, exceto os perfis do LinkedIn coletados pelo conector via Bright Data.
 - **Time:** 4 pessoas trabalhando em paralelo (decidido).
 - **Submissão:** descrição, vídeo de demonstração, link navegável e testável, material do Demo Day e lista de ferramentas, modelos e APIs. Sinalizar que responde ao Desafio Tako.
 - **Demo Day:** 3 minutos. Os jurados testam a solução.
@@ -126,7 +125,7 @@ Fontes reais são uma **lacuna de pesquisa durante o hackathon** (decidido). Par
 - **Conector único:** toda fonte implementa a mesma interface.
 - **Rede de talentos simulada:** fonte externa secundária, em um serviço separado, com busca, paginação, limite de requisições, duplicatas e dados incompletos.
 - **GitHub real (opcional):** API oficial, restrita a contas e repositórios de teste do time, para mostrar evidência técnica. Sem varredura de pessoas reais e sem contato frio.
-- **LinkedIn:** a demo não coleta dados dele. A pesquisa vai avaliar caminhos autorizados, como dados enviados pelo candidato, licença do recrutador e integração oficial.
+- **LinkedIn:** o conector coleta pela Bright Data.
 
 A identificação de cada fonte como simulada ou real aparece na interface.
 

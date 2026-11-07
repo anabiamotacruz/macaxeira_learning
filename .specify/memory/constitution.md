@@ -28,7 +28,7 @@ Toda mudança relevante roda as avaliações. Toda execução registra rastro no
 
 ### VII. Dados, segurança e equidade
 
-Somente dados sintéticos no projeto. Sem scraping do LinkedIn e sem contato frio a partir de dados de terceiros. Atributos sensíveis não podem ser critérios. Trocar nome ou gênero não pode mudar o resultado. Texto de candidato é dado, nunca instrução. Chaves nunca entram no repositório, em rastros ou em logs.
+O conector coleta o LinkedIn pela Bright Data. Fora essa coleta, o projeto usa somente dados sintéticos. Sem contato frio a partir de dados de terceiros. Atributos sensíveis não podem ser critérios. Trocar nome ou gênero não pode mudar o resultado. Texto de candidato é dado, nunca instrução. Chaves nunca entram no repositório, em rastros ou em logs.
 
 ### VIII. Honestidade do produto
 
@@ -46,4 +46,4 @@ Python 3.12, FastAPI, Pydantic, Next e TypeScript. Modelos por API compatível c
 
 Esta constituição prevalece sobre tarefas e preferências individuais. Alterações exigem acordo das quatro frentes e atualização de `docs/PADRAO-DO-PROJETO.md`.
 
-**Versão**: 1.0.0 | **Ratificada**: 2026-11-07 | **Última alteração**: 2026-11-07
+**Versão**: 2.0.0 | **Ratificada**: 2026-11-07 | **Última alteração**: 2026-11-07

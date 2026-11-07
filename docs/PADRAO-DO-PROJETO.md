@@ -8,7 +8,7 @@ Um digital worker constrói e mantém o banco de talentos de cada empresa. Quand
 
 É um produto próprio, que a Tako pode usar. Não é um produto feito para a Tako nem uma extensão interna dela. A Nara é a primeira integração.
 
-**Não fazemos:** agendar ou conduzir entrevistas, avaliar candidatos no lugar da Nara, decidir contratações, integrações reais no hackathon ou scraping do LinkedIn.
+**Não fazemos:** agendar ou conduzir entrevistas, avaliar candidatos no lugar da Nara, decidir contratações ou integrações reais no hackathon. O LinkedIn entra pelo conector, via Bright Data.
 
 ## 2. Onde está cada decisão
 
@@ -158,9 +158,9 @@ Toda chamada usa o Langfuse. Toda decisão guarda entrada, regra, evidências, r
 
 ## 8. Dados e limites
 
-- **Somente dados sintéticos.** Nada de dados pessoais reais de candidatos.
+- **Dados sintéticos,** exceto os perfis do LinkedIn coletados pelo conector via Bright Data.
 - **Banco de talentos:** um por empresa, com isolamento entre empresas. Sem autorização válida, a pessoa não é buscada nem contatada para vagas.
-- **LinkedIn:** sem scraping, robôs ou serviços de coleta. Fontes reais são uma lacuna a pesquisar.
+- **LinkedIn:** o conector coleta pela Bright Data.
 - **GitHub:** só a API oficial, com contas e repositórios de teste do time, e sem contato frio.
 - **Equidade:** gênero, idade, raça, religião, estado civil e outros dados sensíveis não são critérios.
 - **Nara e Tako:** integrações simuladas devem aparecer assim. Nunca afirme acesso que não temos.
