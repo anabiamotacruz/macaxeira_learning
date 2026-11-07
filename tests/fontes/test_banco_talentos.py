@@ -1,6 +1,6 @@
 """Comportamentos da T2.6, sem depender do mecanismo de persistência."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from importlib import import_module
 
 import pytest
@@ -425,3 +425,34 @@ def test_atualizar_nao_devolve_email_bloqueado_por_remocao(banco):
 
     assert banco._obter("empresa-1", "b").atributos["email"] == "b@e.invalid"
     assert banco.atualizar("empresa-1", "b", {"cloud": "sim"}).atributos["cloud"] == "sim"
+
+
+def test_busca_acompanha_a_data_da_funcao_injetada():
+    dia = {"atual": HOJE}
+    banco = BancoTalentosReal(hoje=lambda: dia["atual"], confiar_autorizacao_sintetica=True)
+    banco.importar("empresa-1", [registro(autorizacao_valida_ate=date(2026, 11, 8))])
+    assert [c.id for c in banco.buscar("empresa-1", "")] == ["pessoa-1"]
+
+    dia["atual"] = date(2026, 11, 9)
+
+    assert banco.hoje == date(2026, 11, 9)
+    assert banco.buscar("empresa-1", "") == []
+    with pytest.raises(ValueError):
+        banco.registrar_autorizacao("empresa-1", "pessoa-1", date(2026, 11, 8))
+    assert banco.atualizar("empresa-1", "pessoa-1", {"a": "b"}).atualizado_em == dia["atual"]
+
+
+def test_aceita_o_relogio_do_fluxo_que_devolve_data_e_hora():
+    banco = BancoTalentosReal(
+        hoje=lambda: datetime(2026, 11, 9, 23, 59, tzinfo=UTC),
+        confiar_autorizacao_sintetica=True,
+    )
+    banco.importar(
+        "empresa-1",
+        [
+            registro("venceu", autorizacao_valida_ate=date(2026, 11, 8)),
+            registro("no_dia", autorizacao_valida_ate=date(2026, 11, 9)),
+        ],
+    )
+
+    assert [c.id for c in banco.buscar("empresa-1", "")] == ["no_dia"]

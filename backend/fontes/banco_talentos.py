@@ -7,9 +7,9 @@ para ela não voltar por uma nova importação. Texto de candidato é sempre tra
 import hashlib
 import re
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from contextlib import closing
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from threading import RLock
 
@@ -92,21 +92,28 @@ class BancoTalentos:
         self,
         caminho: str | Path = ":memory:",
         *,
-        hoje: date,
+        hoje: date | Callable[[], date],
         confiar_autorizacao_sintetica: bool = False,
     ) -> None:
-        """`confiar_autorizacao_sintetica` serve só a cargas sintéticas de confiança.
+        """Em processo de longa duração, `hoje` deve ser uma função, lida a cada operação.
 
-        Sem ele, a autorização declarada no registro é ignorada: a pessoa entra como pendente
-        e só autoriza por `registrar_autorizacao`.
+        `confiar_autorizacao_sintetica` serve só a cargas sintéticas de confiança. Sem ele, a
+        autorização declarada no registro é ignorada: a pessoa entra como pendente e só autoriza
+        por `registrar_autorizacao`.
         """
-        self.hoje = hoje
+        self._hoje = hoje
         self._confiar_autorizacao_sintetica = confiar_autorizacao_sintetica
         self._trava = RLock()
         self._conexao = sqlite3.connect(caminho, check_same_thread=False)
         with self._trava, self._conexao:
             self._conexao.execute("PRAGMA secure_delete = ON")
             self._conexao.executescript(ESQUEMA)
+
+    @property
+    def hoje(self) -> date:
+        """A data da operação. Aceita também o relógio do fluxo, que devolve data e hora."""
+        valor = self._hoje() if callable(self._hoje) else self._hoje
+        return valor.date() if isinstance(valor, datetime) else valor
 
     def fechar(self) -> None:
         with self._trava:
