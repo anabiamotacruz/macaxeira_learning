@@ -456,3 +456,72 @@ def test_aceita_o_relogio_do_fluxo_que_devolve_data_e_hora():
     )
 
     assert [c.id for c in banco.buscar("empresa-1", "")] == ["no_dia"]
+
+
+@pytest.mark.parametrize(
+    ("consulta", "perfil"),
+    [
+        ("Desenvolvedor Python", "Desenvolvedora Python"),
+        ("Desenvolvedora Python", "Desenvolvedor Python"),
+        ("Desenvolvedor(a) Python", "Desenvolvedora Python"),
+        ("Desenvolvedor(a) Python", "Desenvolvedor Python"),
+        ("Desenvolvedores", "Desenvolvedoras"),
+        ("Engenheiro de dados", "Engenheira de dados"),
+        ("Arquiteto", "Arquiteta"),
+        ("Diretor", "Diretora"),
+        ("Líder técnico", "Líder técnica"),
+        ("Lider tecnico", "Lider tecnica"),
+    ],
+)
+def test_variacao_de_genero_da_palavra_nao_muda_a_busca(banco, consulta, perfil):
+    banco.importar("empresa-1", [registro(perfil_texto=perfil)])
+
+    assert [c.id for c in banco.buscar("empresa-1", consulta)] == ["pessoa-1"]
+
+
+def test_par_masculino_e_feminino_tem_o_mesmo_resultado(banco):
+    banco.importar(
+        "empresa-1",
+        [
+            registro("ela", perfil_texto="Desenvolvedora Python"),
+            registro("ele", perfil_texto="Desenvolvedor Python"),
+        ],
+    )
+
+    for consulta in ("Desenvolvedor Python", "Desenvolvedora Python"):
+        assert [c.id for c in banco.buscar("empresa-1", consulta)] == ["ela", "ele"]
+
+
+@pytest.mark.parametrize(
+    ("consulta", "perfil"),
+    [("for", "Fora"), ("banco", "Banca"), ("porto", "Porta"), ("Javo", "Java"), ("dor", "Dora")],
+)
+def test_palavras_sem_relacao_de_genero_nao_se_misturam(banco, consulta, perfil):
+    banco.importar("empresa-1", [registro(perfil_texto=perfil)])
+
+    assert banco.buscar("empresa-1", consulta) == []
+
+
+@pytest.mark.parametrize(
+    ("chave", "valor"),
+    [
+        ("genero", "feminino"),
+        ("Gênero", "feminino"),
+        ("sexo", "feminino"),
+        ("raca", "parda"),
+        ("pcd", "visual"),
+        ("idade", "42"),
+        ("campo_novo", "desconhecido"),
+    ],
+)
+def test_atributo_sensivel_ou_nao_previsto_nao_e_pesquisavel(banco, chave, valor):
+    banco.importar("empresa-1", [registro(atributos={chave: valor})])
+
+    assert banco.buscar("empresa-1", valor) == []
+
+
+@pytest.mark.parametrize(("chave", "valor"), [("cargo", "Artífice"), ("Skill", "Rust")])
+def test_atributo_profissional_continua_pesquisavel(banco, chave, valor):
+    banco.importar("empresa-1", [registro(atributos={chave: valor})])
+
+    assert [c.id for c in banco.buscar("empresa-1", valor)] == ["pessoa-1"]

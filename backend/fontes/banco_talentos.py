@@ -17,7 +17,45 @@ from backend.contratos.modelos import Candidato, EstadoBanco
 
 POR_PAGINA = 20
 ESTADOS_BUSCAVEIS = frozenset({EstadoBanco.ATIVO, EstadoBanco.DESATUALIZADO})
-CAMPOS_DE_CONTATO = frozenset({"email", "telefone", "whatsapp"})
+ATRIBUTOS_PESQUISAVEIS = frozenset(
+    {
+        "area",
+        "cargo",
+        "certificacao",
+        "certificacoes",
+        "competencia",
+        "competencias",
+        "ferramentas",
+        "formacao",
+        "habilidade",
+        "habilidades",
+        "linguagem",
+        "linguagens",
+        "senioridade",
+        "skill",
+        "skills",
+        "stack",
+        "tecnologia",
+        "tecnologias",
+    }
+)
+"""Só estes atributos entram na busca. Sensível, contato ou campo novo ficam de fora por padrão."""
+
+_SUFIXOS_DE_GENERO = (("doras", "dores"), ("dora", "dor"), ("eiras", "eiros"), ("eira", "eiro"))
+_MENOR_PALAVRA_COM_SUFIXO = 6
+_MASCULINOS_EM_OR = (
+    "assessor auditor autor consultor diretor doutor editor gestor inspetor instrutor mentor "
+    "professor redator revisor supervisor tutor"
+).split()
+_MASCULINOS_EM_O = (
+    "arquiteto estagiario estagiário especializado formado graduado pleno tecnico técnico"
+).split()
+_FEMININOS = {
+    **{f"{m}a": m for m in _MASCULINOS_EM_OR},
+    **{f"{m}as": f"{m}es" for m in _MASCULINOS_EM_OR},
+    **{f"{m[:-1]}a": m for m in _MASCULINOS_EM_O},
+    **{f"{m[:-1]}as": f"{m}s" for m in _MASCULINOS_EM_O},
+}
 
 PERFIL_POR_ID = "SELECT dados FROM perfis WHERE empresa_id = ? AND candidato_id = ?"
 PERFIL_POR_EMAIL = "SELECT dados FROM perfis WHERE empresa_id = ? AND email = ?"
@@ -75,13 +113,31 @@ def _identidade_segura(
     return _email(por_id) is None
 
 
+def sem_genero(palavra: str) -> str:
+    """Leva o feminino ao masculino, por lista fechada e pelos sufixos `-dora` e `-eira`.
+
+    Trocar `-a` por `-o` em qualquer palavra não é seguro: misturaria `banco` e `banca`, `for`
+    e `fora`. Palavra fora da lista e dos sufixos, como `advogada`, continua diferente.
+    """
+    if palavra in _FEMININOS:
+        return _FEMININOS[palavra]
+    if len(palavra) >= _MENOR_PALAVRA_COM_SUFIXO:
+        for feminino, masculino in _SUFIXOS_DE_GENERO:
+            if palavra.endswith(feminino):
+                return palavra.removesuffix(feminino) + masculino
+    return palavra
+
+
 def _termos(texto: str) -> set[str]:
-    return set(re.findall(r"\w+", texto.casefold()))
+    sem_marcador = re.sub(r"\((?:a|as|o|os)\)", "", texto.casefold())
+    return {sem_genero(termo) for termo in re.findall(r"\w+", sem_marcador)}
 
 
 def _combina(candidato: Candidato, consulta: str) -> bool:
-    """Compara palavras inteiras do perfil. Nome e contato ficam de fora da busca."""
-    atributos = (v for k, v in candidato.atributos.items() if k not in CAMPOS_DE_CONTATO)
+    """Compara palavras inteiras do perfil e de atributos profissionais. O nome fica de fora."""
+    atributos = (
+        v for k, v in candidato.atributos.items() if k.strip().casefold() in ATRIBUTOS_PESQUISAVEIS
+    )
     return _termos(consulta) <= _termos(" ".join([candidato.perfil_texto, *atributos]))
 
 
