@@ -5,12 +5,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.agente.api import app
+from backend.agente import exemplos_api as exemplos
+from backend.agente.api import app, rotas
+from backend.agente.auditoria import _mandato_citado
 from backend.agente.gerar_openapi import ARQUIVO_OPENAPI, gerar, texto_openapi
 
 COMANDO = "uv run python -m backend.agente.gerar_openapi"
 RAIZ = Path(__file__).resolve().parents[2]
-SESSAO = {"X-Empresa-Id": "empresa-exemplo"}
 
 
 def _operacoes() -> list[tuple[str, str, dict]]:
@@ -23,11 +24,6 @@ def _operacoes() -> list[tuple[str, str, dict]]:
 
 def _ids(valor: tuple) -> str:
     return f"{valor[0]} {valor[1]}"
-
-
-def _preencher(caminho: str) -> str:
-    identificador = "candidato-exemplo-1" if caminho.startswith("/candidatos") else "vaga-exemplo-1"
-    return caminho.replace("{id}", identificador)
 
 
 def _status_de_sucesso(operacao: dict) -> str:
@@ -49,7 +45,7 @@ def test_gerar_grava_o_mesmo_texto(tmp_path):
 
 def test_texto_gerado_e_estavel_e_legivel():
     assert texto_openapi() == texto_openapi()
-    assert "Exemplos fixos" in texto_openapi()
+    assert "exemplo_fixo" in texto_openapi()
     assert json.loads(texto_openapi()) == app.openapi()
 
 
@@ -121,18 +117,38 @@ def test_parametros_e_corpos_nao_aceitam_empresa():
             assert "empresa_id" not in modelo["properties"]
 
 
+ROTAS_POR_NOME = {rota.name: rota for rota in rotas.routes}
+
+
 @pytest.mark.parametrize("item", _operacoes(), ids=_ids)
-def test_exemplo_do_openapi_e_a_resposta_da_rota(item):
-    metodo, caminho, operacao = item
+def test_exemplo_do_openapi_segue_o_formato_da_resposta(item):
+    _, _, operacao = item
     status = _status_de_sucesso(operacao)
     exemplo = operacao["responses"][status]["content"]["application/json"]["example"]
     assert exemplo["simulado"] is True
-    assert exemplo["exemplo_fixo"] is True
+    ROTAS_POR_NOME[operacao["operationId"]].response_model.model_validate(exemplo)
 
-    argumentos = {"headers": SESSAO}
-    if "requestBody" in operacao:
-        corpo = operacao["requestBody"]["content"]["application/json"]
-        argumentos["json"] = corpo["examples"]["exemplo"]["value"]
-    resposta = TestClient(app).request(metodo, _preencher(caminho), **argumentos)
-    assert resposta.status_code == int(status), resposta.text
-    assert resposta.json() == exemplo
+
+@pytest.mark.parametrize("item", _operacoes(), ids=_ids)
+def test_exemplo_marca_como_fixo_so_o_que_ainda_e_fixo(item):
+    _, caminho, operacao = item
+    status = _status_de_sucesso(operacao)
+    exemplo = operacao["responses"][status]["content"]["application/json"]["example"]
+    assert exemplo["exemplo_fixo"] is caminho.endswith("/metricas")
+
+
+def test_responsavel_dos_exemplos_e_o_que_a_auditoria_exige():
+    assert _mandato_citado(exemplos.RESPONSAVEL_AGENTE) is not None
+    agente = [d for d in exemplos.DECISOES.values() if d.responsavel.startswith("agente:")]
+    assert len(agente) == len(exemplos.DECISOES)
+    assert exemplos.DECISAO_REVERTIDA.responsavel.startswith("humano:")
+    assert all(d.evidencias for d in [*exemplos.DECISOES.values(), exemplos.DECISAO_REVERTIDA])
+
+
+def test_formato_de_vaga_e_controle_continua_publicado():
+    esquemas = app.openapi()["components"]["schemas"]
+    assert "EstadoVaga" in esquemas
+    assert "EstadoFluxo" not in esquemas
+    assert esquemas["RespostaVaga"]["properties"]["estado"] == {
+        "$ref": "#/components/schemas/EstadoVaga"
+    }

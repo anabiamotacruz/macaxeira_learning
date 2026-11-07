@@ -22,6 +22,7 @@ from backend.agente.fluxo import (
     EstadoFluxo,
     FluxoVaga,
     MotivoPausa,
+    ResponsavelInvalido,
     TransicaoInvalida,
     _transitar,
 )
@@ -2979,3 +2980,111 @@ def test_o_mesmo_id_em_duas_fontes_chega_ao_funil_com_os_dois_registros(tmp_path
     _assinar_fluxo(m.fluxo())
 
     assert recebidos == [("c1", "rede_simulada"), ("c1", "github")]
+
+
+# Partes da ligação com a API
+
+
+def test_assinar_sem_executar_deixa_a_vaga_buscando_e_continuar_segue(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    fluxo.iniciar()
+
+    fluxo.assinar_mandato("Pessoa Recrutadora", 5.0, _politica_fluxo(), executar=False)
+
+    assert fluxo.estado is E.BUSCANDO
+    assert m.analisador.analisados == []
+
+    m.fluxo().continuar()
+
+    assert m.analisador.analisados == ["c1", "c2"]
+
+
+def test_continuar_nao_tira_a_vaga_da_pausa(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    fluxo.iniciar()
+    fluxo.assinar_mandato("Pessoa Recrutadora", 5.0, _politica_fluxo(), executar=False)
+    fluxo.parar("Pessoa Recrutadora", "conferir a vaga")
+
+    fluxo.continuar()
+
+    assert fluxo.estado is E.PAUSADA
+    assert m.analisador.analisados == []
+    assert any(e.etapa == "controle" and "Pessoa Recrutadora" in e.mensagem for e in fluxo.eventos)
+
+
+def test_retomar_sem_executar_so_devolve_o_estado(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    fluxo.iniciar()
+    fluxo.assinar_mandato("Pessoa Recrutadora", 5.0, _politica_fluxo(), executar=False)
+    fluxo.parar()
+
+    fluxo.retomar(executar=False, responsavel="Pessoa Recrutadora")
+
+    assert fluxo.estado is E.BUSCANDO
+    assert m.analisador.analisados == []
+
+
+@pytest.mark.parametrize("responsavel", ["", "  ", "agente:mandato:m:v1", "Agente"])
+def test_parar_e_retomar_pela_interface_exigem_uma_pessoa(tmp_path, responsavel) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    with pytest.raises(ResponsavelInvalido):
+        fluxo.parar(responsavel)
+    assert fluxo.estado is E.CONVIDANDO
+
+    fluxo.parar("Pessoa Recrutadora")
+    with pytest.raises(ResponsavelInvalido):
+        fluxo.retomar(responsavel=responsavel)
+    assert fluxo.estado is E.PAUSADA
+
+
+def test_pacotes_entregues_sao_os_que_chegaram_ao_destino(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos(), destino=NaraFalhaDepoisDeAceitar(falhas=0))
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    assert fluxo.pacotes_entregues() == []
+
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+
+    pacotes = fluxo.pacotes_entregues()
+    assert pacotes == list(m.destino.entregues.values())
+    assert pacotes[0].rastro_id == _decisoes(m)["c1"].rastro_id
+
+
+def test_pacotes_entregues_antes_do_mandato_vem_vazio(tmp_path: Path) -> None:
+    assert Montagem(tmp_path, []).fluxo().pacotes_entregues() == []
+
+
+def test_situacao_lista_quem_passou_pela_vaga_com_decisao_e_destino(tmp_path: Path) -> None:
+    corte = _corte("c2", "opt_out", "a pessoa pediu para não ser contatada")
+    m = Montagem(tmp_path, _dois_candidatos(), priorizador=_funil_que_corta(corte))
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    fluxo.registrar_destino("c1", DestinoPessoa.BANCO, "Pessoa Recrutadora")
+
+    situacao = {c.id: (decisao, destino) for c, decisao, destino in fluxo.situacao_candidatos()}
+
+    assert situacao == {
+        "c1": (TipoDecisao.INDICAR, DestinoPessoa.BANCO),
+        "c2": (TipoDecisao.DESCARTAR, None),
+    }
+
+
+def test_situacao_antes_do_mandato_vem_vazia(tmp_path: Path) -> None:
+    assert Montagem(tmp_path, []).fluxo().situacao_candidatos() == []
+
+
+def test_reversao_cita_o_rastro_revertido(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+    original = _decisoes(m)["c1"]
+
+    nova = fluxo.reverter("c1", "Revisão humana", "Pessoa Recrutadora")
+
+    assert nova.entrada["rastro_revertido"] == original.rastro_id

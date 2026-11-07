@@ -2,7 +2,9 @@
 
 **Proposta**, válida enquanto o acordo das frentes não sair: rotas, campos e erros podem mudar. Código em `backend/agente/api.py`; contrato em `openapi.json`, com a lista de rotas e os exemplos de pedido e resposta.
 
-As respostas são exemplos fixos e sintéticos de `backend/agente/exemplos_api.py`. Nada é gravado e nenhuma lógica roda. Os números de `/metricas` são ilustrativos e não medem o agente. A rota `/destino` repete o `destino` e o `responsavel` recebidos; o resto não depende do corpo enviado.
+As rotas rodam o fluxo real da vaga e gravam em SQLite. Sem configuração, `backend.agente.api:app` monta a demonstração de `backend/agente/montagem.py`: dados sintéticos, simulações no lugar de modelo, fontes e destino, nenhuma chave e banco numa pasta temporária. Para outras peças, use `criar_app(ServicoVagas(...))`.
+
+Assinar o mandato e retomar respondem na hora e seguem em segundo plano; acompanhe por `GET /vagas/{id}` e `/eventos`.
 
 O agente não agenda, não entrevista e não decide contratações.
 
@@ -21,7 +23,8 @@ uv run uvicorn backend.agente.api:app --reload
 ```
 
 ```bash
-curl -H "X-Empresa-Id: empresa-exemplo" http://127.0.0.1:8000/vagas/vaga-exemplo-1
+curl -X POST -H "X-Empresa-Id: empresa-exemplo" -H "Content-Type: application/json" \
+  -d @pedido-vaga.json http://127.0.0.1:8000/vagas
 ```
 
 A documentação interativa fica em `/docs`.
@@ -29,14 +32,15 @@ A documentação interativa fica em `/docs`.
 ## Regras do contrato
 
 - **Sessão:** `empresa_id` vem do cabeçalho simulado `X-Empresa-Id`, nunca do corpo. Sem ele, a resposta é 401.
-- **Isolamento:** os recursos de exemplo pertencem a `empresa-exemplo`. Para outra empresa, a resposta é 404. Como nada é gravado, `POST /vagas` devolve a vaga com a empresa da sessão, mas outra empresa não consegue consultá-la depois.
-- **Identificação:** toda resposta traz `simulado: true`. As de sucesso trazem também `exemplo_fixo: true`, que sai quando a lógica entrar.
-- **Erros:** `{"erro": {"codigo": "...", "mensagem": "..."}, "simulado": true}`.
+- **Isolamento:** o que é de outra empresa não existe para a sessão: a resposta é 404.
+- **Identificação:** a sessão é simulada, então toda resposta traz `simulado: true`. `exemplo_fixo: true` marca o que ainda não vem da lógica: `/metricas` sem provedor de medição e `/sessoes/reiniciar` sem dados para recarregar. Os números dessas respostas são ilustrativos e não medem o agente.
+- **Erros:** `{"erro": {"codigo": "...", "mensagem": "..."}, "simulado": true}`. Além de 401, 404 e 422, as ações usam 409: `transicao_invalida`, `auditoria_pendente`, `aditivo_necessario`, `acao_recusada` e `chave_reutilizada`.
 - **Listas:** `pagina` e `limite`, com limite máximo de 100.
-- **Ações repetíveis:** `/parar`, `/retomar`, `/reverter` e `/destino` exigem `chave_idempotencia` e `responsavel`.
+- **Ações repetíveis:** `/parar`, `/retomar`, `/reverter` e `/destino` exigem `chave_idempotencia` e `responsavel`, que precisa ser uma pessoa. Repetir com a mesma chave devolve a primeira resposta; a mesma chave com outro pedido é recusada.
 
 ## Ainda não coberto
 
-- `POST /convites/{id}/resposta`, da T1.4d.
+- `POST /convites/{id}/resposta`, da T1.4d. Sem ela, a vaga com entrega depois do aceite fica em `convidando`; `ServicoVagas.registrar_resposta` já aplica a resposta.
+- Medição real em `/metricas`: injete `metricas=` em `ServicoVagas`.
 - Limite de requisições (FR-029).
 - CORS: um navegador em outra origem não chama a API diretamente. Use um proxy do Next ou combine a origem com a Frente 1.

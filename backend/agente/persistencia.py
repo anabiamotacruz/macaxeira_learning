@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pydantic import NonNegativeInt
 
-from backend.contratos.modelos import Contrato, Decisao, EventoFluxo, Texto
+from backend.contratos.modelos import Contrato, Decisao, EventoFluxo, Texto, Vaga
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS execucoes (
@@ -62,7 +62,35 @@ CREATE TABLE IF NOT EXISTS progressos (
     dados TEXT NOT NULL,
     PRIMARY KEY (empresa_id, vaga_id)
 );
+
+CREATE TABLE IF NOT EXISTS vagas (
+    ordem INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id TEXT NOT NULL,
+    vaga_id TEXT NOT NULL,
+    dados TEXT NOT NULL,
+    UNIQUE (empresa_id, vaga_id)
+);
+
+CREATE TABLE IF NOT EXISTS respostas_idempotentes (
+    empresa_id TEXT NOT NULL,
+    escopo TEXT NOT NULL,
+    resumo_pedido TEXT NOT NULL,
+    resposta TEXT NOT NULL,
+    PRIMARY KEY (empresa_id, escopo)
+);
 """
+
+TABELAS_DA_EMPRESA = (
+    "execucoes",
+    "eventos",
+    "chaves_idempotencia",
+    "decisoes",
+    "mandatos",
+    "progressos",
+    "vagas",
+    "respostas_idempotentes",
+)
+"""Nomes fixos, nunca vindos de fora: toda tabela com dados de uma empresa entra aqui."""
 
 
 class EstadoExecucao(Contrato):
@@ -355,3 +383,73 @@ class Repositorio:
                 (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(vaga_id, "vaga_id")),
             ).fetchone()
         return linha[0] if linha is not None else None
+
+    def salvar_vaga(self, vaga: Vaga) -> None:
+        """Grava a vaga ou a substitui, mantendo a ordem de criação."""
+        valida = _revalidar(vaga)
+        with self._transacao() as conexao:
+            conexao.execute(
+                """
+                INSERT INTO vagas (empresa_id, vaga_id, dados) VALUES (?, ?, ?)
+                ON CONFLICT (empresa_id, vaga_id) DO UPDATE SET dados = excluded.dados
+                """,
+                (valida.empresa_id, valida.id, valida.model_dump_json()),
+            )
+
+    def carregar_vaga(self, empresa_id: str, vaga_id: str) -> Vaga | None:
+        with self._transacao() as conexao:
+            linha = conexao.execute(
+                "SELECT dados FROM vagas WHERE empresa_id = ? AND vaga_id = ?",
+                (_exigir_texto(empresa_id, "empresa_id"), vaga_id),
+            ).fetchone()
+        return None if linha is None else Vaga.model_validate_json(linha[0])
+
+    def listar_vagas(self, empresa_id: str) -> list[Vaga]:
+        """Vagas da empresa, na ordem em que foram criadas."""
+        with self._transacao() as conexao:
+            linhas = conexao.execute(
+                "SELECT dados FROM vagas WHERE empresa_id = ? ORDER BY ordem",
+                (_exigir_texto(empresa_id, "empresa_id"),),
+            ).fetchall()
+        return [Vaga.model_validate_json(dados) for (dados,) in linhas]
+
+    def guardar_resposta(
+        self, empresa_id: str, escopo: str, resumo_pedido: str, resposta_json: str
+    ) -> tuple[str, str]:
+        """Guarda a resposta de uma ação repetível. Devolve a primeira gravada para o escopo."""
+        empresa_id = _exigir_texto(empresa_id, "empresa_id")
+        escopo = _exigir_texto(escopo, "escopo")
+        json.loads(resposta_json)
+        with self._transacao() as conexao:
+            conexao.execute(
+                """
+                INSERT INTO respostas_idempotentes (empresa_id, escopo, resumo_pedido, resposta)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (empresa_id, escopo) DO NOTHING
+                """,
+                (empresa_id, escopo, resumo_pedido, resposta_json),
+            )
+            return conexao.execute(
+                """
+                SELECT resumo_pedido, resposta FROM respostas_idempotentes
+                WHERE empresa_id = ? AND escopo = ?
+                """,
+                (empresa_id, escopo),
+            ).fetchone()
+
+    def carregar_resposta(self, empresa_id: str, escopo: str) -> tuple[str, str] | None:
+        with self._transacao() as conexao:
+            return conexao.execute(
+                """
+                SELECT resumo_pedido, resposta FROM respostas_idempotentes
+                WHERE empresa_id = ? AND escopo = ?
+                """,
+                (_exigir_texto(empresa_id, "empresa_id"), _exigir_texto(escopo, "escopo")),
+            ).fetchone()
+
+    def apagar_empresa(self, empresa_id: str) -> None:
+        """Apaga tudo da empresa. Serve ao reinício dos dados sintéticos de demonstração."""
+        empresa_id = _exigir_texto(empresa_id, "empresa_id")
+        with self._transacao() as conexao:
+            for tabela in TABELAS_DA_EMPRESA:
+                conexao.execute(f"DELETE FROM {tabela} WHERE empresa_id = ?", (empresa_id,))

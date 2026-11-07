@@ -96,6 +96,14 @@ class TransicaoInvalida(ErroContrato):
     """Transição fora da tabela ou sem a guarda exigida."""
 
 
+class AcaoRecusada(ErroContrato, ValueError):
+    """A ação não vale para esta pessoa agora. A mensagem é segura para mostrar."""
+
+
+class ResponsavelInvalido(ErroContrato, ValueError):
+    """A ação é de uma pessoa, e o responsável informado não identifica uma."""
+
+
 def _transitar(
     estado: EstadoFluxo,
     destino: EstadoFluxo,
@@ -141,6 +149,7 @@ MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
 REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
 RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
+REGRA_REVERSAO = "reversao_humana"
 
 
 class MotivoPausa(StrEnum):
@@ -183,6 +192,7 @@ class ResumoVaga(Contrato):
 
     vaga_id: str
     estado: str
+    analisados: int
     motivo_pausa: str | None
     mandato_versao: int | None
     limite_gasto_usd: float | None
@@ -227,20 +237,20 @@ class ProgressoFluxo(Contrato):
         for candidato in (*self.candidatos, *self.cortados):
             if candidato.id == candidato_id:
                 return candidato
-        raise ValueError(f"candidato desconhecido nesta vaga: {candidato_id!r}")
+        raise AcaoRecusada(f"candidato desconhecido nesta vaga: {candidato_id!r}")
 
 
-def _exigir_humano(responsavel: str) -> str:
+def exigir_humano(responsavel: str) -> str:
     nome = responsavel.strip()
     if not nome or nome.casefold().startswith("agente"):
-        raise ValueError("esta é uma decisão humana: informe a pessoa responsável")
+        raise ResponsavelInvalido("esta é uma decisão humana: informe a pessoa responsável")
     return nome
 
 
 def _exigir_motivo(motivo: str) -> str:
     texto = motivo.strip()
     if not texto:
-        raise ValueError("informe o motivo da decisão")
+        raise AcaoRecusada("informe o motivo da decisão")
     return texto
 
 
@@ -382,10 +392,13 @@ class FluxoVaga:
         limite_gasto_usd: float,
         politica: Politica,
         valido_ate: datetime | None = None,
+        *,
+        executar: bool = True,
     ) -> None:
         """Registra a assinatura e executa até a vaga depender de resposta externa.
 
         Com a vaga pausada, vira um aditivo: uma nova versão, que só vale depois de `retomar`.
+        Com `executar=False`, a vaga fica em `BUSCANDO`, e `continuar` segue dali.
         """
         agora = self._relogio()
         if self.estado == EstadoFluxo.PAUSADA:
@@ -404,7 +417,8 @@ class FluxoVaga:
         self._salvar_progresso(ProgressoFluxo(iniciado_em=agora))
         self._avisar_limiar(mandato)
         self._ir(EstadoFluxo.BUSCANDO)
-        self._executar()
+        if executar:
+            self._executar()
 
     def registrar_resposta(self, resposta: RespostaCandidato) -> None:
         """Aplica a resposta da pessoa. O texto dela é dado e não entra nos eventos."""
@@ -413,7 +427,7 @@ class FluxoVaga:
             (r for r in progresso.convites if r.convite.id == resposta.convite_id), None
         )
         if registro is None:
-            raise ValueError(f"convite desconhecido nesta vaga: {resposta.convite_id!r}")
+            raise AcaoRecusada(f"convite desconhecido nesta vaga: {resposta.convite_id!r}")
         candidato_id = registro.convite.candidato_id
         self._evento("resposta", f"resposta: {resposta.tipo}", candidato_id)
 
@@ -446,18 +460,26 @@ class FluxoVaga:
             self._salvar_progresso(progresso)
         self._executar()
 
-    def parar(self) -> None:
+    def parar(self, responsavel: str | None = None, motivo: str = "") -> None:
         """Pausa a vaga. Quem está em execução sai antes do próximo candidato."""
-        estado = self.estado
-        if estado == EstadoFluxo.PAUSADA:
-            return
-        try:
-            self._ir(EstadoFluxo.PAUSADA, cursor=self._cursor(), motivo=MotivoPausa.PARADA_PELO_RH)
-        except _VagaInterrompida:
-            self.parar()
+        nome = None if responsavel is None else exigir_humano(responsavel)
+        while self.estado != EstadoFluxo.PAUSADA:
+            try:
+                self._ir(
+                    EstadoFluxo.PAUSADA, cursor=self._cursor(), motivo=MotivoPausa.PARADA_PELO_RH
+                )
+            except _VagaInterrompida:
+                continue
+            self._registrar_controle("parada", nome, motivo)
 
-    def retomar(self) -> None:
-        """Continua de onde parou: depois de uma pausa ou de uma queda em estado ativo."""
+    def retomar(
+        self, *, executar: bool = True, responsavel: str | None = None, motivo: str = ""
+    ) -> None:
+        """Continua de onde parou: depois de uma pausa ou de uma queda em estado ativo.
+
+        Com `executar=False`, só tira da pausa, e `continuar` segue dali.
+        """
+        nome = None if responsavel is None else exigir_humano(responsavel)
         execucao = self._repo.carregar_estado(self.vaga.empresa_id, self.vaga.id)
         estado = self.estado
         if estado == EstadoFluxo.PAUSADA:
@@ -466,26 +488,38 @@ class FluxoVaga:
                     "erro na amostra auditada: uma pessoa precisa liberar antes de retomar"
                 )
             self._sair_da_pausa(execucao.motivo, execucao.estado_anterior, execucao.cursor)
-        elif estado == EstadoFluxo.CONCLUIDA:
-            self._entregar_fora_da_execucao()
-            return
-        elif estado not in ESTADOS_ATIVOS:
+            self._registrar_controle("retomada", nome, motivo)
+        elif estado != EstadoFluxo.CONCLUIDA and estado not in ESTADOS_ATIVOS:
             raise TransicaoInvalida(f"{estado} não tem execução para retomar")
-        self._executar()
+        if executar:
+            self.continuar()
+
+    def continuar(self) -> None:
+        """Segue a execução em andamento. Vaga pausada fica parada: retomar é com `retomar`."""
+        estado = self.estado
+        if estado == EstadoFluxo.CONCLUIDA:
+            self._entregar_fora_da_execucao()
+        elif estado in ESTADOS_ATIVOS:
+            self._executar()
+
+    def _registrar_controle(self, acao: str, nome: str | None, motivo: str) -> None:
+        if nome is not None:
+            detalhe = f": {motivo.strip()}" if motivo.strip() else ""
+            self._evento("controle", f"{acao} pedida por {nome}{detalhe}")
 
     def reverter(self, candidato_id: str, motivo: str, responsavel: str) -> Decisao:
         """Devolve a decisão à fila humana, sem apagar a original nem mudar o estado da vaga.
 
         Depois da entrega, o pacote não pode ser retirado: fica o aviso para combinar com o destino.
         """
-        nome, motivo = _exigir_humano(responsavel), _exigir_motivo(motivo)
+        nome, motivo = exigir_humano(responsavel), _exigir_motivo(motivo)
         atual = self._decisao_vigente(candidato_id)
-        if atual.regra == "reversao_humana":
+        if atual.regra == REGRA_REVERSAO:
             return atual
         if atual.tipo == TipoDecisao.PEDIR_HUMANO:
-            raise ValueError("não há decisão a reverter: a pessoa já está na fila humana")
+            raise AcaoRecusada("não há decisão a reverter: a pessoa já está na fila humana")
         nova = self._decisao_humana(
-            atual, TipoDecisao.PEDIR_HUMANO, "reversao_humana", motivo, nome, atual.evidencias
+            atual, TipoDecisao.PEDIR_HUMANO, REGRA_REVERSAO, motivo, nome, atual.evidencias
         )
         self._cancelar_convites(candidato_id)
         progresso = self._progresso()
@@ -503,12 +537,12 @@ class FluxoVaga:
         self, candidato_id: str, tipo: TipoDecisao, motivo: str, responsavel: str
     ) -> Decisao:
         """Registra o que uma pessoa decidiu sobre um item da fila, sem mudar o estado da vaga."""
-        nome, motivo = _exigir_humano(responsavel), _exigir_motivo(motivo)
+        nome, motivo = exigir_humano(responsavel), _exigir_motivo(motivo)
         if tipo not in (TipoDecisao.INDICAR, TipoDecisao.DESCARTAR):
-            raise ValueError("a fila se resolve com indicar ou descartar")
+            raise AcaoRecusada("a fila se resolve com indicar ou descartar")
         atual = self._decisao_vigente(candidato_id)
         if atual.tipo != TipoDecisao.PEDIR_HUMANO:
-            raise ValueError("a pessoa não está na fila humana")
+            raise AcaoRecusada("a pessoa não está na fila humana")
         progresso = self._progresso()
         analise = progresso.analises.get(candidato_id)
         if tipo == TipoDecisao.INDICAR:
@@ -530,6 +564,7 @@ class FluxoVaga:
         return ResumoVaga(
             vaga_id=self.vaga.id,
             estado=self.estado,
+            analisados=0 if progresso is None else len(progresso.analises),
             motivo_pausa=None if execucao is None else execucao.motivo,
             mandato_versao=None if mandato is None else mandato.versao,
             limite_gasto_usd=None if mandato is None else mandato.limite_gasto_usd,
@@ -553,17 +588,55 @@ class FluxoVaga:
             and any(c.simulado for c in (*progresso.candidatos, *progresso.cortados)),
         )
 
+    def situacao_candidatos(
+        self,
+    ) -> list[tuple[Candidato, TipoDecisao | None, DestinoPessoa | None]]:
+        """Quem passou pela vaga, com a decisão vigente e o destino dado pelo RH."""
+        dados = self._repo.carregar_progresso(self.vaga.empresa_id, self.vaga.id)
+        if dados is None:
+            return []
+        progresso = ProgressoFluxo.model_validate_json(dados)
+        decisoes = self._ultimas_decisoes()
+        situacao = []
+        for candidato in (*progresso.candidatos, *progresso.cortados):
+            decisao = decisoes.get(candidato.id)
+            situacao.append(
+                (
+                    candidato,
+                    None if decisao is None else decisao.tipo,
+                    progresso.destinos.get(candidato.id),
+                )
+            )
+        return situacao
+
+    def pacotes_entregues(self) -> list[PacoteContexto]:
+        """Os pacotes que já chegaram ao destino, montados como na entrega."""
+        dados = self._repo.carregar_progresso(self.vaga.empresa_id, self.vaga.id)
+        if dados is None:
+            return []
+        progresso = ProgressoFluxo.model_validate_json(dados)
+        decisoes = self._ultimas_decisoes()
+        return [
+            self._pacote(
+                progresso.candidato(candidato_id),
+                progresso.analises[candidato_id],
+                decisoes[candidato_id].rastro_id,
+                self._chave_de_entrega(candidato_id),
+            )
+            for candidato_id in progresso.entregues
+        ]
+
     def registrar_destino(
         self, candidato_id: str, destino: DestinoPessoa, responsavel: str
     ) -> None:
         """Guarda para onde a pessoa vai depois da vaga. Só uma pessoa decide isso."""
-        nome = _exigir_humano(responsavel)
+        nome = exigir_humano(responsavel)
         destino = DestinoPessoa(destino)
         self._decisao_vigente(candidato_id)
         progresso = self._progresso()
         candidato = progresso.candidato(candidato_id)
         if candidato.opt_out and destino != DestinoPessoa.CONTRATADA:
-            raise ValueError("pessoa com opt-out não volta ao banco nem ao talent garden")
+            raise AcaoRecusada("pessoa com opt-out não volta ao banco nem ao talent garden")
         progresso.destinos[candidato_id] = destino
         self._salvar_progresso(progresso)
         self._evento("destino", f"destino {destino} definido por {nome}", candidato_id)
@@ -571,7 +644,7 @@ class FluxoVaga:
     def _decisao_vigente(self, candidato_id: str) -> Decisao:
         decisao = self._ultimas_decisoes().get(candidato_id)
         if decisao is None:
-            raise ValueError(f"candidato sem decisão nesta vaga: {candidato_id!r}")
+            raise AcaoRecusada(f"candidato sem decisão nesta vaga: {candidato_id!r}")
         return decisao
 
     def _decisao_humana(
@@ -598,6 +671,7 @@ class FluxoVaga:
                 "tipo_anterior": anterior.tipo,
                 "regra_anterior": anterior.regra,
                 "responsavel_anterior": anterior.responsavel,
+                **({"rastro_revertido": anterior.rastro_id} if regra == REGRA_REVERSAO else {}),
             },
             evidencias=evidencias or anterior.evidencias,
             momento=self._relogio(),
@@ -619,10 +693,10 @@ class FluxoVaga:
 
     def _exigir_evidencias(self, candidato: Candidato, analise: Analise | None) -> None:
         if analise is None:
-            raise ValueError("sem análise válida não há evidência para indicar a pessoa")
+            raise AcaoRecusada("sem análise válida não há evidência para indicar a pessoa")
         faltando = criterios_sem_evidencia(self.vaga, candidato, analise)
         if faltando:
-            raise ValueError(f"sem evidência conferida para: {', '.join(faltando)}")
+            raise AcaoRecusada(f"sem evidência conferida para: {', '.join(faltando)}")
 
     def _cancelar_convites(self, candidato_id: str) -> None:
         """Encerra o que estava aberto. Convite já enviado não volta, e resposta vira tardia."""
@@ -1277,7 +1351,7 @@ class FluxoVaga:
                 self._evento("entrega", "entrega cancelada: sem autorização", candidato_id)
 
     def _entregar(self, progresso: ProgressoFluxo, candidato: Candidato) -> None:
-        chave = f"entrega:{self.vaga.empresa_id}:{self.vaga.id}:{candidato.id}"
+        chave = self._chave_de_entrega(candidato.id)
         decisao = self._ultimas_decisoes()[candidato.id]
         pacote = self._pacote(candidato, progresso.analises[candidato.id], decisao.rastro_id, chave)
         with self._contexto(progresso, candidato.id):
@@ -1294,6 +1368,9 @@ class FluxoVaga:
         progresso.entregues.append(candidato.id)
         self._salvar_progresso(progresso)
         self._evento("entrega", "pacote de contexto entregue", candidato.id)
+
+    def _chave_de_entrega(self, candidato_id: str) -> str:
+        return f"entrega:{self.vaga.empresa_id}:{self.vaga.id}:{candidato_id}"
 
     def _pacote(
         self, candidato: Candidato, analise: Analise, rastro_id: str, chave: str

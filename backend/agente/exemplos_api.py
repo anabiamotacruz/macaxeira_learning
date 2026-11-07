@@ -1,7 +1,8 @@
-"""Exemplos fixos e sintéticos da API, usados até a lógica real chegar.
+"""Exemplos sintéticos da documentação da API, e as métricas fixas até a medição chegar.
 
 Nada aqui vem do fluxo nem de pessoas reais, e os números são ilustrativos: não medem o
-agente e não devem ser citados como resultado. Este módulo sai quando a lógica entrar.
+agente e não devem ser citados como resultado. As rotas só servem daqui o que traz
+`exemplo_fixo: true`.
 """
 
 from datetime import UTC, datetime
@@ -32,7 +33,8 @@ VAGA_EXEMPLO = "vaga-exemplo-1"
 MANDATO_EXEMPLO = "mandato-exemplo-1"
 MOMENTO = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
 PESSOA_RESPONSAVEL = "Pessoa Responsável Fictícia"
-RESPONSAVEL_AGENTE = f"agente:mandato:{MANDATO_EXEMPLO}:v1"
+RESPONSAVEL_AGENTE = f"agente:mandato:{MANDATO_EXEMPLO}:v1:assinante:{PESSOA_RESPONSAVEL}"
+RESPONSAVEL_HUMANO = f"humano:{PESSOA_RESPONSAVEL}"
 FONTE = "banco_de_talentos_simulado"
 DESTINO_EXEMPLO = DestinoPessoa.TALENT_GARDEN
 
@@ -106,7 +108,7 @@ def _decisao(
         regra=regra,
         motivo=motivo,
         responsavel=responsavel,
-        rastro_id=f"rastro-exemplo-{candidato.id}",
+        rastro_id=f"execucao-exemplo:{VAGA_EXEMPLO}:{candidato.id}",
         entrada={"requisito": "python"},
         evidencias=[Evidencia(criterio="python", trecho=trecho, fonte=FONTE)],
         momento=MOMENTO,
@@ -135,9 +137,9 @@ DECISOES = {
         _decisao(
             CANDIDATOS[2],
             TipoDecisao.DESCARTAR,
-            "requisito_eliminatorio",
-            "Requisito eliminatório não atendido na fonte.",
-            "regra:requisito_eliminatorio",
+            "funil:requisito_nao_atendido",
+            "requisitos não atendidos: python",
+            RESPONSAVEL_AGENTE,
             "oito anos de Java",
         ),
     )
@@ -150,10 +152,15 @@ DECISAO_REVERTIDA = Decisao(
     tipo=TipoDecisao.PEDIR_HUMANO,
     regra="reversao_humana",
     motivo="Decisão revertida por uma pessoa; a original continua registrada.",
-    responsavel=PESSOA_RESPONSAVEL,
-    rastro_id="rastro-exemplo-reversao",
-    entrada={"rastro_revertido": DECISOES[CANDIDATOS[0].id].rastro_id},
-    evidencias=[],
+    responsavel=RESPONSAVEL_HUMANO,
+    rastro_id=DECISOES[CANDIDATOS[0].id].rastro_id,
+    entrada={
+        "tipo_anterior": DECISOES[CANDIDATOS[0].id].tipo,
+        "regra_anterior": DECISOES[CANDIDATOS[0].id].regra,
+        "responsavel_anterior": DECISOES[CANDIDATOS[0].id].responsavel,
+        "rastro_revertido": DECISOES[CANDIDATOS[0].id].rastro_id,
+    },
+    evidencias=DECISOES[CANDIDATOS[0].id].evidencias,
     momento=MOMENTO,
 )
 
@@ -207,10 +214,10 @@ SAIDA = SaidaPersonalizada(
             lacunas=["Sem dado sobre testes automatizados."],
             pontos_a_aprofundar=["Tamanho dos sistemas em que atuou."],
             ressalvas_revisor=[],
-            autorizacao="válida até 2027-11-07 (exemplo)",
+            autorizacao="valida_ate:2027-11-07",
             fonte=FONTE,
             rastro_id=DECISOES[CANDIDATOS[0].id].rastro_id,
-            chave_idempotencia=f"{VAGA_EXEMPLO}:{CANDIDATOS[0].id}:entrega",
+            chave_idempotencia=f"entrega:{EMPRESA_EXEMPLO}:{VAGA_EXEMPLO}:{CANDIDATOS[0].id}",
             simulado=True,
         )
     ],

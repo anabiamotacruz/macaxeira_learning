@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "API do agente recrutador (proposta simulada)",
-    "description": "**Proposta**, válida enquanto o acordo das frentes não sair: rotas, campos e erros podem mudar.\n\n**Exemplos fixos e sintéticos.** Nada é gravado e nenhuma lógica roda. Toda resposta traz\n`simulado: true`, e as de sucesso trazem também `exemplo_fixo: true`. Os números são\nilustrativos e não medem o agente.\n\n**Limites do agente.** O agente não agenda, não entrevista e não decide contratações.\nO destino da pessoa é registrado por alguém do RH.\n\n**Sessão.** `empresa_id` vem da sessão, simulada pelo cabeçalho `X-Empresa-Id`, nunca do corpo.\nOs recursos de exemplo pertencem a `empresa-exemplo`; para outra empresa, eles não existem.\n\n**Erros.** `{\"erro\": {\"codigo\": \"...\", \"mensagem\": \"...\"}, \"simulado\": true}`.\n\n**Gerar este arquivo.** `uv run python -m backend.agente.gerar_openapi`\n",
+    "description": "**Proposta**, válida enquanto o acordo das frentes não sair: rotas, campos e erros podem mudar.\n\n**Simulação.** A sessão é simulada e os dados são sintéticos: toda resposta traz `simulado: true`.\n`exemplo_fixo: true` marca o que ainda não vem da lógica: hoje, as métricas sem provedor de medição\ne o reinício sem dados para recarregar. Os números dessas respostas são ilustrativos e não medem o\nagente. Os exemplos desta documentação também são fictícios.\n\n**Execução.** Assinar o mandato e retomar respondem na hora e seguem em segundo plano: acompanhe por\n`GET /vagas/{id}` e `GET /vagas/{id}/eventos`.\n\n**Limites do agente.** O agente não agenda, não entrevista e não decide contratações.\nO destino da pessoa é registrado por alguém do RH.\n\n**Sessão.** `empresa_id` vem da sessão, simulada pelo cabeçalho `X-Empresa-Id`, nunca do corpo.\nO que é de outra empresa não existe para esta sessão: a resposta é 404.\n\n**Erros.** `{\"erro\": {\"codigo\": \"...\", \"mensagem\": \"...\"}, \"simulado\": true}`.\n\n**Gerar este arquivo.** `uv run python -m backend.agente.gerar_openapi`\n",
     "version": "0.1.0-proposta"
   },
   "paths": {
@@ -12,7 +12,7 @@
           "vagas"
         ],
         "summary": "Criar Vaga",
-        "description": "Cria a vaga da empresa da sessão, que espera o mandato. Exemplo fixo: nada é gravado.",
+        "description": "Cria a vaga da empresa da sessão, que espera o mandato.",
         "operationId": "criar_vaga",
         "requestBody": {
           "content": {
@@ -60,7 +60,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "vaga": {
                     "id": "vaga-exemplo-1",
                     "empresa_id": "empresa-exemplo",
@@ -156,7 +156,7 @@
           "vagas"
         ],
         "summary": "Assinar Mandato",
-        "description": "Registra o mandato assinado por uma pessoa. Exemplo fixo: o fluxo não é iniciado.",
+        "description": "Registra o mandato assinado por uma pessoa e segue a vaga em segundo plano.\n\nEm vaga pausada, vira um aditivo, que só vale depois de `/retomar`.",
         "operationId": "assinar_mandato",
         "security": [
           {
@@ -212,7 +212,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "mandato": {
                     "id": "mandato-exemplo-1",
                     "versao": 1,
@@ -262,6 +262,23 @@
                   "erro": {
                     "codigo": "nao_encontrado",
                     "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
                   },
                   "simulado": true
                 },
@@ -342,7 +359,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "vaga": {
                     "id": "vaga-exemplo-1",
                     "empresa_id": "empresa-exemplo",
@@ -519,7 +536,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "pagina": 1,
                   "limite": 20,
                   "total": 3,
@@ -723,7 +740,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "pagina": 1,
                   "limite": 20,
                   "total": 3,
@@ -865,7 +882,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "saida": {
                     "empresa_id": "empresa-exemplo",
                     "vaga_id": "vaga-exemplo-1",
@@ -900,10 +917,10 @@
                           "Tamanho dos sistemas em que atuou."
                         ],
                         "ressalvas_revisor": [],
-                        "autorizacao": "válida até 2027-11-07 (exemplo)",
+                        "autorizacao": "valida_ate:2027-11-07",
                         "fonte": "banco_de_talentos_simulado",
-                        "rastro_id": "rastro-exemplo-candidato-exemplo-1",
-                        "chave_idempotencia": "vaga-exemplo-1:candidato-exemplo-1:entrega",
+                        "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
+                        "chave_idempotencia": "entrega:empresa-exemplo:vaga-exemplo-1:candidato-exemplo-1",
                         "simulado": true
                       }
                     ],
@@ -1019,7 +1036,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "resumo": {
                     "empresa_id": "empresa-exemplo",
                     "vaga_id": "vaga-exemplo-1",
@@ -1115,7 +1132,7 @@
           "vagas"
         ],
         "summary": "Consultar Metricas",
-        "description": "Devolve taxas com casos e intervalo de Wilson. Valores ilustrativos, não medem o agente.",
+        "description": "Devolve taxas com casos e intervalo de Wilson.\n\nSem provedor de medição, os valores são ilustrativos e vêm com `exemplo_fixo: true`.",
         "operationId": "consultar_metricas",
         "security": [
           {
@@ -1270,7 +1287,7 @@
           "controle"
         ],
         "summary": "Parar Vaga",
-        "description": "Pausa a vaga a pedido de uma pessoa. Exemplo fixo: nada é alterado.",
+        "description": "Pausa a vaga a pedido de uma pessoa. A execução em curso sai antes do próximo candidato.",
         "operationId": "parar_vaga",
         "security": [
           {
@@ -1318,7 +1335,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "vaga_id": "vaga-exemplo-1",
                   "estado": "pausada",
                   "estado_anterior": "decidindo"
@@ -1351,6 +1368,23 @@
                   "erro": {
                     "codigo": "nao_encontrado",
                     "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
                   },
                   "simulado": true
                 },
@@ -1403,7 +1437,7 @@
           "controle"
         ],
         "summary": "Retomar Vaga",
-        "description": "Devolve a vaga ao estado anterior à pausa. Exemplo fixo: nada é alterado.",
+        "description": "Devolve a vaga ao estado anterior à pausa e segue em segundo plano.",
         "operationId": "retomar_vaga",
         "security": [
           {
@@ -1451,7 +1485,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "vaga_id": "vaga-exemplo-1",
                   "estado": "decidindo",
                   "estado_anterior": "pausada"
@@ -1484,6 +1518,23 @@
                   "erro": {
                     "codigo": "nao_encontrado",
                     "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
                   },
                   "simulado": true
                 },
@@ -1536,7 +1587,7 @@
           "candidatos"
         ],
         "summary": "Consultar Decisao",
-        "description": "Explica a decisão do agente sobre o candidato, com regra, evidências e rastro.",
+        "description": "Explica a decisão vigente sobre o candidato, com regra, evidências e rastro.",
         "operationId": "consultar_decisao",
         "security": [
           {
@@ -1582,7 +1633,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "decisao": {
                     "empresa_id": "empresa-exemplo",
                     "vaga_id": "vaga-exemplo-1",
@@ -1590,8 +1641,8 @@
                     "tipo": "indicar",
                     "regra": "faixa_verde_v1",
                     "motivo": "Requisito atendido com trecho da fonte, dentro do mandato.",
-                    "responsavel": "agente:mandato:mandato-exemplo-1:v1",
-                    "rastro_id": "rastro-exemplo-candidato-exemplo-1",
+                    "responsavel": "agente:mandato:mandato-exemplo-1:v1:assinante:Pessoa Responsável Fictícia",
+                    "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
                     "entrada": {
                       "requisito": "python"
                     },
@@ -1685,7 +1736,7 @@
           "controle"
         ],
         "summary": "Reverter Decisao",
-        "description": "Mostra a nova decisão ao lado da original, que nunca é apagada. Nada é alterado.",
+        "description": "Devolve a decisão à fila humana. A nova fica ao lado da original, que nunca é apagada.",
         "operationId": "reverter_decisao",
         "security": [
           {
@@ -1734,7 +1785,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "decisao_original": {
                     "empresa_id": "empresa-exemplo",
                     "vaga_id": "vaga-exemplo-1",
@@ -1742,8 +1793,8 @@
                     "tipo": "indicar",
                     "regra": "faixa_verde_v1",
                     "motivo": "Requisito atendido com trecho da fonte, dentro do mandato.",
-                    "responsavel": "agente:mandato:mandato-exemplo-1:v1",
-                    "rastro_id": "rastro-exemplo-candidato-exemplo-1",
+                    "responsavel": "agente:mandato:mandato-exemplo-1:v1:assinante:Pessoa Responsável Fictícia",
+                    "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
                     "entrada": {
                       "requisito": "python"
                     },
@@ -1763,12 +1814,18 @@
                     "tipo": "pedir_humano",
                     "regra": "reversao_humana",
                     "motivo": "Decisão revertida por uma pessoa; a original continua registrada.",
-                    "responsavel": "Pessoa Responsável Fictícia",
-                    "rastro_id": "rastro-exemplo-reversao",
+                    "responsavel": "humano:Pessoa Responsável Fictícia",
+                    "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
                     "entrada": {
-                      "rastro_revertido": "rastro-exemplo-candidato-exemplo-1"
+                      "rastro_revertido": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1"
                     },
-                    "evidencias": [],
+                    "evidencias": [
+                      {
+                        "criterio": "python",
+                        "trecho": "cinco anos de Python",
+                        "fonte": "banco_de_talentos_simulado"
+                      }
+                    ],
                     "momento": "2026-11-07T12:00:00Z"
                   }
                 }
@@ -1800,6 +1857,23 @@
                   "erro": {
                     "codigo": "nao_encontrado",
                     "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
                   },
                   "simulado": true
                 },
@@ -1852,7 +1926,7 @@
           "controle"
         ],
         "summary": "Registrar Destino",
-        "description": "Registra o destino que uma pessoa do RH decidiu. O agente não decide. Nada é gravado.",
+        "description": "Registra o destino que uma pessoa do RH decidiu. O agente não decide.",
         "operationId": "registrar_destino",
         "security": [
           {
@@ -1901,7 +1975,7 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "vaga_id": "vaga-exemplo-1",
                   "candidato_id": "candidato-exemplo-1",
                   "destino": "talent_garden",
@@ -1935,6 +2009,23 @@
                   "erro": {
                     "codigo": "nao_encontrado",
                     "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
                   },
                   "simulado": true
                 },
@@ -1987,7 +2078,7 @@
           "sessoes"
         ],
         "summary": "Reiniciar Sessao",
-        "description": "Reinicia os dados sintéticos da empresa da sessão. Exemplo fixo: nada é recarregado.",
+        "description": "Reinicia os dados sintéticos da empresa da sessão, se houver dados para recarregar.\n\nSem eles, nada é apagado, e a resposta traz `exemplo_fixo: true`.",
         "operationId": "reiniciar_sessao",
         "responses": {
           "200": {
@@ -1999,10 +2090,10 @@
                 },
                 "example": {
                   "simulado": true,
-                  "exemplo_fixo": true,
+                  "exemplo_fixo": false,
                   "empresa_id": "empresa-exemplo",
-                  "dados_recarregados": false,
-                  "mensagem": "Exemplo fixo: nenhum dado foi recarregado."
+                  "dados_recarregados": true,
+                  "mensagem": "Dados sintéticos da empresa recarregados."
                 }
               }
             }
@@ -2915,9 +3006,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "pagina": {
             "type": "integer",
@@ -2961,9 +3051,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "vaga_id": {
             "type": "string",
@@ -2998,9 +3087,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "decisao": {
             "$ref": "#/components/schemas/Decisao"
@@ -3025,9 +3113,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "vaga_id": {
             "type": "string",
@@ -3070,9 +3157,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "saida": {
             "$ref": "#/components/schemas/SaidaPersonalizada"
@@ -3117,9 +3203,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "pagina": {
             "type": "integer",
@@ -3163,9 +3248,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "mandato": {
             "$ref": "#/components/schemas/Mandato"
@@ -3194,9 +3278,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "vaga_id": {
             "type": "string",
@@ -3227,7 +3310,7 @@
           "erros_por_tipo"
         ],
         "title": "RespostaMetricas",
-        "description": "Taxas ilustrativas. Sem casos, a taxa aparece como não medida: `valor` nulo."
+        "description": "Taxas da vaga. Sem casos, a taxa aparece como não medida: `valor` nulo."
       },
       "RespostaReinicio": {
         "properties": {
@@ -3239,9 +3322,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "empresa_id": {
             "type": "string",
@@ -3251,7 +3333,7 @@
           "dados_recarregados": {
             "type": "boolean",
             "title": "Dados Recarregados",
-            "description": "Falso nos exemplos fixos: nenhum dado é recarregado."
+            "description": "Falso quando não há dados a recarregar: nada foi apagado."
           },
           "mensagem": {
             "type": "string",
@@ -3280,9 +3362,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "resumo": {
             "$ref": "#/components/schemas/ResumoExecucao"
@@ -3307,9 +3388,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "decisao_original": {
             "$ref": "#/components/schemas/Decisao"
@@ -3339,9 +3419,8 @@
           },
           "exemplo_fixo": {
             "type": "boolean",
-            "const": true,
             "title": "Exemplo Fixo",
-            "default": true
+            "default": false
           },
           "vaga": {
             "$ref": "#/components/schemas/Vaga"

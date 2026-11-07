@@ -2,6 +2,9 @@
 
 from datetime import UTC, datetime, timedelta
 
+from backend.agente.montagem import consultas_por_modelo, priorizador_do_funil
+from backend.agente.persistencia import Repositorio
+from backend.agente.servico import DependenciasFluxo, ServicoVagas
 from backend.contratos.modelos import (
     Analise,
     Candidato,
@@ -11,7 +14,16 @@ from backend.contratos.modelos import (
     Requisito,
     Vaga,
 )
-from backend.contratos.simulacoes import ClienteNaraSimulado, candidato_simulado
+from backend.contratos.simulacoes import (
+    BancoTalentosSimulado,
+    ClienteModeloSimulado,
+    ClienteNaraSimulado,
+    FonteSimulada,
+    MensageiroSimulado,
+    candidato_simulado,
+)
+from backend.fontes.consultas import ETAPA_GERAR
+from backend.modelos.resiliencia import Resiliencia
 
 AGORA = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
 TRECHO_REQUISITO = "Cinco anos com Python"
@@ -127,3 +139,78 @@ class NaraForaDoAr(ClienteNaraSimulado):
 
     def entregar(self, pacote: PacoteContexto) -> bool:
         return False
+
+
+CONSULTA_DE_TESTE = "python"
+TITULO_DE_TESTE = "Pessoa Desenvolvedora (fictícia)"
+
+PEDIDO_VAGA = {
+    "titulo": TITULO_DE_TESTE,
+    "descricao": "Vaga sintética",
+    "requisitos": [
+        {
+            "id": "python",
+            "descricao": "Experiência com Python",
+            "campo": "linguagem",
+            "valor_esperado": "python",
+        }
+    ],
+    "competencias": [{"nome": "APIs", "peso": 1.0}],
+    "meta_candidatos": 1,
+    "prazo_dias": 14,
+    "max_tentativas_contato": 2,
+}
+
+
+def pedido_mandato(**politica) -> dict:
+    return {
+        "assinante": "Pessoa Responsável Fictícia",
+        "limite_gasto_usd": 5.0,
+        "politica": {
+            "limiar_verde": 0.8,
+            "piso_nota": 0.5,
+            "max_indicacoes": 2,
+            "max_ampliacoes": 1,
+            **politica,
+        },
+    }
+
+
+def candidatos_de_teste() -> list[Candidato]:
+    """Uma pessoa na faixa verde, uma para a fila e duas que o funil tira."""
+
+    def pessoa(candidato_id: str, **campos) -> Candidato:
+        dados = {"nome": f"Pessoa Fictícia {candidato_id}", "atributos": {"linguagem": "python"}}
+        return candidato_exemplo(candidato_id, **{**dados, **campos})
+
+    return [
+        pessoa("verde"),
+        pessoa("fila"),
+        pessoa("java", atributos={"linguagem": "java"}, perfil_texto=f"{PERFIL_EXEMPLO} Java"),
+        pessoa("saiu", opt_out=True),
+    ]
+
+
+def servico_de_teste(caminho, *, candidatos=None, **pecas) -> ServicoVagas:
+    """Serviço com o funil e as consultas reais, e simulações nas demais peças."""
+    dependencias = {
+        "repositorio": Repositorio(caminho),
+        "banco": BancoTalentosSimulado(),
+        "fontes": [FonteSimulada(candidatos_de_teste() if candidatos is None else candidatos)],
+        "analisador": AnalisadorComEvidencias(notas={"fila": 0.6}),
+        "revisor": RevisorSemRessalva(),
+        "mensageiro": MensageiroSimulado(),
+        "destino": ClienteNaraSimulado(),
+        "relogio": Relogio(),
+        "consultas": consultas_por_modelo(
+            ClienteModeloSimulado({ETAPA_GERAR: {"consultas": [CONSULTA_DE_TESTE]}})
+        ),
+        "priorizador": priorizador_do_funil(),
+        "resiliencia": Resiliencia(dormir=lambda _: None),
+    }
+    extras = {
+        chave: pecas.pop(chave)
+        for chave in ("metricas", "recarregar", "gerar_id")
+        if chave in pecas
+    }
+    return ServicoVagas(DependenciasFluxo(**{**dependencias, **pecas}), **extras)

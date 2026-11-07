@@ -2,14 +2,14 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from backend.agente.persistencia import EstadoExecucao, Repositorio
-from backend.contratos.modelos import Decisao, EventoFluxo, Evidencia, TipoDecisao
+from backend.contratos.modelos import Decisao, EventoFluxo, Evidencia, TipoDecisao, Vaga
 
 FUSO_BRASILIA = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 11, 7, 12, 0, tzinfo=FUSO_BRASILIA)
@@ -448,3 +448,96 @@ def test_atualizar_cursor_recusa_valor_negativo(repo: Repositorio) -> None:
 
     with pytest.raises(ValueError):
         repo.atualizar_cursor("empresa-a", "vaga-1", -1)
+
+
+# Vagas, respostas idempotentes e reinício
+
+
+def _vaga_salva(vaga_id: str = "v1", empresa_id: str = "empresa-a") -> Vaga:
+    return Vaga(
+        id=vaga_id,
+        empresa_id=empresa_id,
+        titulo="Vaga sintética",
+        descricao="Vaga sintética",
+        requisitos=[],
+        competencias=[],
+        meta_candidatos=1,
+        prazo_dias=10,
+        max_tentativas_contato=2,
+    )
+
+
+def test_vaga_sobrevive_a_reinicio_e_e_isolada_por_empresa(tmp_path) -> None:
+    caminho = tmp_path / "agente.db"
+    Repositorio(caminho).salvar_vaga(_vaga_salva())
+    repo = Repositorio(caminho)
+
+    assert repo.carregar_vaga("empresa-a", "v1") == _vaga_salva()
+    assert repo.carregar_vaga("empresa-b", "v1") is None
+    assert repo.listar_vagas("empresa-b") == []
+
+
+def test_mesmo_id_de_vaga_em_empresas_diferentes_nao_se_mistura(tmp_path) -> None:
+    repo = Repositorio(tmp_path / "agente.db")
+    repo.salvar_vaga(_vaga_salva(empresa_id="empresa-a"))
+    repo.salvar_vaga(_vaga_salva(empresa_id="empresa-b"))
+
+    assert repo.carregar_vaga("empresa-a", "v1").empresa_id == "empresa-a"
+    assert repo.carregar_vaga("empresa-b", "v1").empresa_id == "empresa-b"
+
+
+def test_lista_de_vagas_segue_a_ordem_de_criacao(tmp_path) -> None:
+    repo = Repositorio(tmp_path / "agente.db")
+    for vaga_id in ("v2", "v1", "v3"):
+        repo.salvar_vaga(_vaga_salva(vaga_id))
+
+    assert [v.id for v in repo.listar_vagas("empresa-a")] == ["v2", "v1", "v3"]
+
+
+def test_resposta_guardada_devolve_a_primeira_e_e_isolada(tmp_path) -> None:
+    repo = Repositorio(tmp_path / "agente.db")
+
+    primeira = repo.guardar_resposta("empresa-a", "parar:v1:k1", "hash-1", '{"estado": "pausada"}')
+    segunda = repo.guardar_resposta("empresa-a", "parar:v1:k1", "hash-2", '{"estado": "outro"}')
+
+    assert primeira == segunda == ("hash-1", '{"estado": "pausada"}')
+    assert repo.carregar_resposta("empresa-a", "parar:v1:k1") == primeira
+    assert repo.carregar_resposta("empresa-b", "parar:v1:k1") is None
+
+
+def test_apagar_empresa_nao_toca_nas_outras(tmp_path) -> None:
+    repo = Repositorio(tmp_path / "agente.db")
+    for empresa in ("empresa-a", "empresa-b"):
+        repo.salvar_vaga(_vaga_salva(empresa_id=empresa))
+        repo.salvar_estado(empresa, "v1", "buscando", 0)
+        repo.salvar_progresso(empresa, "v1", "{}")
+        repo.salvar_mandato(empresa, "v1", "{}")
+        repo.registrar_chave(empresa, "chave")
+        repo.guardar_resposta(empresa, "escopo", "hash", "{}")
+        repo.registrar_evento(
+            EventoFluxo(
+                empresa_id=empresa,
+                vaga_id="v1",
+                etapa="buscando",
+                mensagem="evento",
+                momento=datetime(2026, 11, 7, 12, 0, tzinfo=UTC),
+            )
+        )
+
+    repo.apagar_empresa("empresa-a")
+
+    assert repo.carregar_vaga("empresa-a", "v1") is None
+    assert repo.carregar_estado("empresa-a", "v1") is None
+    assert repo.carregar_progresso("empresa-a", "v1") is None
+    assert repo.carregar_mandato("empresa-a", "v1") is None
+    assert repo.listar_eventos("empresa-a", "v1") == []
+    assert repo.carregar_resposta("empresa-a", "escopo") is None
+    assert not repo.chave_ja_usada("empresa-a", "chave")
+    assert repo.carregar_vaga("empresa-b", "v1") is not None
+    assert repo.carregar_estado("empresa-b", "v1") is not None
+    assert repo.listar_eventos("empresa-b", "v1") != []
+
+
+def test_apagar_empresa_exige_empresa(tmp_path) -> None:
+    with pytest.raises(ValueError):
+        Repositorio(tmp_path / "agente.db").apagar_empresa("  ")
