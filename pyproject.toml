@@ -11,11 +11,16 @@ dependencies = [
     "langfuse>=2.53",
     "pandas>=2.2",
     "mcp>=2.3,<3",
+    "pypdf>=6.1",
+    "pypdfium2>=4.30",
+    "pytesseract>=0.3.13",
+    "pillow>=11",
+    "beautifulsoup4>=4.12",
+    "httpx>=0.28",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28",
     "pytest>=8.3",
     "ruff>=0.8",
 ]

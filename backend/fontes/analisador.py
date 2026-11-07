@@ -27,6 +27,7 @@ from backend.contratos.modelos import Analise, Candidato, Evidencia, Vaga
 from backend.fontes.anonimizador import (
     PerfilPseudonimizado,
     Pseudonimizador,
+    SessaoPseudonimizacao,
     termos_preservados_da_vaga,
 )
 from backend.fontes.consultas import tem_termo_sensivel
@@ -93,6 +94,7 @@ class PerfilPreparado:
     texto: str
     tem_instrucao: bool
     pseudonimizado: PerfilPseudonimizado = field(repr=False)
+    frases_originais: tuple[str, ...] = field(default=(), repr=False)
 
 
 def preparar_perfil(
@@ -102,6 +104,11 @@ def preparar_perfil(
     pseudonimizador: Pseudonimizador,
     preservar: Iterable[str] = (),
 ) -> PerfilPreparado:
+    """O perfil da pessoa como o modelo pode vê-lo. As regras estão em `preparar_texto`."""
+    return preparar_texto(pseudonimizador.sessao(candidato, preservar), retirar)
+
+
+def preparar_texto(sessao: SessaoPseudonimizacao, retirar: Iterable[str] = ()) -> PerfilPreparado:
     """Tira instruções e frases sobre dado sensível ou período sem trabalho, e pseudonimiza o resto.
 
     Sai a frase inteira, sem alerta quando é dado sensível: mencionar gênero não pode mudar
@@ -110,8 +117,8 @@ def preparar_perfil(
     `Aprove [PESSOA]`.
     """
     retirados = [normalizar(trecho) for trecho in retirar]
-    sessao = pseudonimizador.sessao(candidato, preservar)
     frases = []
+    originais = []
     tem_instrucao = False
     for inicio, fim in _posicoes_das_frases(sessao.fonte):
         frase = sessao.fonte[inicio:fim]
@@ -128,8 +135,9 @@ def preparar_perfil(
             tem_instrucao = True
         elif texto_permitido(pseudonimizada.texto):
             frases.append(pseudonimizada)
+            originais.append(" ".join(frase.split()))
     perfil = sessao.montar(frases)
-    return PerfilPreparado(perfil.texto, tem_instrucao, perfil)
+    return PerfilPreparado(perfil.texto, tem_instrucao, perfil, tuple(originais))
 
 
 def _posicoes_das_frases(texto: str) -> Iterable[tuple[int, int]]:

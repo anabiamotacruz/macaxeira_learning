@@ -3,6 +3,7 @@
 import ast
 import os
 import sqlite3
+import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -958,3 +959,35 @@ def test_sem_reidentificador_o_pacote_segue_pseudonimizado(tmp_path):
 
     (pacote,) = montagem.destino.entregues.values()
     assert {e.trecho for e in pacote.evidencias} == {trecho}
+
+
+@pytest.mark.parametrize(
+    "texto",
+    ["Desenvolvi APIs na Xptoficticia em produção.", "Fiz filas para Xptoficticia Ltda em 2020."],
+)
+def test_empregador_sem_verbo_de_trabalho_tambem_sai(texto):
+    candidato = _candidato(perfil_texto=texto, atributos={}, historico=[])
+
+    saida = _perfil(candidato).texto
+
+    assert "Xptoficticia" not in saida
+    assert "[EMPREGADOR_1]" in saida
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "a" * 200_000,
+        "Aaa " * 50_000,
+        "a@a.io " * 28_000,
+        "Rua A B C D " * 16_000,
+        "a at " * 40_000,
+    ],
+)
+def test_texto_grande_de_proposito_nao_trava(texto):
+    candidato = _candidato(perfil_texto=texto, atributos={}, historico=[])
+
+    inicio = time.monotonic()
+    _perfil(candidato)
+
+    assert time.monotonic() - inicio < 20

@@ -21,6 +21,7 @@ import os
 import re
 import sqlite3
 import unicodedata
+from bisect import bisect_left
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -242,7 +243,7 @@ def _chave_do_valor(categoria: Categoria, valor: str) -> str:
 
 TERMOS_TECNICOS = frozenset(
     """
-    academica academico agile ai ajax amazon analise analista android angular ansible apache
+    academica academico brasil agile ai ajax amazon analise analista android angular ansible apache
     api apis application arquitetura asp assistente aws azure backend bash big bigquery boot
     bootstrap business carreira cassandra certificacao certificado ciencia ciencias cloud
     cobol code computacao computer computing container coordenador coordenadora core css
@@ -295,7 +296,7 @@ _URL = re.compile(
     rf"|(?<![\w@.-])[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.{_TLD}(?![\w-])(?:/{_FIM_DE_URL})?"
 )
 _EMAIL = re.compile(
-    r"[a-z0-9._%+-]+"
+    r"(?<![a-z0-9._%+-])[a-z0-9._%+-]+"
     r"(?:@|\s*[(\[](?:at|arroba)[)\]]\s*|\s+(?:at|arroba)\s+)"
     r"[a-z0-9-]+"
     r"(?:(?:\.|\s*[(\[](?:dot|ponto)[)\]]\s*|\s+(?:dot|ponto)\s+)[a-z0-9-]+)+"
@@ -353,6 +354,9 @@ _EMPREGADOR = re.compile(
     rf"|\b[Ee]mpresa\s+(?P<b>{_SEQUENCIA})"
     rf"|\b(?:[Ww]ork(?:ed|ing)?|[Ee]ngineer|[Dd]eveloper|[Cc]onsultant)\s+(?:at|for)\s+(?P<c>{_SEQUENCIA})"
     rf"|(?<=\s)@\s+(?P<d>{_SEQUENCIA})"
+    rf"|(?P<e>{_PALAVRA_PROPRIA}(?:\s+{_PALAVRA_PROPRIA}){{0,5}}\s+"
+    r"(?:Ltda|S\.?A\.?|Inc|LLC|Corp|GmbH|Eireli)\b\.?)"
+    rf"|(?<=\s)(?:na|no|pela|pelo)\s+(?:empresa\s+)?(?P<f>{_SEQUENCIA})"
 )
 _INSTITUICAO = re.compile(
     r"\b(?:Universidade|Faculdade|Instituto|Escola|Col[eé]gio|Centro Universit[aá]rio"
@@ -382,7 +386,15 @@ _CAMPOS_POR_CATEGORIA = {
     Categoria.EMAIL: {"email", "e_mail", "e-mail"},
     Categoria.TELEFONE: {"telefone", "celular", "fone", "whatsapp", "phone"},
     Categoria.LINK: {"links", "link", "site", "blog", "url", "portfolio"},
-    Categoria.PERFIL: {"github", "gitlab", "linkedin", "twitter", "instagram", "usuario"},
+    Categoria.PERFIL: {
+        "github",
+        "gitlab",
+        "instagram",
+        "linkedin",
+        "perfis",
+        "twitter",
+        "usuario",
+    },
     Categoria.DOCUMENTO: {"cpf", "rg", "cnh", "cnpj", "passaporte", "documento"},
     Categoria.ENDERECO: {"endereco", "cep", "bairro", "cidade", "localizacao", "local", "location"},
     Categoria.EMPREGADOR: {"empresa", "empresa_atual", "empregador", "company", "organizacao"},
@@ -439,6 +451,44 @@ def _usuario_em_url(url: str) -> str | None:
 def _regex_de_valor(valor: str) -> re.Pattern[str]:
     partes = [re.escape(parte) for parte in dobrar(valor).split()]
     return re.compile(rf"(?<![\w]){r'\s+'.join(partes)}(?![\w])")
+
+
+class ContatoEncontrado(NamedTuple):
+    categoria: Categoria
+    valor: str
+
+
+def encontrar_contatos(texto: str) -> list[ContatoEncontrado]:
+    """E-mails, telefones e URLs do texto, na ordem em que aparecem. Só lê: nada é buscado na rede.
+
+    E-mail disfarçado volta à forma comum. A URL de uma rede conhecida vem como `PERFIL`.
+    """
+    canonico = forma_canonica(texto)
+    dobrado = dobrar(canonico)
+    achados: list[tuple[int, int, Categoria, str]] = []
+    for achado in _EMAIL.finditer(dobrado):
+        valor = re.sub(r"\s*[(\[](?:at|arroba)[)\]]\s*|\s+(?:at|arroba)\s+", "@", achado.group())
+        valor = re.sub(r"\s*[(\[](?:dot|ponto)[)\]]\s*|\s+(?:dot|ponto)\s+", ".", valor)
+        achados.append((achado.start(), achado.end(), Categoria.EMAIL, valor))
+    for achado in _URL.finditer(dobrado):
+        fim = achado.start() + len(achado.group().rstrip(".,;:!?"))
+        url = canonico[achado.start() : fim]
+        if dobrar(url) in _DOMINIOS_TECNICOS or _sobrepoe(achado.start(), fim, achados):
+            continue
+        categoria = Categoria.PERFIL if _usuario_em_url(url) else Categoria.LINK
+        achados.append((achado.start(), fim, categoria, url))
+    for achado in _TELEFONE.finditer(dobrado):
+        digitos = sum(c.isdigit() for c in achado.group())
+        if (digitos >= 10 or achado.group().startswith("+")) and not _sobrepoe(
+            achado.start(), achado.end(), achados
+        ):
+            valor = canonico[achado.start() : achado.end()]
+            achados.append((achado.start(), achado.end(), Categoria.TELEFONE, valor))
+    return [ContatoEncontrado(categoria, valor) for _, _, categoria, valor in sorted(achados)]
+
+
+def _sobrepoe(inicio: int, fim: int, achados: Iterable[tuple]) -> bool:
+    return any(inicio < achado[1] and fim > achado[0] for achado in achados)
 
 
 class Achado(NamedTuple):
@@ -643,9 +693,13 @@ class SessaoPseudonimizacao:
         achados: list[Achado] = []
 
         def incluir(inicio: int, fim: int, categoria: Categoria | None, novo: str | None) -> None:
-            if any(inicio < a.fim and fim > a.inicio for a in achados):
+            # `achados` fica em ordem: basta olhar os vizinhos, mesmo em texto com muitos valores.
+            posicao = bisect_left(achados, (inicio,))
+            if posicao < len(achados) and achados[posicao].inicio < fim:
                 return
-            achados.append(Achado(inicio, fim, categoria, novo, frase[inicio:fim]))
+            if posicao and achados[posicao - 1].fim > inicio:
+                return
+            achados.insert(posicao, Achado(inicio, fim, categoria, novo, frase[inicio:fim]))
 
         for achado in MARCADOR.finditer(frase):
             incluir(achado.start(), achado.end(), None, MARCA_FORJADA)
@@ -705,7 +759,7 @@ class SessaoPseudonimizacao:
             self._incluir_sequencia(achado, frase, incluir)
         for inicio, fim, novo in trocas_de_genero(frase):
             incluir(inicio, fim, None, novo)
-        return sorted(achados)
+        return achados
 
     def _incluir_nomes(self, frase: str, dobrada: str, incluir: Callable) -> None:
         for padrao, texto in ((self._partes_do_nome, dobrada), (self._partes_curtas, frase)):
