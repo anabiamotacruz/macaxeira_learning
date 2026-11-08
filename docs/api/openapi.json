@@ -1164,7 +1164,8 @@
                       "link_destino": null,
                       "simulado": true,
                       "estado": "aguardando",
-                      "tentativa": 1
+                      "tentativa": 1,
+                      "duvidas": []
                     }
                   ]
                 }
@@ -2808,6 +2809,49 @@
         "title": "DestinoPessoa",
         "description": "Destino da pessoa depois da vaga, sempre decidido pelo RH, nunca pelo agente."
       },
+      "DuvidaConvite": {
+        "properties": {
+          "pergunta": {
+            "type": "string",
+            "title": "Pergunta"
+          },
+          "resposta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resposta"
+          },
+          "encaminhada_a_pessoa": {
+            "type": "boolean",
+            "title": "Encaminhada A Pessoa"
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "momento": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Momento"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pergunta",
+          "resposta",
+          "encaminhada_a_pessoa",
+          "simulado",
+          "momento"
+        ],
+        "title": "DuvidaConvite",
+        "description": "Dúvida da pessoa sobre o convite. O texto dela fica aqui, nunca nos eventos."
+      },
       "Erro": {
         "properties": {
           "codigo": {
@@ -3065,6 +3109,15 @@
           "tentativa": {
             "type": "integer",
             "title": "Tentativa"
+          },
+          "duvidas": {
+            "items": {
+              "$ref": "#/components/schemas/DuvidaConvite"
+            },
+            "type": "array",
+            "title": "Duvidas",
+            "description": "Dúvidas da pessoa e resposta do agente; sem resposta, uma pessoa atende.",
+            "default": []
           }
         },
         "additionalProperties": false,

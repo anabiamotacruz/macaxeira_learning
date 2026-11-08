@@ -212,6 +212,23 @@ def test_empresa_pode_desligar_personalizacao():
     assert "mensageria" in convite.mensagem
 
 
+def test_mensagem_padrao_cita_cada_criterio_uma_vez_pela_descricao():
+    analise = _analise(
+        evidencias=[
+            Evidencia(criterio="r1", trecho="Ana Souza usa Python há 5 anos.", fonte="banco"),
+            Evidencia(
+                criterio="mensageria",
+                trecho="Ana Souza liderou a migração para Kafka.",
+                fonte="banco",
+            ),
+        ]
+    )
+    convite = _convite(analise=analise, preferencias=PreferenciasContato(personalizar=False))
+
+    assert "por: Python, mensageria." in convite.mensagem
+    assert "r1" not in convite.mensagem
+
+
 def test_mensagem_padrao_e_deterministica():
     preferencias = PreferenciasContato(personalizar=False)
     assert _convite(preferencias=preferencias).mensagem == (

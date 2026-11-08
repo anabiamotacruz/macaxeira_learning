@@ -113,6 +113,8 @@ ProvedorConsultas = Callable[[Vaga, int, Sequence[str]], list[str]]
 RegistrarCorte = Callable[[CorteFunil], None]
 Priorizador = Callable[[Vaga, list[Candidato], date, RegistrarCorte], list[Candidato]]
 RedatorConvite = Callable[[Vaga, Candidato, Analise, str | None], str]
+RespondedorDuvida = Callable[[Vaga, Candidato, str], str | None]
+"""Responde a dúvida pelo material da vaga, ou devolve None para uma pessoa responder."""
 """Escreve o texto do convite a partir da análise. Sem ele, o convite usa um texto fixo."""
 Reidentificador = Callable[[PacoteContexto, Candidato, Vaga, Decisao], PacoteContexto]
 """Reduz os achados antes das análises e informa quem saiu, por `RegistrarCorte`."""
@@ -298,10 +300,21 @@ class ResumoVaga(Contrato):
     simulado: bool
 
 
+class DuvidaConvite(Contrato):
+    """Dúvida da pessoa sobre o convite. O texto dela fica aqui, nunca nos eventos."""
+
+    pergunta: str
+    resposta: str | None
+    encaminhada_a_pessoa: bool
+    simulado: bool
+    momento: AwareDatetime
+
+
 class RegistroConvite(Contrato):
     convite: Convite
     tentativa: int
     estado: EstadoConvite = EstadoConvite.A_ENVIAR
+    duvidas: list[DuvidaConvite] = Field(default_factory=list)
 
 
 class ProgressoFluxo(Contrato):
@@ -450,6 +463,7 @@ class FluxoVaga:
         reidentificador: Reidentificador | None = None,
         concorrencia: int = CONCORRENCIA_PADRAO,
         redator_convite: RedatorConvite | None = None,
+        respondedor_duvida: RespondedorDuvida | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -462,6 +476,7 @@ class FluxoVaga:
         self._resiliencia = Resiliencia() if resiliencia is None else resiliencia
         self._reidentificador = reidentificador
         self._redator_convite = redator_convite
+        self._respondedor_duvida = respondedor_duvida
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -614,6 +629,8 @@ class FluxoVaga:
                 self._registrar_opt_out(candidato_id)
             else:
                 self._aplicar_resposta(resposta.convite_id, resposta.tipo)
+                if resposta.tipo == TipoResposta.DUVIDA:
+                    self._tratar_duvida(resposta.convite_id, resposta.texto)
 
         estado = self.estado
         if estado == EstadoFluxo.CONVIDANDO:
@@ -1888,6 +1905,52 @@ class FluxoVaga:
             self._evento("convite", "convite enviado", candidato.id)
         else:
             self._evento("convite", "envio do convite falhou", candidato.id)
+
+    def _tratar_duvida(self, convite_id: str, texto: str) -> None:
+        """Responde pelo material da vaga ou deixa a dúvida para uma pessoa. Nunca para o fluxo."""
+        progresso = self._progresso()
+        registro = next(r for r in progresso.convites if r.convite.id == convite_id)
+        if registro.estado in (EstadoConvite.ENCERRADO, EstadoConvite.CANCELADO):
+            return
+        candidato = progresso.candidato(registro.convite.candidato_id)
+        resposta = None
+        if self._respondedor_duvida is not None:
+            try:
+                resposta = self._respondedor_duvida(self.vaga, candidato, texto)
+            except Exception:
+                logger.warning(
+                    "dúvida da vaga %s ficou para uma pessoa", self.vaga.id, exc_info=True
+                )
+        duvida = DuvidaConvite(
+            pergunta=texto,
+            resposta=resposta,
+            encaminhada_a_pessoa=resposta is None,
+            simulado=registro.convite.simulado,
+            momento=self._relogio(),
+        )
+
+        def guardar(atual: ProgressoFluxo) -> int:
+            alvo = next(r for r in atual.convites if r.convite.id == convite_id)
+            alvo.duvidas.append(duvida)
+            return len(alvo.duvidas)
+
+        numero = self._mudar(guardar)
+        if resposta is None:
+            self._evento("duvida", "dúvida encaminhada a uma pessoa", candidato.id)
+            return
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:duvida:{numero}",
+                "mensagem": resposta,
+                "link_agendamento": None,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:duvida:{numero}",
+            }
+        )
+        enviada = self._acao_idempotente(
+            mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+        )
+        texto_evento = "dúvida respondida pelo agente" if enviada else "resposta à dúvida não saiu"
+        self._evento("duvida", texto_evento, candidato.id)
 
     def _aplicar_resposta(self, convite_id: str, tipo: TipoResposta) -> None:
         """Grava a resposta. Com silêncio, deixa o novo convite a enviar, se a pessoa pode."""
