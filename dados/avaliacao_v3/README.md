@@ -65,6 +65,11 @@ Eles testam invariância, não ampliam o denominador de precisão. Os testes des
 entrega comparam elegibilidade no funil; a invariância de análise com modelo real
 ainda precisa ser medida.
 
+O funil só elimina falta comprovada. Os casos `pedir_humano` (dado ausente) passam
+por ele, e quem os manda para uma pessoa é a análise ou a revisão. No funil, o teste
+exige que os `indicar` apareçam, que os `descartar` saiam por `requisito_nao_atendido`
+e que os `bloquear_contato` saiam por opt-out ou autorização ausente ou vencida.
+
 ## Arquivos e protocolo de uso
 
 - `candidatos.json` e `vagas.json`: entradas, validadas pelos contratos existentes.
