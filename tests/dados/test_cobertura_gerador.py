@@ -110,7 +110,7 @@ def test_limite_de_autorizacao_com_perfil_gerado(dias, opt_out, autorizou):
     perfil.autorizacao_valida_ate = HOJE + timedelta(days=dias)
     perfil.opt_out = opt_out
     perfil.autorizou_contato = autorizou
-    banco = BancoTalentos(hoje=HOJE)
+    banco = BancoTalentos(hoje=HOJE, confiar_autorizacao_sintetica=True)
     try:
         banco.importar(perfil.empresa_id, [perfil.model_dump(mode="json")])
         assert bool(banco.buscar(perfil.empresa_id, "")) == (
@@ -122,7 +122,7 @@ def test_limite_de_autorizacao_com_perfil_gerado(dias, opt_out, autorizou):
 
 def test_base_completa_importada_respeita_empresa_autorizacao_e_paginacao(conjunto):
     perfis, _, _ = conjunto
-    banco = BancoTalentos(hoje=HOJE)
+    banco = BancoTalentos(hoje=HOJE, confiar_autorizacao_sintetica=True)
     try:
         for empresa in sorted({p.empresa_id for p in perfis}):
             registros = [p for p in perfis if p.empresa_id == empresa]

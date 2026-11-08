@@ -10,7 +10,7 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 | --- | --- | --- | --- |
 | **1. Agente** | T1.1, T1.2, T1.3, T1.8, T1.9 | T1.4, T1.7, T1.10, T1.11, T1.12 | T1.5, T1.6, T1.13 |
 | **2. Fontes e dados** | T2.1, T2.6, T2.7, T2.8 | T2.2, T2.3, T2.4, T2.9 | T2.5 |
-| **3. Contato e Nara** | T3.1, T3.2, T3.3, T3.4 | T3.5, T3.6 | Ajustes da integração |
+| **3. Contato e Nara** | T3.1, T3.2, T3.3, T3.4 | T3.6 | Ajustes da integração |
 | **4. Produto e qualidade** | T4.1, T4.2 | T4.3, T4.5, T4.6 | T4.4 |
 
 ## Fase 0: em conjunto (sábado, das 10h às 11h)
@@ -38,23 +38,25 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `validar_criterios(vaga: Vaga) -> list[str]`, `verificar_requisitos(vaga: Vaga, candidato: Candidato) -> dict[str, bool]`, `pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga) -> bool`, `decidir(vaga: Vaga, candidato: Candidato, analise: Analise, rastro_id: str) -> Decisao`.
 
-- [ ] Testar `test_recusa_criterio_sensivel` para gênero, idade, raça, religião e estado civil.
-- [ ] Testar `test_descarta_sem_requisito_eliminatorio`, com `Decisao.regra` preenchida.
-- [ ] Testar `test_nao_contata_opt_out_nem_sem_autorizacao`.
-- [ ] Testar `test_pede_humano_com_ressalva_do_revisor` e `test_nao_indica_sem_evidencia`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_recusa_criterio_sensivel` para gênero, idade, raça, religião e estado civil.
+- [x] Testar `test_descarta_sem_requisito_eliminatorio`, com `Decisao.regra` preenchida.
+- [x] Testar `test_nao_contata_opt_out_nem_sem_autorizacao`.
+- [x] Testar `test_pede_humano_com_ressalva_do_revisor` e `test_nao_indica_sem_evidencia`.
+- [x] Implementar e verificar.
 
 ### T1.2 (onda 1): máquina de estados
 
 **Arquivo:** `backend/agente/fluxo.py`. **Teste:** `tests/agente/test_fluxo.py`.
 
-**Consome:** interfaces, regras. **Produz:** `class FluxoVaga` com `iniciar()`, `aprovar_vaga()`, `aprovar_lote()`, `registrar_resposta(resposta: RespostaCandidato)`, `retomar()`, `estado` e `eventos: list[EventoFluxo]`.
+**Consome:** interfaces, regras. **Produz:** `class FluxoVaga` com `iniciar()`, `assinar_mandato()`, `registrar_resposta(resposta: RespostaCandidato)`, `retomar()`, `estado` e `eventos: list[EventoFluxo]`.
 
-- [ ] Testar `test_fluxo_completo_com_simulacoes`, de `RASCUNHO` a `CONCLUIDA`.
-- [ ] Testar `test_nao_busca_sem_aprovacao` e `test_nao_convida_sem_aprovar_lote`.
-- [ ] Testar `test_fonte_indisponivel_segue_e_registra_cobertura_parcial`.
-- [ ] Testar `test_estado_salvo_permite_retomar` e `test_meta_em_risco_avisa_recrutador`.
-- [ ] Implementar, salvando o estado após cada etapa, e verificar.
+O mandato assinado substituiu `aprovar_vaga()` e `aprovar_lote()` (D-1): o agente indica sozinho dentro dos limites do mandato, e o resto vai para uma pessoa.
+
+- [x] Testar `test_fluxo_completo_com_simulacoes`, de `RASCUNHO` a `CONCLUIDA`.
+- [x] Testar `test_nao_busca_sem_mandato` e `test_indica_sem_aprovar_lote_dentro_do_mandato`.
+- [x] Testar `test_fonte_indisponivel_segue_e_registra_cobertura_parcial`.
+- [x] Testar `test_estado_salvo_permite_retomar` e `test_meta_em_risco_avisa_recrutador`.
+- [x] Implementar, salvando o estado após cada etapa, e verificar.
 
 ### T1.3 [P] (onda 1): cliente de modelos e rastro
 
@@ -62,21 +64,21 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** implementação de `ClienteModelo`, com `custo_total_usd`, leitura de chave do ambiente e rastro no Langfuse.
 
-- [ ] Testar `test_resposta_invalida_tenta_corrigir_e_falha_com_erro_claro`.
-- [ ] Testar `test_modelo_indisponivel_usa_alternativa`.
-- [ ] Testar `test_limite_de_gasto_gera_erro_e_fluxo_pausa_com_estado_salvo`, junto com `FluxoVaga`.
-- [ ] Testar `test_registra_tokens_custo_e_tempo_por_etapa`.
-- [ ] Implementar com a API compatível com a OpenAI e verificar.
+- [x] Testar `test_resposta_invalida_tenta_corrigir_e_falha_com_erro_claro`.
+- [x] Testar `test_modelo_indisponivel_usa_alternativa`.
+- [x] Testar `test_limite_de_gasto_gera_erro_e_fluxo_pausa_com_estado_salvo`, junto com `FluxoVaga`.
+- [x] Testar `test_registra_tokens_custo_e_tempo_por_etapa`.
+- [x] Implementar com a API compatível com a OpenAI e verificar.
 
 ### T1.4 (onda 2): API
 
 **Arquivo:** `backend/agente/api.py`. **Teste:** `tests/agente/test_api.py`.
 
-**Produz:** `POST /vagas`, `POST /vagas/{id}/aprovar`, `POST /vagas/{id}/lote/aprovar`, `POST /convites/{id}/resposta`, `GET /vagas/{id}`, `GET /vagas/{id}/candidatos`, `GET /vagas/{id}/eventos`, `GET /candidatos/{id}/decisao`, `POST /sessoes/reiniciar`.
+**Produz:** `POST /vagas`, `POST /vagas/{id}/mandato`, `POST /convites/{id}/resposta`, `GET /vagas/{id}`, `GET /vagas/{id}/candidatos`, `GET /vagas/{id}/eventos`, `GET /candidatos/{id}/decisao`, `POST /sessoes/reiniciar`. O mandato substituiu as duas rotas de aprovação; a lista completa de rotas está em `docs/api/openapi.json`.
 
-- [ ] Testar criação, aprovação, consulta de explicações e reinício de sessão.
-- [ ] Testar `test_respostas_identificam_simulacao`.
-- [ ] Implementar e verificar.
+- [x] Testar criação, mandato, consulta de explicações e reinício de sessão.
+- [x] Testar `test_respostas_identificam_simulacao_e_so_as_metricas_seguem_fixas`.
+- [x] Implementar e verificar.
 
 ### T1.5 (onda 3, corte): aprendizado
 
@@ -84,9 +86,9 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `propor_ajuste(vaga: Vaga, resultados: list[ResultadoNara]) -> PropostaAjuste | None`, `aplicar(proposta)` e `reverter(proposta)`.
 
-- [ ] Testar `test_detecta_criterio_com_reprovacao_repetida`.
-- [ ] Testar `test_nao_aplica_sem_aprovacao`, `test_permite_reverter` e `test_nao_propoe_criterio_sensivel`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_detecta_criterio_com_reprovacao_repetida`.
+- [x] Testar `test_nao_aplica_sem_aprovacao`, `test_permite_reverter` e `test_nao_propoe_criterio_sensivel`.
+- [x] Implementar e verificar.
 
 ### T1.8 [P] (onda 1): persistência e retomada
 
@@ -94,10 +96,10 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `Repositorio` com `salvar_estado`, `carregar_estado`, `registrar_evento`, `listar_eventos`, `registrar_chave` e `chave_ja_usada`, em SQLite.
 
-- [ ] Testar `test_estado_sobrevive_a_reinicio`.
-- [ ] Testar `test_chave_repetida_nao_duplica_acao`.
-- [ ] Testar `test_empresa_so_le_os_proprios_dados`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_estado_sobrevive_a_reinicio`.
+- [x] Testar `test_chave_repetida_nao_duplica_acao`.
+- [x] Testar `test_empresa_so_le_os_proprios_dados`.
+- [x] Implementar e verificar.
 
 ### T1.9 [P] (onda 1): proposta de configuração da vaga
 
@@ -105,11 +107,11 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `propor_configuracao(descricao: str, empresa_id: str, cliente_modelo) -> Vaga | PerguntaVaga`, com `aprovada=False`.
 
-- [ ] Testar `test_propoe_requisitos_competencias_e_meta`.
-- [ ] Testar `test_vaga_ambigua_devolve_pergunta`.
-- [ ] Testar `test_proposta_passa_por_validar_criterios`.
-- [ ] Testar `test_descricao_com_instrucao_nao_altera_regras`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_propoe_requisitos_competencias_e_meta`.
+- [x] Testar `test_vaga_ambigua_devolve_pergunta`.
+- [x] Testar `test_proposta_passa_por_validar_criterios`.
+- [x] Testar `test_descricao_com_instrucao_nao_altera_regras`.
+- [x] Implementar e verificar.
 
 ### T1.10 [P] (onda 2): resiliência
 
@@ -117,11 +119,13 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `com_tentativas(funcao, tentativas: int, espera: float, tempo_limite: float)` e `DisjuntorFonte`, para parar temporariamente uma fonte com falhas seguidas.
 
-- [ ] Testar `test_repete_erro_temporario_com_espera`.
-- [ ] Testar `test_nao_repete_erro_permanente`.
-- [ ] Testar `test_tempo_limite_gera_erro_claro`.
-- [ ] Testar `test_disjuntor_abre_e_fecha`.
-- [ ] Implementar e aplicar nas chamadas de modelo e fontes.
+- [x] Testar `test_repete_erro_temporario_com_espera`.
+- [x] Testar `test_nao_repete_erro_permanente`.
+- [x] Testar `test_tempo_limite_gera_erro_claro`.
+- [x] Testar `test_disjuntor_abre_e_fecha`.
+- [x] Implementar e aplicar nas chamadas de modelo e fontes.
+
+Nas fontes e no destino, o fluxo usa `Resiliencia` (tentativas e disjuntor). Nas chamadas de modelo, a repetição fica no próprio `ClienteFeatherless`: o SDK repete erro temporário com tempo limite, e o cliente troca para `MODELO_ALTERNATIVO` quando o modelo falha (`test_modelo_indisponivel_usa_alternativa`).
 
 ### T1.11 (onda 2): auditoria
 
@@ -129,10 +133,10 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `registrar_decisao(decisao: Decisao)`, `explicar_candidato(empresa_id: str, candidato_id: str, vaga_id: str) -> dict` e `@rastreado(etapa: str)`, para chamadas de modelo e ferramentas.
 
-- [ ] Testar `test_toda_decisao_tem_entrada_regra_evidencias_e_responsavel`.
-- [ ] Testar `test_explicacao_liga_decisao_eventos_e_rastro`.
-- [ ] Testar `test_rastro_nao_contem_chave`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_toda_decisao_tem_entrada_regra_evidencias_e_responsavel`.
+- [x] Testar `test_explicacao_liga_decisao_eventos_e_rastro`.
+- [x] Testar `test_rastro_nao_contem_chave`.
+- [x] Implementar e verificar.
 
 ### T1.7 (onda 2): rotina do banco
 
@@ -140,10 +144,10 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Consome:** `BancoTalentos`, regras. **Produz:** `selecionar_para_contato(empresa_id: str, hoje: date) -> list[Candidato]` e `processar_vencidos(empresa_id: str, hoje: date) -> list[Decisao]`.
 
-- [ ] Testar `test_seleciona_perfis_desatualizados_dentro_do_limite`.
-- [ ] Testar `test_nao_contata_quem_saiu_ou_foi_removido`.
-- [ ] Testar `test_autorizacao_vencida_sai_da_busca`, com decisão registrada.
-- [ ] Implementar e verificar.
+- [x] Testar `test_seleciona_perfis_desatualizados_dentro_do_limite`.
+- [x] Testar `test_nao_contata_quem_saiu_ou_foi_removido`.
+- [x] Testar `test_autorizacao_vencida_sai_da_busca`, com decisão registrada.
+- [x] Implementar e verificar.
 
 ### T1.6 (onda 3, corte): adaptador MCP
 
@@ -158,14 +162,14 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 Esta tarefa é da Frente 1 e substitui a T3.8 proposta na spec da Frente 3. Não se confunde com a T1.6: aqui o agente chama outro agente recrutador; lá, outros clientes chamam as ferramentas do agente.
 
 - [ ] Confirmar a biblioteca MCP na documentação oficial e justificar a dependência no PR.
-- [ ] Testar `test_conector_segue_a_interface`.
-- [ ] Testar `test_ferramentas_vem_da_configuracao_do_destino`, sem nome de ferramenta fixo no código.
-- [ ] Testar `test_entrega_repetida_nao_duplica`, enviando `chave_idempotencia`.
-- [ ] Testar `test_servidor_fora_do_ar_deixa_entrega_pendente` e `test_tempo_limite_gera_erro_claro`.
-- [ ] Testar `test_resposta_invalida_nao_conta_como_entrega` e `test_resposta_do_servidor_e_tratada_como_dado`.
-- [ ] Testar `test_destino_sem_agenda_nem_resultado`.
-- [ ] Testar `test_empresa_de_outro_escopo_e_recusada` e `test_simulacao_e_identificada`.
-- [ ] Implementar, com rastro em cada chamada, e verificar.
+- [x] Testar `test_conector_segue_a_interface`.
+- [x] Testar `test_ferramentas_vem_da_configuracao_do_destino`, sem nome de ferramenta fixo no código.
+- [x] Testar `test_entrega_repetida_nao_duplica`, enviando `chave_idempotencia`.
+- [x] Testar `test_servidor_fora_do_ar_deixa_entrega_pendente` e `test_tempo_limite_gera_erro_claro`.
+- [x] Testar `test_resposta_invalida_nao_conta_como_entrega` e `test_resposta_do_servidor_e_tratada_como_dado`.
+- [x] Testar `test_destino_sem_agenda_nem_resultado`.
+- [x] Testar `test_empresa_de_outro_escopo_e_recusada` e `test_simulacao_e_identificada`.
+- [x] Implementar, com rastro em cada chamada, e verificar.
 
 ### T1.13 (onda 3): avaliação pela pessoa de RH
 
@@ -176,11 +180,11 @@ Esta tarefa é da Frente 1 e substitui a T3.8 proposta na spec da Frente 3. Não
 A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste, 18 de prova e 4 duplicatas, em cerca de 1h15 a 1h50. O resultado valida o gabarito e calibra o agente, mas não prova desempenho com pessoas reais.
 
 - [ ] Combinar data e horário com a pessoa de RH.
-- [ ] Testar `test_ficha_nao_mostra_gabarito_nem_resposta_do_agente`.
-- [ ] Testar `test_selecao_e_reproduzivel_e_respeita_as_particoes`.
-- [ ] Testar `test_importacao_guarda_decisao_e_motivo` e `test_resposta_incompleta_e_recusada`.
-- [ ] Testar `test_mede_concordancia_por_tipo_de_caso` e `test_duplicatas_medem_consistencia`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_ficha_nao_mostra_gabarito_nem_resposta_do_agente`.
+- [x] Testar `test_selecao_e_reproduzivel_e_respeita_as_particoes`.
+- [x] Testar `test_importacao_guarda_decisao_e_motivo` e `test_resposta_incompleta_e_recusada`.
+- [x] Testar `test_mede_concordancia_por_tipo_de_caso` e `test_duplicatas_medem_consistencia`.
+- [x] Implementar e verificar.
 - [ ] Aplicar a avaliação e, se houver muita discordância, corrigir o gerador antes de usar as taxas de erro.
 - [ ] Registrar o resultado no relatório, sem dados reais e com os limites da medição.
 
@@ -273,11 +277,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** `ler_documento(nome: str, conteudo: bytes) -> str`, para texto e PDF, e `extrair_perfil(texto: str, cliente_modelo) -> dict[str, str]`.
 
-- [ ] Testar `test_recusa_tipo_nao_permitido_e_arquivo_grande`, com limite de 5 MB.
-- [ ] Testar `test_pdf_sem_texto_gera_pedido_de_novo_envio`.
-- [ ] Testar `test_instrucao_no_documento_vira_alerta`.
-- [ ] Testar `test_extracao_nao_inventa_experiencia`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_recusa_tipo_nao_permitido_e_arquivo_grande`, com limite de 5 MB.
+- [x] Testar `test_pdf_sem_texto_gera_pedido_de_novo_envio`.
+- [x] Testar `test_instrucao_no_documento_vira_alerta`.
+- [x] Testar `test_extracao_nao_inventa_experiencia`.
+- [x] Implementar e verificar.
 
 ### T2.5 (onda 3, corte): GitHub com contas de teste
 
@@ -333,18 +337,6 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 - [ ] Testar `test_resultados_reproduziveis_alimentam_aprendizado`.
 - [ ] Implementar e verificar.
 
-### T3.5 [P] (onda 2): entrada de novos candidatos
-
-**Arquivo:** `backend/contato/entrada.py`. **Teste:** `tests/contato/test_entrada.py`.
-
-**Produz:** `gerar_link_cadastro(empresa_id: str, origem: str) -> str`, `registrar_cadastro(token: str, dados: dict[str, str], autorizacao: bool) -> Candidato` e `registrar_indicacao(empresa_id: str, indicador: str, contato: str) -> Convite`.
-
-- [ ] Testar `test_link_identifica_empresa_e_origem`.
-- [ ] Testar `test_cadastro_sem_autorizacao_nao_entra_no_banco`.
-- [ ] Testar `test_indicado_so_recebe_pedido_de_autorizacao`.
-- [ ] Testar `test_token_invalido_e_recusado`.
-- [ ] Implementar e verificar.
-
 ### T3.6 [P] (onda 2): recontato e proposta de valor
 
 **Arquivo:** `backend/contato/recontato.py`. **Teste:** `tests/contato/test_recontato.py`.
@@ -390,21 +382,21 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Arquivos:** `backend/agente/api.py`, em conjunto com a Frente 1, `tests/agente/test_seguranca_api.py`.
 
-- [ ] Testar `test_sessao_nao_acessa_dados_de_outra_empresa`.
-- [ ] Testar `test_limite_de_requisicoes_por_sessao`.
-- [ ] Testar `test_erros_nao_expoem_chave_nem_stack_trace`.
-- [ ] Testar `test_limite_de_gasto_por_sessao_bloqueia_novas_execucoes`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_sessao_nao_acessa_dados_de_outra_empresa`.
+- [x] Testar `test_limite_de_requisicoes_por_sessao`.
+- [x] Testar `test_erros_nao_expoem_chave_nem_stack_trace`.
+- [x] Testar `test_limite_de_gasto_por_sessao_bloqueia_novas_execucoes`.
+- [x] Implementar e verificar.
 
 ### T4.6 (onda 2): teste de ponta a ponta
 
 **Arquivo:** `tests/ponta_a_ponta/test_fluxo_demo.py`.
 
-- [ ] Testar `test_da_base_baguncada_a_entrega_na_nara`, com modelo simulado.
-- [ ] Testar `test_jurado_altera_vaga_e_plano_muda`.
-- [ ] Testar `test_fonte_cai_e_execucao_continua`.
-- [ ] Testar `test_reinicio_nao_duplica_convite_nem_entrega`.
-- [ ] Testar `test_dois_jurados_nao_se_afetam`.
+- [x] Testar `test_da_base_baguncada_a_entrega_na_nara`, com modelo simulado.
+- [x] Testar `test_jurado_altera_vaga_e_plano_muda`.
+- [x] Testar `test_fonte_cai_e_execucao_continua`.
+- [x] Testar `test_reinicio_nao_duplica_convite_nem_entrega`.
+- [x] Testar `test_dois_jurados_nao_se_afetam`.
 - [ ] Rodar com o modelo real uma vez antes de cada congelamento.
 
 ### T4.3 (onda 2): deploy e link testável
@@ -453,7 +445,6 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 | FR-014 | T1.1, T1.11, T1.4 |
 | FR-015 | T2.2, T3.1, T3.3, T1.4, T4.1 |
 | FR-016 | T1.5 |
-| FR-025 | T3.5 |
 | FR-026 | T2.9 |
 | FR-027 | T2.7, T2.8 |
 | FR-028 | T1.8, T1.2 |

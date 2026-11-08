@@ -110,7 +110,7 @@ Como recrutador, quero que os resultados da Nara melhorem a busca, para receber 
 - **FR-022**: O sistema DEVE atualizar perfis por conversa e registrar a data de atualização.
 - **FR-023**: O sistema DEVE remover dados a pedido e tratar autorizações vencidas.
 - **FR-024**: A busca DEVE consultar o banco da empresa antes de fontes externas.
-- **FR-025**: O sistema DEVE receber novos candidatos por um link de cadastro e por indicações, sempre com autorização registrada.
+- **FR-025**: Retirado em 2026-11-07. O produto busca os candidatos (hunting e banco da empresa) e não recebe cadastros nem indicações.
 - **FR-026**: O sistema DEVE aceitar currículo enviado pela própria pessoa, validar o arquivo e tratar o conteúdo como dado.
 - **FR-027**: O sistema DEVE traduzir a vaga em consultas e reduzir candidatos com filtros determinísticos antes das análises por modelo.
 - **FR-028**: O sistema DEVE persistir estado, decisões e eventos, e retomar uma execução depois de reinício.

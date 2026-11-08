@@ -9,6 +9,8 @@ e `Pergunta` são tipos locais da frente até o modelo de dados do #50 entrar em
 `backend/contratos` (#9).
 """
 
+import base64
+import binascii
 import logging
 import re
 import unicodedata
@@ -28,6 +30,12 @@ from backend.contato.prompts import (
     montar_pedido_interpretacao,
 )
 from backend.contato.supressao import ListaSupressao
+from backend.contato.voz import (
+    Fala,
+    ReconhecedorSimulado,
+    SintetizadorSimulado,
+    VozIlegivel,
+)
 from backend.contratos.erros import ModeloIndisponivel, RespostaInvalida
 from backend.contratos.interfaces import AgenteRecrutador, ClienteModelo
 from backend.contratos.modelos import Vaga
@@ -128,6 +136,8 @@ class MensagemWhatsApp(_Local):
     momento: AwareDatetime
     direcao: Literal["entrada", "saida"]
     simulado: bool = True
+    midia: Literal["texto", "voz"] = "texto"
+    provedor_voz: str | None = None
 
 
 class JanelaFechada(Exception):
@@ -234,8 +244,41 @@ def validar(pre: PreTriagem) -> ResultadoPreTriagem:
 # Canal simulado
 
 
+def webhook_audio(numero: str, audio: bytes, momento: datetime) -> dict:
+    """Webhook simulado de áudio. A transcrição vai no próprio áudio de teste."""
+    return _webhook(
+        numero,
+        momento,
+        {
+            "from": numero,
+            "id": f"wamid.simulado.{numero}.{int(momento.timestamp())}",
+            "timestamp": str(int(momento.timestamp())),
+            "type": "audio",
+            "audio": {
+                "mime_type": "audio/ogg",
+                "simulacao_b64": base64.b64encode(audio).decode("ascii"),
+            },
+        },
+    )
+
+
 def webhook_mensagem(numero: str, texto: str, momento: datetime) -> dict:
     """Payload de mensagem recebida no formato do webhook da WhatsApp Cloud API."""
+    return _webhook(
+        numero,
+        momento,
+        {
+            "from": numero,
+            "id": f"wamid.simulado.{numero}.{int(momento.timestamp())}",
+            "timestamp": str(int(momento.timestamp())),
+            "type": "text",
+            "text": {"body": texto},
+        },
+    )
+
+
+def _webhook(numero: str, momento: datetime, mensagem: dict) -> dict:
+    del momento
     return {
         "object": "whatsapp_business_account",
         "entry": [
@@ -248,15 +291,7 @@ def webhook_mensagem(numero: str, texto: str, momento: datetime) -> dict:
                             "messaging_product": "whatsapp",
                             "metadata": {"phone_number_id": "numero-simulado"},
                             "contacts": [{"wa_id": numero}],
-                            "messages": [
-                                {
-                                    "from": numero,
-                                    "id": f"wamid.simulado.{numero}.{int(momento.timestamp())}",
-                                    "timestamp": str(int(momento.timestamp())),
-                                    "type": "text",
-                                    "text": {"body": texto},
-                                }
-                            ],
+                            "messages": [mensagem],
                         },
                     }
                 ],
@@ -265,16 +300,32 @@ def webhook_mensagem(numero: str, texto: str, momento: datetime) -> dict:
     }
 
 
-def _ler_webhook(payload: dict) -> list[tuple[str, str, datetime]]:
+def _ler_webhook(payload: dict) -> list[tuple[str, str | bytes, datetime, str]]:
+    """Devolve número, texto ou áudio, momento e o tipo (`texto` ou `audio`)."""
     mensagens = []
     for entrada in payload.get("entry", []):
         for mudanca in entrada.get("changes", []):
             for mensagem in mudanca.get("value", {}).get("messages", []):
-                if mensagem.get("type") != "text":
+                tipo = mensagem.get("type")
+                if tipo not in ("text", "audio"):
                     continue
                 momento = datetime.fromtimestamp(int(mensagem["timestamp"]), UTC)
-                mensagens.append((mensagem["from"], mensagem["text"]["body"], momento))
+                if tipo == "text":
+                    conteudo: str | bytes = mensagem["text"]["body"]
+                else:
+                    conteudo = _audio_do_webhook(mensagem.get("audio") or {})
+                mensagens.append((mensagem["from"], conteudo, momento, tipo))
     return mensagens
+
+
+def _audio_do_webhook(audio: dict) -> bytes:
+    bruto = audio.get("simulacao_b64")
+    if not isinstance(bruto, str) or not bruto:
+        return b""
+    try:
+        return base64.b64decode(bruto, validate=True)
+    except binascii.Error:
+        return b""
 
 
 class WhatsAppSimulado:
@@ -284,18 +335,47 @@ class WhatsAppSimulado:
         self._mensagens: dict[str, list[MensagemWhatsApp]] = {}
         self._ultima_entrada: dict[str, datetime] = {}
 
-    def registrar_entrada(self, numero: str, texto: str, momento: datetime) -> None:
+    def registrar_entrada(
+        self,
+        numero: str,
+        texto: str,
+        momento: datetime,
+        *,
+        midia: Literal["texto", "voz"] = "texto",
+        provedor_voz: str | None = None,
+    ) -> None:
         self._mensagens.setdefault(numero, []).append(
-            MensagemWhatsApp(numero=numero, texto=texto, momento=momento, direcao="entrada")
+            MensagemWhatsApp(
+                numero=numero,
+                texto=texto,
+                momento=momento,
+                direcao="entrada",
+                midia=midia,
+                provedor_voz=provedor_voz,
+            )
         )
         self._ultima_entrada[numero] = momento
 
-    def enviar(self, numero: str, texto: str, momento: datetime) -> None:
+    def enviar(
+        self,
+        numero: str,
+        texto: str,
+        momento: datetime,
+        *,
+        fala: Fala | None = None,
+    ) -> None:
         ultima = self._ultima_entrada.get(numero)
         if ultima is None or momento - ultima > JANELA:
             raise JanelaFechada("sem janela de 24h aberta pelo candidato")
         self._mensagens.setdefault(numero, []).append(
-            MensagemWhatsApp(numero=numero, texto=texto, momento=momento, direcao="saida")
+            MensagemWhatsApp(
+                numero=numero,
+                texto=texto,
+                momento=momento,
+                direcao="saida",
+                midia="voz" if fala is not None else "texto",
+                provedor_voz=None if fala is None else fala.provedor,
+            )
         )
 
     def mensagens(self, numero: str) -> list[MensagemWhatsApp]:
@@ -321,6 +401,8 @@ class AtendenteWhatsApp:
         agente: AgenteRecrutador,
         cliente_modelo: ClienteModelo,
         ao_aprovar: Callable[[PreTriagem], None] | None = None,
+        reconhecedor: ReconhecedorSimulado | None = None,
+        sintetizador: SintetizadorSimulado | None = None,
     ) -> None:
         self.canal = canal
         self.emails = emails
@@ -329,6 +411,8 @@ class AtendenteWhatsApp:
         self.agente = agente
         self.cliente_modelo = cliente_modelo
         self.ao_aprovar = ao_aprovar
+        self.reconhecedor = reconhecedor or ReconhecedorSimulado()
+        self.sintetizador = sintetizador
         self._conversas: dict[str, PreTriagem] = {}
         self._emails_por_numero: dict[str, EmailConvite] = {}
 
@@ -338,12 +422,31 @@ class AtendenteWhatsApp:
     def atender(self, payload: dict) -> list[str]:
         """Processa um webhook e devolve as mensagens enviadas em resposta."""
         enviadas: list[str] = []
-        for numero, texto, momento in _ler_webhook(payload):
-            self.canal.registrar_entrada(numero, texto, momento)
+        for numero, conteudo, momento, tipo in _ler_webhook(payload):
+            if tipo == "audio":
+                try:
+                    transcricao = self.reconhecedor.transcrever(conteudo, "audio/ogg")
+                except VozIlegivel:
+                    aviso = "Recebi um áudio e não consegui ouvir. Pode escrever a mensagem?"
+                    self.canal.registrar_entrada(numero, aviso, momento, midia="voz")
+                    self._dizer(numero, aviso, momento)
+                    enviadas.append(aviso)
+                    continue
+                texto = transcricao.texto
+                self.canal.registrar_entrada(
+                    numero, texto, momento, midia="voz", provedor_voz=transcricao.provedor
+                )
+            else:
+                texto = str(conteudo)
+                self.canal.registrar_entrada(numero, texto, momento)
             for resposta in self._responder(numero, texto):
-                self.canal.enviar(numero, resposta, momento)
+                self._dizer(numero, resposta, momento)
                 enviadas.append(resposta)
         return enviadas
+
+    def _dizer(self, numero: str, texto: str, momento: datetime) -> None:
+        fala = None if self.sintetizador is None else self.sintetizador.falar(texto)
+        self.canal.enviar(numero, texto, momento, fala=fala)
 
     def _responder(self, numero: str, texto: str) -> list[str]:
         pre = self._conversas.get(numero)
