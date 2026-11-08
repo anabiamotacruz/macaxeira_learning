@@ -9,6 +9,7 @@ import hashlib
 import logging
 import math
 import re
+from collections.abc import Mapping, Sequence
 from typing import Annotated, Self
 
 from pydantic import BaseModel, Field, model_validator
@@ -189,20 +190,63 @@ def _vaga_ou_pergunta(
     return vaga
 
 
+CamposDoBanco = Mapping[str, Sequence[str]]
+"""Campo do perfil → valores que aparecem no banco. Requisito fora disso nunca seria atendido."""
+
+
 @rastreado(ETAPA_CONFIGURACAO)
-def _pedir_proposta(cliente_modelo: ClienteModelo, descricao: str) -> BaseModel:
+def _pedir_proposta(
+    cliente_modelo: ClienteModelo, descricao: str, campos: CamposDoBanco | None = None
+) -> BaseModel:
+    pedido = prompts.USUARIO_CONFIGURACAO.format(descricao=prompts.como_dado(descricao))
+    if campos:
+        linhas = "\n".join(
+            f"- {campo}: {', '.join(valores)}" for campo, valores in sorted(campos.items())
+        )
+        pedido += prompts.CAMPOS_CONFIGURACAO.format(campos=linhas)
     return cliente_modelo.completar(
-        prompts.SISTEMA_CONFIGURACAO,
-        prompts.USUARIO_CONFIGURACAO.format(descricao=prompts.como_dado(descricao)),
-        PropostaModelo,
-        ETAPA_CONFIGURACAO,
+        prompts.SISTEMA_CONFIGURACAO, pedido, PropostaModelo, ETAPA_CONFIGURACAO
     )
 
 
+def _pergunta_sobre_campos(
+    vaga: Vaga, campos: CamposDoBanco, empresa_id: str
+) -> PerguntaVaga | None:
+    """Requisito com campo ou valor que o banco não tem deixaria todo mundo sem dado."""
+    valores = {campo: {_normalizar(v) for v in lista} for campo, lista in campos.items()}
+    for requisito in vaga.requisitos:
+        aceitos = valores.get(requisito.campo)
+        if aceitos is None or _normalizar(requisito.valor_esperado) not in aceitos:
+            disponiveis = "; ".join(
+                f"{campo} ({', '.join(lista)})" for campo, lista in sorted(campos.items())
+            )
+            return PerguntaVaga(
+                empresa_id=empresa_id,
+                pergunta=(
+                    f"O requisito '{requisito.descricao}' usa {requisito.campo} = "
+                    f"{requisito.valor_esperado}, que o banco não registra. Os dados disponíveis "
+                    f"são: {disponiveis}. Como reescrever esse requisito?"
+                ),
+                trecho_ambiguo=requisito.descricao,
+            )
+    return None
+
+
+def _normalizar(valor: str) -> str:
+    return " ".join(valor.casefold().split())
+
+
 def propor_configuracao(
-    descricao: str, empresa_id: str, cliente_modelo: ClienteModelo
+    descricao: str,
+    empresa_id: str,
+    cliente_modelo: ClienteModelo,
+    *,
+    campos_do_banco: CamposDoBanco | None = None,
 ) -> Vaga | PerguntaVaga:
-    """Devolve a vaga proposta, sempre com `aprovada=False`, ou uma pergunta à pessoa."""
+    """Devolve a vaga proposta, sempre com `aprovada=False`, ou uma pergunta à pessoa.
+
+    Com `campos_do_banco`, o modelo recebe os campos e valores que existem, e o código confere.
+    """
     if not empresa_id.strip():
         raise ValueError("empresa_id é obrigatório")
 
@@ -213,9 +257,12 @@ def propor_configuracao(
     _alertar_instrucao_embutida(descricao, empresa_id)
     try:
         with contexto_rastro(empresa_id=empresa_id, vaga_id=_id_da_vaga(empresa_id, descricao)):
-            proposta = _pedir_proposta(cliente_modelo, descricao)
+            proposta = _pedir_proposta(cliente_modelo, descricao, campos_do_banco)
     except RespostaInvalida:
         return PerguntaVaga(empresa_id=empresa_id, pergunta=PERGUNTA_RESPOSTA_INVALIDA)
     if not isinstance(proposta, PropostaModelo):
         return PerguntaVaga(empresa_id=empresa_id, pergunta=PERGUNTA_RESPOSTA_INVALIDA)
-    return _vaga_ou_pergunta(proposta, descricao, empresa_id)
+    resultado = _vaga_ou_pergunta(proposta, descricao, empresa_id)
+    if isinstance(resultado, Vaga) and campos_do_banco:
+        return _pergunta_sobre_campos(resultado, campos_do_banco, empresa_id) or resultado
+    return resultado
