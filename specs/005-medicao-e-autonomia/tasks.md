@@ -136,9 +136,9 @@ description: "Lista de tarefas da feature 005: medição e autonomia"
 **Teste independente**: gerar fichas, importar respostas fictícias e conferir a concordância, sem modelo.
 
 - [ ] T046 [US4] Usuário: confirmar data e disponibilidade da pessoa de RH, cerca de 1h15 a 1h50 para 34 fichas, e registrar em `specs/005-medicao-e-autonomia/plan.md`
-- [ ] T047 [US4] Frente 1: criar `gerar_fichas` em `backend/agente/avaliacao_rh.py`, com `test_ficha_nao_mostra_gabarito_nem_resposta_do_agente` e `test_selecao_e_reproduzivel_e_respeita_as_particoes` em `tests/agente/test_avaliacao_rh.py` (contrato)
-- [ ] T048 [US4] Frente 1: criar `importar_avaliacoes` em `backend/agente/avaliacao_rh.py`, com `test_importacao_guarda_decisao_e_motivo` e `test_resposta_incompleta_e_recusada` em `tests/agente/test_avaliacao_rh.py`
-- [ ] T049 [US4] Frente 1: criar `medir_concordancia`, com kappa, intervalo, ponte e duplicatas, em `backend/agente/avaliacao_rh.py`, com `test_mede_concordancia_por_tipo_de_caso`, `test_duplicatas_medem_consistencia` e `test_discordancias_da_prova_nao_saem_caso_a_caso` em `tests/agente/test_avaliacao_rh.py`
+- [x] T047 [US4] Frente 1: criar `gerar_fichas` em `backend/agente/avaliacao_rh.py`, com `test_ficha_nao_mostra_gabarito_nem_resposta_do_agente` e `test_selecao_e_reproduzivel_e_respeita_as_particoes` em `tests/agente/test_avaliacao_rh.py` (contrato)
+- [x] T048 [US4] Frente 1: criar `importar_avaliacoes` em `backend/agente/avaliacao_rh.py`, com `test_importacao_guarda_decisao_e_motivo` e `test_resposta_incompleta_e_recusada` em `tests/agente/test_avaliacao_rh.py`
+- [x] T049 [US4] Frente 1: criar `medir_concordancia`, com kappa, intervalo, ponte e duplicatas, em `backend/agente/avaliacao_rh.py`, com `test_mede_concordancia_por_tipo_de_caso`, `test_duplicatas_medem_consistencia` e `test_discordancias_da_prova_nao_saem_caso_a_caso` em `tests/agente/test_avaliacao_rh.py`
 - [ ] T050 [US4] Frente 4: criar o formulário da ficha em `web/`, sem campos ocultos, com teste na mesma pasta
 - [ ] T051 [US4] Frente 1: permitir que `gerar_relatorio` registre a avaliação realizada, em vez do valor fixo `gabarito_validado_por_recrutador=False`, em `backend/agente/medicao.py`, com teste em `tests/agente/test_medicao.py`
 - [ ] T052 [US4] Usuário e pessoa de RH: fixar o limite de discordância antes, aplicar a sessão e, se ele for ultrapassado, pedir à Frente 2 a revisão de `dados/gerador.py`
