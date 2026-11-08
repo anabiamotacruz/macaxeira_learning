@@ -25,6 +25,7 @@ Suposições, sem confirmação na documentação (não há chave para conferir)
   `year` e `month`) e `skills` (texto ou `{name}`).
 - Falta de crédito e chave inválida: a documentação não publica o código. Tratados pelo status
   (401/403 chave, 402 crédito) e pela palavra da `message`, que nunca vai a log nem a exceção.
+  Todo 429 é ritmo, mesmo citando crédito: repete na mesma chave, sem trocar.
 - Erro não é cobrado. Resposta 200 conta um crédito por requisição.
 
 Local: `geoUrn` só aceita ID. Valor numérico em `LINKDAPI_LOCAL` vai como `geoUrn`; um nome, como o
@@ -276,13 +277,13 @@ class ProvedorLinkdApi:
             return corpo
         if status >= 500:
             raise FonteIndisponivel(f"{NOME}: status {status}")
+        if status == 429:  # sempre ritmo, mesmo citando crédito: repete na mesma chave
+            raise FonteIndisponivel(f"{NOME}: limite de requisições excedido (status 429)")
         mensagem = _mensagem(corpo)
         if status == 200 and not isinstance(corpo, dict):
             raise ErroProvedor(MotivoTroca.RESPOSTA_INVALIDA, self._custo)
         if status == 402 or _FALTA_CREDITO.search(mensagem):
             motivo = MotivoTroca.SEM_CREDITOS
-        elif status == 429:
-            raise FonteIndisponivel(f"{NOME}: limite de requisições excedido (status 429)")
         elif status in (401, 403) or _CHAVE_INVALIDA.search(mensagem):
             motivo = MotivoTroca.AUTENTICACAO
         elif status in (400, 422):

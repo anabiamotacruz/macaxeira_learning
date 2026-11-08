@@ -221,10 +221,9 @@ def test_ritmo_e_queda_sao_temporarios(status):
         provedor(TransporteSimulado(erro(status, "Too many requests"))).consultar(POR_TEXTO)
 
 
-def test_429_com_mensagem_de_credito_vira_sem_creditos():
-    with pytest.raises(ErroProvedor) as falha:
+def test_429_com_mensagem_de_credito_continua_sendo_ritmo():
+    with pytest.raises(FonteIndisponivel):
         provedor(TransporteSimulado(erro(429, "No credits left"))).consultar(POR_TEXTO)
-    assert falha.value.motivo is MotivoTroca.SEM_CREDITOS
 
 
 def test_resposta_200_fora_do_formato_e_cobrada():
@@ -390,6 +389,15 @@ def test_todas_sem_credito_passam_ao_proximo_provedor():
 
 def test_429_espera_e_tenta_de_novo_sem_trocar_de_chave():
     transporte = TransporteSimulado(erro(429, "Too many requests"), busca(COMPLETA))
+    resultado = montar(AMBIENTE_TRES, transporte).cadeia.consultar(EMPRESA, POR_TEXTO)
+    assert chaves_usadas(transporte) == [CHAVE_1, CHAVE_1]
+    assert resultado.provedor == "linkdapi#1"
+    assert resultado.trocas == []
+
+
+def test_429_que_cita_credito_nao_troca_de_chave():
+    mensagem = "Too many requests for your tier… add credits"
+    transporte = TransporteSimulado(erro(429, mensagem), busca(COMPLETA))
     resultado = montar(AMBIENTE_TRES, transporte).cadeia.consultar(EMPRESA, POR_TEXTO)
     assert chaves_usadas(transporte) == [CHAVE_1, CHAVE_1]
     assert resultado.provedor == "linkdapi#1"
