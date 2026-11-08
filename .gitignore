@@ -223,6 +223,3 @@ __marimo__/
 node_modules/
 .next/
 .vercel/
-
-# Saída das avaliações (relatório e trilha de cada rodada)
-avaliacoes/saida/
