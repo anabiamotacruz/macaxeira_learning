@@ -57,6 +57,7 @@ from backend.agente.mandato import (
     mandato_valido,
 )
 from backend.agente.maquina import ESTADOS_ATIVOS, TRANSICOES
+from backend.agente.palavras_chave import consulta_do_recrutador
 from backend.agente.persistencia import Repositorio, resumos_da_pessoa
 from backend.agente.regras import (
     CORTES_POR_AUTORIZACAO,
@@ -430,6 +431,12 @@ def _pedir_consultas(
     consultas: ProvedorConsultas, vaga: Vaga, rodada: int, anteriores: Sequence[str]
 ) -> list[str]:
     return consultas(vaga, rodada, anteriores)
+
+
+@rastreado("consulta_recrutador")
+def _consulta_do_recrutador(vaga: Vaga) -> str | None:
+    """O rastro guarda que a consulta do recrutador entrou; o texto fica no evento da vaga."""
+    return consulta_do_recrutador(vaga)
 
 
 @rastreado("busca_fonte")
@@ -1490,7 +1497,11 @@ class FluxoVaga:
         return list(lidos.values())
 
     def _consultas_da_rodada(self, progresso: ProgressoFluxo) -> list[str]:
-        """Pede as consultas uma vez por rodada: retomar não paga pelo modelo de novo."""
+        """Pede as consultas uma vez por rodada: retomar não paga pelo modelo de novo.
+
+        As palavras-chave do recrutador, quando há, vão primeiro em toda rodada, seguidas das
+        consultas do provedor. Assim a ampliação também lê a página seguinte da consulta dele.
+        """
         rodada = progresso.ampliacoes
         if rodada not in progresso.consultas_por_rodada:
             self._conferir_gasto()
@@ -1502,6 +1513,11 @@ class FluxoVaga:
                 )
             )
             geradas = _pedir_consultas(self._consultas, self.vaga, rodada, anteriores)
+            if self.vaga.palavras_chave:
+                principal = _consulta_do_recrutador(self.vaga)
+                if principal is not None:
+                    geradas = [principal, *geradas]
+                    self._evento("busca", f"consulta principal do recrutador: {principal}")
             permitidas = [c for c in dict.fromkeys(geradas) if not tem_termo_sensivel(c)]
             if len(permitidas) != len(dict.fromkeys(geradas)):
                 self._evento("busca", "consulta com dado sensível recusada")

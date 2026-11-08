@@ -27,7 +27,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.security import APIKeyHeader
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.agente import exemplos_api as exemplos
@@ -43,6 +43,7 @@ from backend.agente.fluxo import (
 )
 from backend.agente.mandato import MandatoInvalido
 from backend.agente.montagem import montar_servico
+from backend.agente.palavras_chave import MAX_CARACTERES_PALAVRA, MAX_PALAVRAS_CHAVE
 from backend.agente.servico import (
     AditivoNecessario,
     CandidatoInexistente,
@@ -133,6 +134,11 @@ class RespostaSimulada(Contrato):
     exemplo_fixo: bool = False
 
 
+PalavraChave = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CARACTERES_PALAVRA)
+]
+
+
 class PedidoVaga(Contrato):
     """Dados da vaga. `id` e `empresa_id` não vêm do cliente."""
 
@@ -143,6 +149,17 @@ class PedidoVaga(Contrato):
     meta_candidatos: Annotated[int, Field(ge=1)]
     prazo_dias: Annotated[int, Field(ge=1)]
     max_tentativas_contato: Annotated[int, Field(ge=0)]
+    palavras_chave: Annotated[
+        list[PalavraChave],
+        Field(
+            max_length=MAX_PALAVRAS_CHAVE,
+            description=(
+                "Termos do recrutador, como `Kubernetes` ou `Python`. Juntos, viram a consulta "
+                "principal da busca externa, antes das consultas do agente. São dado: o servidor "
+                "tira operadores de busca e recusa termo sensível. Vazio mantém a busca de sempre."
+            ),
+        ),
+    ] = []
 
 
 class PedidoMandato(Contrato):
