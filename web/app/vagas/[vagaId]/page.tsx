@@ -15,8 +15,8 @@ export default function PainelDaVagaPage({ params }: { params: Promise<{ vagaId:
   return (
     <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
       <Sidebar active="catalogo" />
-      <div className="md:pl-[238px]">
-        <div className="mx-auto max-w-[1050px] px-5 py-10 sm:px-8 lg:px-11">
+      <div>
+        <div className="mx-auto max-w-[1050px] px-5 py-8 sm:px-6 lg:px-6">
           <Link className="text-sm font-medium text-[#4c8885] hover:text-[#fb3c0d]" href="/">← Voltar ao catálogo</Link>
           <div className="mt-6">
             <Suspense fallback={<p className="text-[#718784]">Carregando a vaga…</p>}>

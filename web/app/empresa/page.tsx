@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { Sidebar } from "../../components/Sidebar";
@@ -40,12 +39,7 @@ export default function EmpresaPage() {
   return (
     <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
       <Sidebar active="empresa" />
-      <div className="md:pl-[238px]">
-        <header className="flex h-[80px] items-center justify-between border-b border-[#e4e9e5] bg-white/80 px-5 sm:px-10 md:h-[94px]">
-          <div className="flex items-center gap-2"><img alt="Coral da CORA" className="h-10 w-10 object-contain" src="/coral.png" /><div><p className="text-xl font-semibold leading-none tracking-tight text-[#0b3038]">CORA</p><p className="mt-1 text-[7px] font-medium uppercase tracking-wide text-[#718784]">Recrutamento ativo</p></div></div>
-          <Link className="text-sm font-medium text-[#526c68] hover:text-[#fb3c0d]" href="/">Voltar ao catálogo</Link>
-        </header>
-        <div className="mx-auto max-w-[1050px] px-5 py-10 sm:px-8 lg:px-11">
+      <div className="mx-auto max-w-[1050px] px-5 py-8 sm:px-6 lg:px-6">
           <header className="mb-8"><p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4c8885]">Contexto da empresa</p><h1 className="text-4xl font-semibold tracking-[-0.04em] text-[#0b3038]">Perfil da empresa</h1><p className="mt-2 text-sm text-[#718784]">Esse contexto orienta a busca sem substituir decisões humanas.</p></header>
           {salvo && <p className="mb-5 rounded-lg border border-[#b9dfc5] bg-[#eef9f0] px-4 py-3 text-sm text-[#377b5d]" role="status">Perfil salvo neste navegador.</p>}
           <section className="mb-5 rounded-xl border border-[#dfe7e2] bg-white p-6">
@@ -65,7 +59,6 @@ export default function EmpresaPage() {
           </section>
           <p className="mt-5 text-xs text-[#8b9996]">Dados sintéticos · este perfil é salvo localmente e ainda não é enviado para a API.</p>
         </div>
-      </div>
     </main>
   );
 }

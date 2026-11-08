@@ -36,8 +36,8 @@ export default function ModelosDeVagaPage() {
   return (
     <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
       <Sidebar active="criar" />
-      <div className="md:pl-[238px]">
-        <div className="mx-auto max-w-[1050px] px-5 py-10 sm:px-8 lg:px-11">
+      <div>
+        <div className="mx-auto max-w-[1050px] px-5 py-8 sm:px-6 lg:px-6">
           <Link className="text-sm font-medium text-[#4c8885] hover:text-[#fb3c0d]" href="/criar-vaga">← Criar do zero</Link>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-[#0b3038]">Modelos de vaga</h1>
           <p className="mt-2 text-sm text-[#718784]">Vagas de exemplo com requisitos eliminatórios e competências, prontas para o agente trabalhar. Os dados são sintéticos.</p>

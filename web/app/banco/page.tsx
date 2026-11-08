@@ -116,33 +116,7 @@ export default function BancoPage() {
     <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
       <Sidebar active="banco" />
 
-      <div className="md:pl-[238px]">
-        <header className="flex h-[80px] items-center justify-between border-b border-[#e4e9e5] bg-white/80 px-5 sm:px-10 md:h-[94px]">
-          <div className="flex items-center gap-2 md:hidden">
-            <CoralMark />
-            <div>
-              <p className="text-xl font-semibold leading-none tracking-tight text-[#0b3038]">CORA</p>
-              <p className="mt-1 text-[7px] font-medium uppercase leading-tight tracking-wide text-[#718784]">
-                Recrutamento ativo
-              </p>
-            </div>
-          </div>
-          <div className="hidden h-10 w-full max-w-[320px] items-center gap-3 rounded-lg bg-[#f0f4f1] px-4 text-sm text-[#8b9b99] md:flex">
-            <Icon name="search" size={17} />
-            <span>Buscar candidatos ou competências</span>
-          </div>
-          <div className="ml-4 flex items-center gap-2 sm:gap-3">
-            <button aria-label="Notificações" className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-[#e0e7e2] bg-white text-[#67807d]" type="button">
-              <Icon name="bell" />
-              <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#fb7356]" />
-            </button>
-            <button className="hidden rounded-lg border border-[#e0e7e2] bg-white px-4 py-2.5 text-xs font-medium text-[#526c68] sm:block" type="button">
-              Ajuda
-            </button>
-          </div>
-        </header>
-
-        <div className="mx-auto max-w-[1235px] px-5 py-10 sm:px-8 lg:px-11">
+      <div className="mx-auto max-w-[1240px] px-5 py-8 sm:px-6 lg:px-6">
           <header className="mb-8 flex flex-wrap items-end justify-between gap-5">
             <div>
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4c8885]">Recrutamento inteligente</p>
@@ -228,7 +202,6 @@ export default function BancoPage() {
             <SimuladoBadge />
             <p className="text-[11px] text-[#8b9996]">Dados sintéticos · revisão humana</p>
           </div>
-        </div>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-[#dfe7e2] bg-[#5b5b5b] px-2 py-2 text-[10px] text-[#d0d6d5] md:hidden">
