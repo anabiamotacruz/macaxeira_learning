@@ -361,3 +361,12 @@ export async function obterSugestaoDeAjuste(vagaId: string): Promise<SugestaoAju
   );
   return resposta.sugestao;
 }
+
+export async function proporVaga(
+  descricao: string,
+): Promise<{ proposta: ModeloDeVaga | null; pergunta: string | null }> {
+  const resposta = await requestComMotivo<
+    ApiEnvelope & { proposta: ModeloDeVaga | null; pergunta: string | null }
+  >("/vagas/proposta", { method: "POST", body: JSON.stringify({ descricao }) });
+  return { proposta: resposta.proposta, pergunta: resposta.pergunta };
+}
