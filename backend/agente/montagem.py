@@ -37,8 +37,15 @@ from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
 from backend.contato.conversa import contem_instrucao, material_da_vaga, responder_duvida
+from backend.contato.email_inicial import (
+    ContatoBloqueado,
+    ContatoPublicado,
+    Remetente,
+    criar_email,
+)
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contato.pos_entrevista import mensagem_pos_entrevista
+from backend.contato.supressao import ListaSupressao
 from backend.contratos.erros import ModeloIndisponivel
 from backend.contratos.interfaces import (
     AgenteRecrutador,
@@ -289,8 +296,46 @@ def responder_duvida_demo(vaga: Vaga, candidato: Candidato, texto: str) -> str |
     return None if trecho is None else f"[Resposta simulada] Pelo material da vaga: {trecho}"
 
 
+REMETENTE_DEMO = Remetente(
+    nome_empresa="empresa fictícia da demonstração", numero_whatsapp="5500000000000"
+)
+"""Número sintético: na demonstração, a conversa do WhatsApp é simulada no painel."""
+_SUPRESSAO_DEMO = ListaSupressao(b"lista-de-supressao-da-demonstracao")
+
+
+def _contato_demo(candidato: Candidato) -> ContatoPublicado:
+    """Contato sintético da pessoa sintética, com a origem. Nunca é endereço real."""
+    usuario = re.sub(r"[^a-z0-9]+", "-", candidato.id.lower()).strip("-")
+    origem = candidato.origem if candidato.origem.startswith("https://") else ""
+    return ContatoPublicado(
+        canal="email",
+        endereco=f"{usuario}@exemplo.invalid",
+        url_origem=origem or f"https://perfil-sintetico.example.invalid/{usuario}",
+        descricao_origem="o perfil público sintético da demonstração",
+        coletado_em=_agora(),
+        publicado_para_contato=True,
+    )
+
+
 def redigir_convite(vaga: Vaga, candidato: Candidato, analise: Analise, link: str | None) -> str:
-    """Convite da Frente 3 sem modelo: cita os critérios com evidência e o link da Nara."""
+    """O e-mail inicial da Frente 3: critérios com evidência, WhatsApp com o código e a origem.
+
+    Sem contato publicado, volta ao convite simples. O link de agendamento só vem depois do aceite.
+    """
+    try:
+        email = criar_email(
+            vaga,
+            candidato,
+            analise,
+            _contato_demo(candidato),
+            REMETENTE_DEMO,
+            _SUPRESSAO_DEMO,
+            ClienteModeloSimulado(),
+            personalizar=False,
+        )
+        return email.convite.mensagem
+    except (ContatoBloqueado, ValueError) as erro:
+        logger.warning("convite simples para %s: %s", candidato.id, erro)
     convite = criar_convite(
         vaga,
         candidato,
