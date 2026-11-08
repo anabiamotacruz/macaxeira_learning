@@ -210,7 +210,7 @@ Todos em `backend/fontes/anonimizador.py`, com teste em `tests/fontes/test_anoni
 
 - [ ] T063 [TIME] Responder Q1: como o legítimo interesse convive com o corte `sem_autorizacao` e com a constituição. Bloqueia T045 e parte de T046.
 - [X] T064 [TIME] Responder Q2: a busca passa a usar a Brave Search API, por decisão do responsável pelo produto (código em T073). Falta só registrar a decisão na arquitetura, que está em `origin/main`.
-- [ ] T074 [TIME] Responder Q4: contratar por escrito o direito de armazenar resultados da Brave, ou reduzir o que é guardado, antes de usar dados reais.
+- [ ] T074 [TIME] Responder Q4. Feito: a Brave é só descoberta transitória, nada dela é gravado e o cache é só da execução (decisão do responsável pelo produto, 8/11/2026). Falta o parecer jurídico sobre a URL da página lida e os dados guardados dela, antes de usar dados reais.
 - [ ] T065 [TIME] **Dados do LinkedIn por provedor contratado.** Definir dono, forma da entrega (dataset ou API), termos e plano. A coleta é do provedor; a integração é implementação do time, revisada por pessoas, inclusive a relação com os bloqueios atuais em `url_segura.py`, `bright_data.py` e `people_data_labs.py`. O código atual, escrito pelo agente, não faz essa coleta. Responde a Q3.
 - [ ] T066 [TIME] Obter o parecer jurídico sobre a base legal, o uso de pseudonimização, a camada 6 e o prazo de retenção, e escrever o teste de balanceamento (LIA) e, se pedido, o relatório de impacto (RIPD).
 - [ ] T067 [TIME] Acertar entre as quatro frentes a emenda ao princípio VII da constituição e aos textos ligados a ela. Há um rascunho local 2.0.0, não commitado, que precisa de revisão antes de valer.

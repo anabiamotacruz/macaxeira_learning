@@ -86,13 +86,14 @@ flowchart LR
 
 **Camada 1: índice do LinkedIn por API de busca (descoberta).**
 - Buscadores indexam perfis públicos do LinkedIn. A partir dos critérios da vaga, o agente gera consultas para uma API de busca oficial. Exemplo: `site:linkedin.com/in "Recife" "desenvolvedor" "Python"`.
-- O resultado vem **do buscador**: URL do perfil, título (normalmente nome, cargo e empresa) e trecho com a cidade. Gravamos isso como `FonteBruta` do tipo `busca`, com origem no buscador.
+- O resultado vem **do buscador**: URL do perfil, título (normalmente nome, cargo e empresa) e trecho com a cidade. Gravamos isso como `FonteBruta` do tipo `busca`, com origem no buscador. Com a Brave, nada disso é gravado: ver a decisão de 8/11/2026 abaixo.
 - **O sistema nunca abre a URL do LinkedIn.** O coletor bloqueia `linkedin.com` e subdomínios em código, sem exceção.
 - **O que costuma vir no resultado** (varia por buscador e por pessoa; testar com os perfis do próprio time): nome, título profissional, empresa atual, formação mais recente, cidade e, às vezes, o começo do "Sobre".
 - **O que não vem:** histórico completo com datas, lista de competências, currículo, site pessoal e contatos. Quem esconde o perfil dos buscadores nas configurações do LinkedIn não aparece.
 - **Como completar:** com nome, empresa e cidade, o agente faz uma segunda busca pelas outras páginas da pessoa (GitHub, site, palestras) e só junta os registros quando há um link cruzado (camada 2), para não confundir homônimos.
 - Esses dados entram com confiança "autodeclarada, possivelmente desatualizada". Servem para descobrir a pessoa e cruzar identidades, nunca como única evidência de uma competência.
 - O plano da API precisa permitir armazenar os resultados. No Brave Search, isso exige um plano "com direito de armazenamento".
+- **Decisão de 8/11/2026 (responsável pelo produto):** a Brave é só descoberta transitória, porque os termos (seção 3(b)(i)) proíbem guardar ou fazer cache dos resultados fora do armazenamento transitório. Título, trecho e todo texto dela ficam só em memória, durante a execução, para escolher a página a ler. Só fica o que a leitura da página trouxe, com a URL da página e a data da leitura; sem leitura, nada fica. A URL e os dados guardados precisam de revisão jurídica.
 - **Risco:** é uma zona cinzenta. Não acessamos o LinkedIn, mas o LinkedIn pode contestar o uso. Precisa de validação jurídica antes de ir para produção.
 
 **Camada 2: o LinkedIn como chave de identidade (cruzamento).**
