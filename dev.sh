@@ -51,9 +51,9 @@ esperar_http() {  # url, tentativas
 }
 
 # Python
-if [[ ! -x .venv/bin/python ]]; then
-  info "Criando o ambiente Python (uv sync)…"
-  uv sync
+if [[ ! -x .venv/bin/python || pyproject.toml -nt .venv/.dev-sincronizado || uv.lock -nt .venv/.dev-sincronizado ]]; then
+  info "Sincronizando o ambiente Python (uv sync)…"
+  uv sync && touch .venv/.dev-sincronizado
 fi
 
 # WhatsApp (Evolution API)
@@ -152,9 +152,11 @@ PIDS+=($!)
 esperar_http "http://$API_HOST:$PORTA_API/docs" 30 || { aviso "A API não subiu. Veja .dev/api.log"; tail -20 "$LOGS/api.log"; exit 1; }
 
 # Painel web
-if [[ ! -d web/node_modules ]]; then
+# Instala também quando a main trouxe dependência nova (package.json ou lockfile mais novos).
+if [[ ! -f web/node_modules/.modules.yaml || web/package.json -nt web/node_modules/.modules.yaml \
+      || web/pnpm-lock.yaml -nt web/node_modules/.modules.yaml ]]; then
   info "Instalando as dependências do painel (pnpm install)…"
-  (cd web && pnpm install --frozen-lockfile)
+  (cd web && pnpm install --frozen-lockfile && touch node_modules/.modules.yaml)
 fi
 info "Subindo o painel em http://localhost:$PORTA_WEB (log em .dev/web.log)"
 (cd web && NEXT_PUBLIC_API_URL="http://$API_HOST:$PORTA_API" pnpm dev --port "$PORTA_WEB") \
