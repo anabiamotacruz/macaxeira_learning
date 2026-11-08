@@ -4,6 +4,7 @@ import type {
   Decisao,
   EstadoVaga,
   EventoFluxo,
+  TipoDecisao,
   TipoResposta,
   Vaga,
 } from "./tipos";
@@ -141,6 +142,84 @@ export async function listarVagas(): Promise<ApiVagaListItem[]> {
     }),
   );
   return vagas.filter((vaga): vaga is ApiVagaListItem => vaga !== null);
+}
+
+/** Pessoa do banco de talentos, montada a partir das vagas da empresa, sem repetição. */
+export type PessoaDoBanco = {
+  candidato: Candidato;
+  vagaId: string;
+  vagaTitulo: string;
+  decisao: TipoDecisao | null;
+  nota: number | null;
+  simulado: boolean;
+};
+
+/** A nota que a regra gravou na decisão, quando houver. */
+export function notaDaDecisao(decisao: Decisao): number | null {
+  const bruta = decisao.entrada?.nota;
+  if (bruta === undefined || bruta === "") return null;
+  const nota = Number(bruta);
+  return Number.isFinite(nota) ? nota : null;
+}
+
+/** Candidatos de uma vaga, até o limite máximo da API por página. */
+async function todosOsCandidatos(vagaId: string): Promise<ApiCandidatosResponse["itens"]> {
+  const itens: ApiCandidatosResponse["itens"] = [];
+  for (let pagina = 1; ; pagina += 1) {
+    const resposta = await listarCandidatos(vagaId, pagina, 100);
+    itens.push(...resposta.itens);
+    if (resposta.itens.length === 0 || pagina * 100 >= resposta.total) return itens;
+  }
+}
+
+/**
+ * Banco de talentos: as pessoas das vagas da empresa (`GET /vagas` e os candidatos de cada uma), sem repetir.
+ * As vagas vêm das mais novas para as mais antigas, então vale a decisão da vaga mais recente.
+ */
+export async function listarPessoasDoBanco(): Promise<PessoaDoBanco[]> {
+  const vagas = await listarVagas();
+  const porVaga = await Promise.all(
+    vagas.map(async (item) => ({ vaga: item.vaga, itens: await todosOsCandidatos(item.vaga.id) })),
+  );
+  const pessoas = new Map<string, PessoaDoBanco>();
+  for (const { vaga, itens } of porVaga) {
+    for (const item of itens) {
+      if (pessoas.has(item.candidato.id)) continue;
+      pessoas.set(item.candidato.id, {
+        candidato: item.candidato,
+        vagaId: vaga.id,
+        vagaTitulo: vaga.titulo,
+        decisao: item.decisao,
+        nota: null,
+        simulado: item.candidato.simulado,
+      });
+    }
+  }
+  await Promise.all(
+    [...pessoas.values()]
+      .filter((pessoa) => pessoa.decisao !== null)
+      .map(async (pessoa) => {
+        try {
+          pessoa.nota = notaDaDecisao((await obterDecisao(pessoa.candidato.id, pessoa.vagaId)).decisao);
+        } catch {
+          // Sem a decisão detalhada, a pessoa continua na lista, só sem a nota.
+        }
+      }),
+  );
+  return [...pessoas.values()];
+}
+
+/** Acha a pessoa e a vaga. Sem `vagaId`, usa a primeira vaga em que a pessoa aparece. */
+export async function localizarCandidato(
+  candidatoId: string,
+  vagaId?: string,
+): Promise<{ candidato: Candidato; destino: string | null; vagaId: string } | null> {
+  const vagas = vagaId ? [vagaId] : (await listarVagas()).map((item) => item.vaga.id);
+  for (const id of vagas) {
+    const item = (await todosOsCandidatos(id)).find(({ candidato }) => candidato.id === candidatoId);
+    if (item) return { candidato: item.candidato, destino: item.destino, vagaId: id };
+  }
+  return null;
 }
 
 export async function obterVaga(id: string): Promise<ApiVagaResponse> {
