@@ -206,7 +206,16 @@ def externo_sem_autorizacao(candidato: Candidato) -> bool:
     É como `candidato_de_item` entrega quem vem da busca real: dado real, pendente, sem
     autorização e sem validade. Opt-out, remoção e autorização que existiu e venceu ficam de fora
     e continuam cortando. O contato dessa pessoa só sai pelo e-mail que ela mesma publicou
-    (`pode_contatar_pelo_publicado`).
+    (`pode_contatar_pelo_publicado`), e o aceite do convite registra a autorização.
+
+    Limites conhecidos:
+    - A autorização vencida só corta quando o registro do banco tem o mesmo `id` do registro
+      externo. Casar a mesma pessoa entre fontes com ids diferentes depende da resolução de
+      identidade (spec 004, T044); até lá, um registro externo de id novo segue para a análise.
+    - A busca real só gera convite quando a fonte traz um e-mail publicado pela própria pessoa.
+      Hoje nenhuma fonte ligada à busca real extrai isso: o e-mail de provedor vem marcado como
+      não publicado. Sem ele, a pessoa fica indicada e o motivo `contato_nao_publicado` vai para
+      os eventos.
     """
     return (
         not candidato.simulado

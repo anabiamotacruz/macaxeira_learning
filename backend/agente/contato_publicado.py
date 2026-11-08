@@ -20,6 +20,8 @@ from backend.contato.email_inicial import (
 from backend.contato.prompts import AVISO_SIMULACAO, MARCADOR_NOME, PALAVRA_SAIDA
 from backend.contratos.modelos import Analise, Candidato, Vaga
 
+ORIGEM_AUTORIZACAO_PELO_ACEITE = "aceite do convite enviado ao contato publicado"
+"""De onde vem a autorização de quem aceitou o convite: fica no evento da vaga."""
 BOTAO_SAIDA = "Não quero mais contato"
 """O mesmo rótulo do botão da caixa simulada, que registra o opt-out da pessoa."""
 CONFIANCA_INFERIDA = "inferido"

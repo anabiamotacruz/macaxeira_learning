@@ -198,3 +198,51 @@ def test_quem_tem_autorizacao_segue_com_o_convite_de_sempre(tmp_path):
 
     [convite] = pecas.convites_para("banco")
     assert "Por que você recebeu" not in convite.mensagem
+
+
+ORIGEM_DO_ACEITE = "aceite do convite enviado ao contato publicado"
+
+
+def _responder(fluxo: FluxoVaga, pecas: Pecas, tipo: TipoResposta) -> None:
+    [convite] = pecas.convites_para("ext")
+    fluxo.registrar_resposta(RespostaCandidato(convite_id=convite.id, tipo=tipo))
+
+
+def test_aceite_de_quem_nao_tinha_autorizacao_registra_a_autorizacao_e_entrega(tmp_path):
+    pecas = Pecas(tmp_path, [externo()])
+    fluxo = pecas.rodar()
+
+    _responder(fluxo, pecas, TipoResposta.ACEITE)
+
+    registro = pecas.banco.obter(EMPRESA, "ext")
+    assert registro is not None
+    assert registro.autorizou_contato
+    assert registro.estado is EstadoBanco.ATIVO
+    assert registro.autorizacao_valida_ate == date(2027, 11, 7)
+    assert [p.candidato_id for p in pecas.destino.entregues.values()] == ["ext"]
+    eventos = [e.mensagem for e in fluxo.eventos if e.candidato_id == "ext"]
+    assert sum(ORIGEM_DO_ACEITE in m for m in eventos) == 1
+    assert not any("entrega cancelada" in m for m in eventos)
+
+
+def test_recusa_nao_registra_autorizacao_nem_entrega(tmp_path):
+    pecas = Pecas(tmp_path, [externo()])
+    fluxo = pecas.rodar()
+
+    _responder(fluxo, pecas, TipoResposta.RECUSA)
+
+    assert pecas.banco.obter(EMPRESA, "ext") is None
+    assert pecas.destino.entregues == {}
+
+
+def test_opt_out_nao_registra_autorizacao_e_continua_permanente(tmp_path):
+    pecas = Pecas(tmp_path, [externo()])
+    fluxo = pecas.rodar()
+
+    _responder(fluxo, pecas, TipoResposta.OPT_OUT)
+    _responder(fluxo, pecas, TipoResposta.ACEITE)
+
+    assert pecas.banco.obter(EMPRESA, "ext") is None
+    assert pecas.destino.entregues == {}
+    outra = pecas.rodar(vaga_exemplo(id="v2"))
+    assert _decisao(outra, "ext").regra == "funil:opt_out"

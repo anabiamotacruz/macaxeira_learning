@@ -39,6 +39,7 @@ from backend.agente.auditoria import (
     rastreado,
 )
 from backend.agente.contato_publicado import (
+    ORIGEM_AUTORIZACAO_PELO_ACEITE,
     contato_publicado,
     mensagem_pelo_contato_publicado,
     motivo_sem_contato,
@@ -78,6 +79,7 @@ from backend.agente.regras import (
     separar_palavras,
     validar_criterios,
 )
+from backend.contato.cadastro import incluir_no_banco
 from backend.contratos.criterios import tem_termo_sensivel
 from backend.contratos.erros import (
     ErroContrato,
@@ -656,6 +658,8 @@ class FluxoVaga:
                 self._registrar_opt_out(candidato_id)
             else:
                 self._aplicar_resposta(resposta.convite_id, resposta.tipo)
+                if resposta.tipo == TipoResposta.ACEITE:
+                    self._autorizar_pelo_aceite(self._progresso(), candidato_id)
                 if resposta.tipo == TipoResposta.DUVIDA:
                     self._tratar_duvida(resposta.convite_id, resposta.texto)
 
@@ -2242,13 +2246,45 @@ class FluxoVaga:
             ]
         return [c for c in base if c in indicados and c not in progresso.entregues]
 
+    def _autorizar_pelo_aceite(self, progresso: ProgressoFluxo, candidato_id: str) -> Candidato:
+        """O aceite de quem nunca autorizou registra a autorização, e devolve a situação de agora.
+
+        Só vale para quem foi convidado pelo e-mail que publicou e cujo último convite está aceito:
+        recusa, silêncio e opt-out não autorizam nada, e quem saiu não volta. O registro usa o
+        caminho da Frente 3 (`incluir_no_banco`), com a validade padrão dela. Também roda antes da
+        entrega, para refazer o registro que o banco não aceitou na hora do aceite.
+        """
+        atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+        ultimo = self._ultimo_convite(progresso, candidato_id)
+        if (
+            not externo_sem_autorizacao(atual)
+            or contato_publicado(atual) is None
+            or ultimo is None
+            or ultimo.estado != EstadoConvite.ACEITO
+        ):
+            return atual
+        try:
+            incluir_no_banco(self._banco, atual, autorizou=True, hoje=self._relogio().date())
+        except (KeyError, ValueError) as erro:
+            self._evento("autorizacao", f"autorização não registrada: {erro}", candidato_id)
+            return atual
+        except Exception as erro:
+            self._evento("autorizacao", f"banco sem resposta: {type(erro).__name__}", candidato_id)
+            raise _PausaNecessaria(MotivoPausa.BANCO_INDISPONIVEL) from erro
+        self._evento(
+            "autorizacao",
+            f"autorização registrada: {ORIGEM_AUTORIZACAO_PELO_ACEITE}",
+            candidato_id,
+        )
+        return self._candidato_atual(progresso.candidato(candidato_id), progresso)
+
     def _entregar_pendentes(self) -> None:
         """Entrega quem falta. Falha do destino pausa a vaga, com a entrega ainda pendente."""
         progresso = self._progresso()
         hoje = self._relogio().date()
         for candidato_id in self._a_entregar(progresso):
             self._conferir_execucao()
-            atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+            atual = self._autorizar_pelo_aceite(progresso, candidato_id)
             if autorizacao_ativa(atual, hoje):
                 self._entregar(progresso, atual)
             else:
