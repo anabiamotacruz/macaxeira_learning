@@ -1,0 +1,53 @@
+name: Avaliação de modelos (Featherless)
+
+# Roda a comparação de modelos de decisão e de linguagem com a chave guardada como segredo
+# do repositório (FEATHERLESS_API_KEY). A chave nunca é impressa: o resultado volta como
+# arquivo em evals/resultados/ nesta mesma branch.
+on:
+  push:
+    branches: [frente/agente/avaliacao-modelos]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: avaliacao-modelos
+  cancel-in-progress: false
+
+jobs:
+  comparar:
+    if: ${{ !contains(github.event.head_commit.message, '[resultado]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - name: Comparar modelos
+        env:
+          FEATHERLESS_API_KEY: ${{ secrets.FEATHERLESS_API_KEY }}
+        run: |
+          mkdir -p evals/resultados
+          arquivo="evals/resultados/comparacao-$(date -u +%Y%m%dT%H%M%SZ).md"
+          {
+            echo "# Comparação de modelos na interpretação da conversa"
+            echo
+            echo "Rodada no GitHub Actions em $(date -u '+%d/%m/%Y %H:%M UTC'), commit ${GITHUB_SHA::7}."
+            echo
+            if [ -z "$FEATHERLESS_API_KEY" ]; then
+              echo "Sem o segredo FEATHERLESS_API_KEY no repositório: nada foi comparado."
+            else
+              uv run python -m evals.comparar_modelos_interpretacao 2>&1 | grep -v "$FEATHERLESS_API_KEY" || true
+            fi
+          } > "$arquivo"
+          cat "$arquivo"
+      - name: Devolver o resultado à branch
+        run: |
+          git config user.name "avaliacao-modelos"
+          git config user.email "avaliacao-modelos@users.noreply.github.com"
+          git add evals/resultados
+          git commit -m "test: resultado da comparação de modelos [resultado]" || exit 0
+          git push
