@@ -437,3 +437,111 @@ def test_sem_orcamento_nem_para_um_perfil_o_provedor_fica_fora_e_avisa():
     )
     assert nomes_cadeia == ["brave"]
     assert any(NOME in aviso for aviso in fonte.estado().avisos)
+
+
+def pedidos_de_perfil(transporte) -> list[str]:
+    return [p.url for p in transporte.pedidos if p.url.startswith(URL_DETALHES)]
+
+
+def test_duas_consultas_que_acham_os_mesmos_usuarios_pagam_uma_vez_so():
+    achados = links("https://www.linkedin.com/in/ana-silva/", "https://www.linkedin.com/in/bruno/")
+    provedor, transporte = montar_provedor(
+        achados, perfil_envo("Ana"), perfil_envo("Bruno"), achados
+    )
+    primeira = provedor.consultar(POR_TEXTO)
+    segunda = provedor.consultar(ConsultaProvedor(texto="dados recife"))
+    assert len(pedidos_de_perfil(transporte)) == 2
+    assert [i.atributos["usuario_linkedin"] for i in segunda.itens] == ["ana-silva", "bruno"]
+    assert segunda.itens == primeira.itens
+    assert segunda.custo_usd == pytest.approx(provedor._brave.custo_requisicao_usd)
+
+
+def test_o_cache_vale_para_todas_as_instancias_do_provedor():
+    achados = links("https://www.linkedin.com/in/ana-silva/")
+    um, transporte = montar_provedor(achados, perfil_envo("Ana"))
+    outro, outro_transporte = montar_provedor(achados)
+    um.consultar(POR_TEXTO)
+    resposta = outro.consultar(POR_TEXTO)
+    assert len(resposta.itens) == 1
+    assert pedidos_de_perfil(outro_transporte) == []
+    assert len(pedidos_de_perfil(transporte)) == 1
+
+
+def test_um_404_nao_e_repetido():
+    achados = links("https://www.linkedin.com/in/fantasma/")
+    provedor, transporte = montar_provedor(achados, erro_envo(404, "resource_not_found"), achados)
+    primeira = provedor.consultar(POR_TEXTO)
+    segunda = provedor.consultar(POR_TEXTO)
+    assert primeira.itens == [] and segunda.itens == []
+    assert len(pedidos_de_perfil(transporte)) == 1
+    assert segunda.custo_usd == pytest.approx(provedor._brave.custo_requisicao_usd)
+
+
+def test_na_mesma_consulta_o_usuario_repetido_e_extraido_uma_vez():
+    provedor, transporte = montar_provedor(
+        links(
+            "https://www.linkedin.com/in/ana-silva/",
+            "https://br.linkedin.com/in/Ana-Silva",
+        ),
+        perfil_envo("Ana"),
+    )
+    resposta = provedor.consultar(POR_TEXTO)
+    assert len(resposta.itens) == 1
+    assert len(pedidos_de_perfil(transporte)) == 1
+
+
+def test_perfil_em_cache_nao_conta_no_teto_nem_no_custo():
+    primeira = links("https://www.linkedin.com/in/ana-silva/")
+    segunda = links(
+        "https://www.linkedin.com/in/ana-silva/",
+        "https://www.linkedin.com/in/bruno/",
+        "https://www.linkedin.com/in/carla/",
+    )
+    provedor, transporte = montar_provedor(
+        primeira, perfil_envo("Ana"), segunda, perfil_envo("Bruno"), perfil_envo("Carla"), perfis=2
+    )
+    provedor.consultar(POR_TEXTO)
+    resposta = provedor.consultar(ConsultaProvedor(texto="outra"))
+    assert [i.atributos["usuario_linkedin"] for i in resposta.itens] == [
+        "ana-silva",
+        "bruno",
+        "carla",
+    ]
+    assert len(pedidos_de_perfil(transporte)) == 3
+    custo_envo = provedor.extratores[0].custo_por_perfil_usd
+    assert resposta.custo_usd == pytest.approx(
+        provedor._brave.custo_requisicao_usd + 2 * custo_envo
+    )
+
+
+def test_o_teto_continua_valendo_para_os_usuarios_novos():
+    provedor, transporte = montar_provedor(
+        links(
+            "https://www.linkedin.com/in/ana-silva/",
+            "https://www.linkedin.com/in/bruno/",
+            "https://www.linkedin.com/in/carla/",
+        ),
+        perfil_envo("Ana"),
+        perfil_envo("Bruno"),
+        perfis=2,
+    )
+    resposta = provedor.consultar(POR_TEXTO)
+    assert len(resposta.itens) == 2
+    assert len(pedidos_de_perfil(transporte)) == 2
+
+
+def test_o_log_da_pagina_mostra_as_contagens_e_nunca_a_chave(caplog):
+    achados = links("https://www.linkedin.com/in/ana-silva/", "https://www.linkedin.com/in/bruno/")
+    provedor, _ = montar_provedor(achados, perfil_envo("Ana"), perfil_envo("Bruno"), achados)
+    provedor.consultar(ConsultaProvedor(texto="a"))
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        provedor.consultar(ConsultaProvedor(texto="b"))
+    avisos = [r for r in caplog.records if r.levelno == logging.WARNING]
+    resumo = [r.getMessage() for r in avisos if "página" in r.getMessage()]
+    assert len(resumo) == 1
+    assert "2 usuário(s)" in resumo[0]
+    assert "2 do cache" in resumo[0]
+    assert "0 pago(s)" in resumo[0]
+    for chave in CHAVES:
+        assert chave not in caplog.text
