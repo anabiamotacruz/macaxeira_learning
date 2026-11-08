@@ -2,13 +2,13 @@
 
 1. Busca da People Data Labs (Person Search), a principal: devolve perfis com cargo, competências
    e experiência. Entra com `PDL_API_KEY`; `PDL_PAIS` e `PDL_TAMANHO_PAGINA` ajustam a consulta.
-2. Brave, a busca na web, que assume quando o PDL falha, não acha ou não cabe no orçamento.
+2. Brave, a busca na web, que assume quando o PDL falha ou não acha.
 3. Bright Data, que lê páginas. A SERP dela usa alvo Google e só entra com `BRIGHTDATA_ZONA_BUSCA`
    e `BRIGHTDATA_BUSCA_HABILITADA=1`.
 4. Enriquecimento da People Data Labs (Person Enrichment), só por identidade.
 
 Sem `PDL_API_KEY`, a ordem fica Brave, Bright Data. Cada registro do PDL custa até US$ 0,28: com o
-orçamento de execução padrão, uma página não cabe, e o estado avisa.
+orçamento de execução padrão, uma página não cabe, a busca do PDL fica fora e o estado avisa.
 
 `MODO_DADOS=sinteticos` manda sobre as chaves: nenhum provedor nem transporte é criado.
 """
@@ -152,7 +152,11 @@ def _provedor_pdl_busca(
     limite_execucao_usd: float,
     avisos: list[str],
 ) -> ProvedorPeopleDataLabsBusca | None:
-    """Página que não cabe no orçamento de execução nunca é pedida: o estado avisa."""
+    """Se uma página não cabe no orçamento de execução, o provedor fica fora e o estado avisa.
+
+    Dentro da cadeia, ele só acumularia trocas por orçamento: toda resposta seguinte sairia como
+    cobertura parcial, e o resultado vazio deixaria de ir para o cache.
+    """
     chave = _valor(ambiente, PDL_API_KEY)
     if chave is None:
         return None
@@ -172,8 +176,9 @@ def _provedor_pdl_busca(
     if provedor.custo_por_pagina > limite_execucao_usd:
         avisos.append(
             f"busca do PDL fora do orçamento: uma página custa até US$ "
-            f"{provedor.custo_por_pagina:.2f}, acima de {ORCAMENTO_EXECUCAO}"
+            f"{provedor.custo_por_pagina:.2f}, acima de {ORCAMENTO_EXECUCAO}; fica fora da cadeia"
         )
+        return None
     return provedor
 
 

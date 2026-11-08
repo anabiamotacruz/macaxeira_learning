@@ -123,7 +123,7 @@ def test_so_bright_data():
 
 
 def test_so_pdl_liga_a_busca_e_o_enriquecimento_nessa_ordem():
-    fonte = montar(AMBIENTE_PDL)
+    fonte = montar({**AMBIENTE_PDL, **ORCAMENTO_PARA_PDL})
     assert nomes(fonte) == ["people_data_labs_busca", "people_data_labs"]
     assert isinstance(fonte.cadeia.provedores[0], ProvedorPeopleDataLabsBusca)
     assert isinstance(fonte.cadeia.provedores[1], ProvedorPeopleDataLabs)
@@ -138,7 +138,8 @@ def test_so_brave():
 
 
 def test_com_as_tres_chaves_a_busca_do_pdl_vem_primeiro():
-    assert nomes(montar({**AMBIENTE_PDL, **AMBIENTE_BRIGHT, **AMBIENTE_BRAVE})) == [
+    ambiente = {**AMBIENTE_PDL, **AMBIENTE_BRIGHT, **AMBIENTE_BRAVE, **ORCAMENTO_PARA_PDL}
+    assert nomes(montar(ambiente)) == [
         "people_data_labs_busca",
         "brave",
         "bright_data",
@@ -199,19 +200,32 @@ def test_pais_ou_tamanho_invalido_impede_a_subida(nome, valor):
     assert CHAVE_PDL not in str(erro.value)
 
 
-def test_orcamento_padrao_menor_que_uma_pagina_do_pdl_avisa_e_passa_para_a_brave():
+def test_orcamento_padrao_deixa_a_busca_do_pdl_fora_da_cadeia_e_avisa():
+    fonte = montar({**AMBIENTE_PDL, **AMBIENTE_BRAVE, **AMBIENTE_BRIGHT})
+    assert nomes(fonte) == ["brave", "bright_data", "people_data_labs"]
+    assert "PROVEDORES_ORCAMENTO_EXECUCAO_USD" in " ".join(fonte.estado().avisos)
+
+
+def test_orcamento_padrao_a_brave_responde_sem_cobertura_parcial():
     transporte = TransporteSimulado(resposta_json(RESPOSTA_BRAVE))
     fonte = montar({**AMBIENTE_PDL, **AMBIENTE_BRAVE}, transporte)
-    avisos = " ".join(fonte.estado().avisos)
-    assert "PROVEDORES_ORCAMENTO_EXECUCAO_USD" in avisos
     resultado = fonte.cadeia.consultar(EMPRESA, POR_TEXTO)
     assert [p.url for p in transporte.pedidos] == [URL_BUSCA]
-    assert resultado.trocas[0].motivo == MotivoTroca.ORCAMENTO_ESGOTADO
+    assert resultado.provedor == "brave"
+    assert resultado.trocas == []
+    assert not resultado.cobertura_parcial
 
 
-def test_orcamento_que_cabe_uma_pagina_do_pdl_nao_avisa():
-    fonte = montar({**AMBIENTE_PDL, **ORCAMENTO_PARA_PDL})
+def test_orcamento_que_cabe_uma_pagina_poe_o_pdl_primeiro_sem_aviso():
+    fonte = montar({**AMBIENTE_PDL, **AMBIENTE_BRAVE, **ORCAMENTO_PARA_PDL})
+    assert nomes(fonte) == ["people_data_labs_busca", "brave", "people_data_labs"]
     assert "PROVEDORES_ORCAMENTO_EXECUCAO_USD" not in " ".join(fonte.estado().avisos)
+
+
+def test_orcamento_exato_de_uma_pagina_basta():
+    limite = {"PROVEDORES_ORCAMENTO_EXECUCAO_USD": str(3 * CUSTO_CREDITO_USD)}
+    fonte = montar({**AMBIENTE_PDL, "PDL_TAMANHO_PAGINA": "3", **limite})
+    assert nomes(fonte)[0] == "people_data_labs_busca"
 
 
 def test_sem_chave_da_brave_ela_fica_de_fora_e_aparece_no_estado():
@@ -359,10 +373,7 @@ def test_modo_desconhecido_impede_a_subida_em_vez_de_chamar_provedor_real(valor)
 
 @pytest.mark.parametrize("valor", ["", "  "])
 def test_modo_em_branco_e_o_padrao(valor):
-    assert nomes(montar({**AMBIENTE_PDL, "MODO_DADOS": valor})) == [
-        "people_data_labs_busca",
-        "people_data_labs",
-    ]
+    assert nomes(montar({**AMBIENTE_PDL, "MODO_DADOS": valor})) == ["people_data_labs"]
 
 
 def test_min_likelihood_vem_do_ambiente_e_e_validado():
