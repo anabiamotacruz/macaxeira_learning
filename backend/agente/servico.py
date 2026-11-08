@@ -367,6 +367,21 @@ class ServicoVagas:
         ]
         return historico[-1], nova
 
+    def resolver_fila(
+        self,
+        empresa_id: str,
+        vaga_id: str,
+        candidato_id: str,
+        tipo: TipoDecisao,
+        motivo: str,
+        responsavel: str,
+    ) -> Decisao:
+        """Uma pessoa do RH decide quem estava na fila humana: indicar ou descartar."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        self._exigir_candidato_na_vaga(empresa_id, vaga_id, candidato_id)
+        with self._exclusivo(empresa_id, vaga_id):
+            return fluxo.resolver_fila(candidato_id, tipo, motivo, responsavel)
+
     def registrar_destino(
         self,
         empresa_id: str,

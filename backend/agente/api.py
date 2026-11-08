@@ -162,6 +162,19 @@ class PedidoReversao(Contrato):
     chave_idempotencia: Texto
 
 
+class PedidoRevisao(Contrato):
+    """Decisão do RH sobre quem o agente deixou na fila humana."""
+
+    vaga_id: Texto
+    decisao: Annotated[
+        Literal["indicar", "descartar"],
+        Field(description="Indicar leva ao contato; descartar encerra a pessoa nesta vaga."),
+    ]
+    motivo: Texto
+    responsavel: Annotated[Texto, Field(description="Pessoa do RH que decidiu.")]
+    chave_idempotencia: Texto
+
+
 class PedidoDestino(Contrato):
     vaga_id: Texto
     destino: DestinoPessoa
@@ -303,6 +316,12 @@ class RespostaReversao(RespostaSimulada):
 
     decisao_original: Decisao
     decisao_nova: Decisao
+
+
+class RespostaRevisao(RespostaSimulada):
+    """A decisão humana entra ao lado da do agente, que continua no histórico."""
+
+    decisao: Decisao
 
 
 class RespostaDestino(RespostaSimulada):
@@ -799,6 +818,43 @@ def reverter_decisao(
         f"reverter:{pedido.vaga_id}:{id}:{pedido.chave_idempotencia}",
         pedido.model_dump_json(),
         RespostaReversao,
+        acao,
+    )
+
+
+@rotas.post(
+    "/candidatos/{id}/revisao",
+    tags=["controle"],
+    response_model=RespostaRevisao,
+    responses=_respostas(RespostaRevisao(decisao=exemplos.DECISAO_REVERTIDA), erros=_ERROS_DE_ACAO),
+)
+def revisar_candidato(
+    id: str,
+    pedido: Annotated[
+        PedidoRevisao, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_REVISAO))
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaRevisao:
+    """O RH resolve a fila humana. Indicar só vale com requisitos atendidos e evidência."""
+    servico.consultar(empresa, pedido.vaga_id)
+
+    def acao() -> RespostaRevisao:
+        decisao = servico.resolver_fila(
+            empresa,
+            pedido.vaga_id,
+            id,
+            TipoDecisao(pedido.decisao),
+            pedido.motivo,
+            pedido.responsavel,
+        )
+        return RespostaRevisao(decisao=decisao)
+
+    return servico.idempotente(
+        empresa,
+        f"revisao:{pedido.vaga_id}:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaRevisao,
         acao,
     )
 
