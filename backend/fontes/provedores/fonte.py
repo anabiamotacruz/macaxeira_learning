@@ -26,6 +26,7 @@ from backend.fontes.provedores.modelos import (
     SituacaoConsulta,
     id_externo,
 )
+from backend.fontes.provedores.people_data_labs_busca import NOME as NOME_PDL_BUSCA
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ ROTULO_ATIVA = "fontes externas ativas"
 ROTULO_SEM_FONTES = "sem fontes externas"
 ROTULO_SINTETICOS = "somente dados sintéticos"
 _DESCARTADOS_NA_LEITURA = frozenset({SituacaoConsulta.RECUSADA, SituacaoConsulta.SUPRIMIDO})
+PROVEDORES_DE_PERFIL = frozenset({NOME_PDL_BUSCA})
+"""A busca deles já devolve o perfil estruturado: ler a página trocaria o perfil por um texto."""
 
 
 class SituacaoFontes(StrEnum):
@@ -176,15 +179,17 @@ class FonteProvedores:
         """Dado sem a marca de simulado não aparece no link público."""
         if self._fonte_sintetica is None:
             return []
-        return [
-            c for c in self._fonte_sintetica.buscar(empresa_id, consulta, pagina) if c.simulado
-        ]
+        return [c for c in self._fonte_sintetica.buscar(empresa_id, consulta, pagina) if c.simulado]
 
     def _aprofundar(self, empresa_id: str, itens: list[ItemColetado]) -> list[ItemColetado]:
         """Um trecho de busca não é perfil: lê as primeiras páginas, cada uma com os controles."""
         aprofundados: list[ItemColetado] = []
         for posicao, item in enumerate(itens):
-            if posicao >= self._paginas_por_consulta or item.url is None:
+            if (
+                posicao >= self._paginas_por_consulta
+                or item.url is None
+                or item.provedor in PROVEDORES_DE_PERFIL
+            ):
                 aprofundados.append(item)
                 continue
             aprofundados.extend(self._ler_ou_manter(empresa_id, item))
@@ -199,5 +204,3 @@ class FonteProvedores:
         if lido.situacao in _DESCARTADOS_NA_LEITURA:
             return []
         return lido.itens or [item]
-
-
