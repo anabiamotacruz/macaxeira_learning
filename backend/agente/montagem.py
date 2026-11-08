@@ -95,15 +95,29 @@ def pseudonimizador_de_resposta(
 def consultas_por_modelo(cliente_modelo: ClienteModelo) -> ProvedorConsultas:
     """Primeira rodada gera; as seguintes ampliam, sem abandonar as consultas anteriores.
 
-    As anteriores seguem na lista para o fluxo ler a página seguinte delas.
+    As anteriores seguem na lista para o fluxo ler a página seguinte delas. Na primeira, cada
+    competência da vaga também vira consulta própria: o modelo tende a gerar títulos de cargo
+    com várias palavras, e a fonte só traz quem tem todas no perfil.
     """
 
     def consultas(vaga: Vaga, rodada: int, anteriores: Sequence[str]) -> list[str]:
         if rodada == 0 or not anteriores:
-            return gerar_consultas(vaga, cliente_modelo)
+            return _com_competencias(gerar_consultas(vaga, cliente_modelo), vaga)
         return [*ampliar_consultas(vaga, list(anteriores), cliente_modelo), *anteriores]
 
     return consultas
+
+
+def _com_competencias(consultas: list[str], vaga: Vaga) -> list[str]:
+    """Acrescenta cada competência como consulta, sem repetir o que já está na lista."""
+    vistas = {consulta.strip().casefold() for consulta in consultas}
+    resultado = list(consultas)
+    for competencia in vaga.competencias:
+        chave = competencia.nome.strip().casefold()
+        if chave and chave not in vistas:
+            vistas.add(chave)
+            resultado.append(competencia.nome.strip())
+    return resultado
 
 
 def priorizador_do_funil(limite: int = LIMITE_ANALISES_POR_RODADA) -> Priorizador:
