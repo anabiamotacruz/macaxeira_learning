@@ -2161,6 +2161,179 @@
         }
       }
     },
+    "/candidatos/{id}/revisao": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Revisar Candidato",
+        "description": "O RH resolve a fila humana. Indicar só vale com requisitos atendidos e evidência.",
+        "operationId": "revisar_candidato",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoRevisao"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "vaga_id": "vaga-exemplo-1",
+                    "decisao": "indicar",
+                    "motivo": "Conferi o perfil e a experiência confere (exemplo).",
+                    "responsavel": "Pessoa Responsável Fictícia",
+                    "chave_idempotencia": "exemplo-revisao-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaRevisao"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "decisao": {
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "candidato_id": "candidato-exemplo-1",
+                    "tipo": "pedir_humano",
+                    "regra": "reversao_humana",
+                    "motivo": "Decisão revertida por uma pessoa; a original continua registrada.",
+                    "responsavel": "humano:Pessoa Responsável Fictícia",
+                    "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
+                    "entrada": {
+                      "tipo_anterior": "indicar",
+                      "regra_anterior": "faixa_verde_v1",
+                      "responsavel_anterior": "agente:mandato:mandato-exemplo-1:v1:assinante:Pessoa Responsável Fictícia",
+                      "rastro_revertido": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1"
+                    },
+                    "evidencias": [
+                      {
+                        "criterio": "python",
+                        "trecho": "cinco anos de Python",
+                        "fonte": "banco_de_talentos_simulado"
+                      }
+                    ],
+                    "momento": "2026-11-07T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/candidatos/{id}/destino": {
       "post": {
         "tags": [
@@ -3508,6 +3681,51 @@
         ],
         "title": "PedidoReversao"
       },
+      "PedidoRevisao": {
+        "properties": {
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "decisao": {
+            "type": "string",
+            "enum": [
+              "indicar",
+              "descartar"
+            ],
+            "title": "Decisao",
+            "description": "Indicar leva ao contato; descartar encerra a pessoa nesta vaga."
+          },
+          "motivo": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Motivo"
+          },
+          "responsavel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Responsavel",
+            "description": "Pessoa do RH que decidiu."
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vaga_id",
+          "decisao",
+          "motivo",
+          "responsavel",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoRevisao",
+        "description": "Decisão do RH sobre quem o agente deixou na fila humana."
+      },
       "PedidoVaga": {
         "properties": {
           "titulo": {
@@ -4235,6 +4453,33 @@
         ],
         "title": "RespostaReversao",
         "description": "A reversão acrescenta uma decisão: a original nunca é apagada."
+      },
+      "RespostaRevisao": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "decisao": {
+            "$ref": "#/components/schemas/Decisao"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "decisao"
+        ],
+        "title": "RespostaRevisao",
+        "description": "A decisão humana entra ao lado da do agente, que continua no histórico."
       },
       "RespostaVaga": {
         "properties": {

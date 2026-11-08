@@ -312,3 +312,10 @@ PEDIDO_RESPOSTA = {
     "texto": "",
     "chave_idempotencia": "exemplo-resposta-1",
 }
+PEDIDO_REVISAO = {
+    "vaga_id": VAGA_EXEMPLO,
+    "decisao": "indicar",
+    "motivo": "Conferi o perfil e a experiência confere (exemplo).",
+    "responsavel": PESSOA_RESPONSAVEL,
+    "chave_idempotencia": "exemplo-revisao-1",
+}

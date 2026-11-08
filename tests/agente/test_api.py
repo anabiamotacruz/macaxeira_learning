@@ -138,6 +138,7 @@ def test_expoe_exatamente_as_rotas_combinadas():
         ("post", "/vagas/{id}/parar"),
         ("post", "/vagas/{id}/retomar"),
         ("post", "/candidatos/{id}/reverter"),
+        ("post", "/candidatos/{id}/revisao"),
         ("post", "/candidatos/{id}/destino"),
         ("post", "/convites/{id}/resposta"),
         ("post", "/sessoes/reiniciar"),
