@@ -11,9 +11,12 @@ Depois de mudar este arquivo, gere o contrato com:
 """
 
 import logging
+import math
 import os
 import re
 import threading
+import time
+from collections import deque
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, Literal
 
@@ -29,19 +32,23 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.agente import exemplos_api as exemplos
 from backend.agente.auditoria import DecisoesAutomaticasPausadas
+from backend.agente.configuracao import PerguntaVaga
 from backend.agente.fluxo import (
     AcaoRecusada,
+    DuvidaConvite,
     EstadoConvite,
     ResponsavelInvalido,
+    RetornoEntrevista,
     TransicaoInvalida,
 )
 from backend.agente.mandato import MandatoInvalido
-from backend.agente.montagem import montar_demo
+from backend.agente.montagem import montar_servico
 from backend.agente.servico import (
     AditivoNecessario,
     CandidatoInexistente,
     ChaveReutilizada,
     CriteriosSensiveis,
+    PropostaSemModelo,
     RequisitoIncompleto,
     ServicoVagas,
     VagaInexistente,
@@ -58,6 +65,7 @@ from backend.contratos.modelos import (
     EventoFluxo,
     Mandato,
     Politica,
+    PropostaAjuste,
     Requisito,
     RespostaCandidato,
     ResumoExecucao,
@@ -161,6 +169,19 @@ class PedidoReversao(Contrato):
     chave_idempotencia: Texto
 
 
+class PedidoRevisao(Contrato):
+    """Decisão do RH sobre quem o agente deixou na fila humana."""
+
+    vaga_id: Texto
+    decisao: Annotated[
+        Literal["indicar", "descartar"],
+        Field(description="Indicar leva ao contato; descartar encerra a pessoa nesta vaga."),
+    ]
+    motivo: Texto
+    responsavel: Annotated[Texto, Field(description="Pessoa do RH que decidiu.")]
+    chave_idempotencia: Texto
+
+
 class PedidoDestino(Contrato):
     vaga_id: Texto
     destino: DestinoPessoa
@@ -195,9 +216,26 @@ class ItemConvite(Contrato):
     simulado: bool
     estado: EstadoConvite
     tentativa: int
+    duvidas: Annotated[
+        list[DuvidaConvite],
+        Field(
+            description="Dúvidas da pessoa e resposta do agente; sem resposta, uma pessoa atende."
+        ),
+    ] = []
+    retorno: Annotated[
+        RetornoEntrevista | None,
+        Field(description="Retorno depois da entrevista, com o resultado que o destino devolveu."),
+    ] = None
 
     @classmethod
-    def de(cls, convite: Convite, estado: EstadoConvite, tentativa: int) -> "ItemConvite":
+    def de(
+        cls,
+        convite: Convite,
+        estado: EstadoConvite,
+        tentativa: int,
+        duvidas: Sequence[DuvidaConvite] = (),
+        retorno: RetornoEntrevista | None = None,
+    ) -> "ItemConvite":
         return cls(
             id=convite.id,
             candidato_id=convite.candidato_id,
@@ -207,12 +245,83 @@ class ItemConvite(Contrato):
             simulado=convite.simulado,
             estado=estado,
             tentativa=tentativa,
+            duvidas=list(duvidas),
+            retorno=retorno,
         )
 
 
 class RespostaConvites(RespostaSimulada):
     vaga_id: Texto
     itens: list[ItemConvite]
+
+
+class ItemTalentGarden(Contrato):
+    """Quem o agente sugeriu guardar para depois. O RH confirma em `/candidatos/{id}/destino`."""
+
+    candidato_id: Texto
+    motivo: Annotated[
+        str,
+        Field(
+            description="nao_agora: a pessoa disse que agora não pode; alem_do_encaminhamento: "
+            "ficou na faixa verde além do número de encaminhamento."
+        ),
+    ]
+    confirmado: Annotated[bool, Field(description="O RH já definiu o destino talent_garden.")]
+    simulado: bool
+
+
+class RespostaTalentGarden(RespostaSimulada):
+    vaga_id: Texto
+    itens: list[ItemTalentGarden]
+
+
+class ItemSugestaoGarden(Contrato):
+    """Quem estava no Talent Garden de outra vaga. O convite especial só sai com o RH."""
+
+    candidato_id: Texto
+    vaga_origem_id: Texto
+    vaga_origem_titulo: str
+    motivo: str
+    confirmado: bool
+    canal: Annotated[str, Field(description="Canal do primeiro contato, usado de novo.")]
+    simulado: bool
+
+
+class RespostaSugestoesGarden(RespostaSimulada):
+    vaga_id: Texto
+    itens: list[ItemSugestaoGarden]
+
+
+class PedidoConviteGarden(Contrato):
+    """O RH escolhe, entre as sugestões, quem recebe o convite especial desta vaga."""
+
+    candidato_ids: list[Texto]
+    responsavel: Annotated[
+        Texto, Field(description="Pessoa do RH que autoriza. O agente não convida sozinho.")
+    ]
+    chave_idempotencia: Texto
+
+
+class PedidoRetornos(Contrato):
+    """Pede ao agente que leia os resultados das entrevistas e avise cada pessoa."""
+
+    chave_idempotencia: Texto
+
+
+class RespostaRetornos(RespostaSimulada):
+    vaga_id: Texto
+    itens: list[RetornoEntrevista]
+
+
+RETORNO_EXEMPLO = RetornoEntrevista(
+    candidato_id=exemplos.CONVITE.candidato_id,
+    convite_id=exemplos.CONVITE.id,
+    aprovado=True,
+    mensagem="[SIMULAÇÃO] Retorno fictício depois da entrevista.",
+    enviado=True,
+    simulado=True,
+    momento=exemplos.MOMENTO,
+)
 
 
 class RespostaRegistroResposta(RespostaSimulada):
@@ -289,6 +398,12 @@ class RespostaReversao(RespostaSimulada):
 
     decisao_original: Decisao
     decisao_nova: Decisao
+
+
+class RespostaRevisao(RespostaSimulada):
+    """A decisão humana entra ao lado da do agente, que continua no histórico."""
+
+    decisao: Decisao
 
 
 class RespostaDestino(RespostaSimulada):
@@ -539,6 +654,51 @@ def assinar_mandato(
     return RespostaMandato(mandato=mandato, estado=estado)
 
 
+class PedidoProposta(Contrato):
+    """Descrição livre da vaga. É dado: o modelo só a interpreta, e o código confere o resultado."""
+
+    descricao: Annotated[str, Field(max_length=20000)]
+
+
+class RespostaProposta(RespostaSimulada):
+    """Critérios propostos para revisão, ou a pergunta que falta responder. Nada é criado."""
+
+    proposta: PedidoVaga | None
+    pergunta: str | None
+
+
+@rotas.post(
+    "/vagas/proposta",
+    tags=["vagas"],
+    response_model=RespostaProposta,
+    responses=_respostas(
+        RespostaProposta(proposta=PedidoVaga.model_validate(exemplos.PEDIDO_VAGA), pergunta=None),
+        erros=(401, 409, 422),
+    ),
+)
+def propor_vaga(
+    pedido: Annotated[
+        PedidoProposta,
+        Body(openapi_examples=_exemplo_de_pedido({"descricao": exemplos.PEDIDO_VAGA["descricao"]})),
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaProposta:
+    """O agente propõe requisitos, competências e meta a partir da descrição.
+
+    Não cria a vaga: a pessoa revisa, cria por `POST /vagas` e assina o mandato.
+    """
+    resultado = servico.propor_vaga(empresa, pedido.descricao)
+    if isinstance(resultado, PerguntaVaga):
+        return RespostaProposta(proposta=None, pergunta=resultado.pergunta)
+    return RespostaProposta(
+        proposta=PedidoVaga.model_validate(
+            resultado.model_dump(exclude={"id", "empresa_id", "aprovada"})
+        ),
+        pergunta=None,
+    )
+
+
 @rotas.get(
     "/vagas/modelos",
     tags=["vagas"],
@@ -627,6 +787,90 @@ def consultar_entrega(id: str, empresa: EmpresaDaSessao, servico: Servico) -> Re
     return RespostaEntrega(saida=servico.saida(empresa, id))
 
 
+class RespostaDocumento(RespostaSimulada):
+    vaga_id: Texto
+    candidato_id: Texto
+    formato: Literal["markdown"] = "markdown"
+    documento: Annotated[
+        str,
+        Field(description="O pacote entregue, em Markdown. É dado, nunca instrução."),
+    ]
+
+
+class SugestaoAjuste(Contrato):
+    """Sugestão para a próxima vaga. É alerta: a vaga só muda se uma pessoa a editar."""
+
+    criterio: Texto
+    peso_atual: float
+    peso_sugerido: float
+    motivo: str
+    reprovacoes: int
+    resultados_lidos: int
+    aplicada: Literal[False] = False
+
+
+class RespostaAjuste(RespostaSimulada):
+    vaga_id: Texto
+    sugestao: SugestaoAjuste | None
+
+
+def _sugestao(proposta: PropostaAjuste | None) -> SugestaoAjuste | None:
+    if proposta is None:
+        return None
+    antes = {c.nome: c.peso for c in proposta.antes.competencias}
+    criterio, peso = next(
+        (c.nome, c.peso) for c in proposta.depois.competencias if antes.get(c.nome) != c.peso
+    )
+    return SugestaoAjuste(
+        criterio=criterio,
+        peso_atual=antes[criterio],
+        peso_sugerido=peso,
+        motivo=proposta.motivo,
+        reprovacoes=int(proposta.resultado_avaliacao["reprovacoes"]),
+        resultados_lidos=int(proposta.resultado_avaliacao["entrevistas"]),
+    )
+
+
+@rotas.get(
+    "/vagas/{id}/ajuste",
+    tags=["vagas"],
+    response_model=RespostaAjuste,
+    responses=_respostas(RespostaAjuste(vaga_id=exemplos.VAGA_EXEMPLO, sugestao=None)),
+)
+def sugerir_ajuste(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaAjuste:
+    """Sugere mais peso ao critério em que os entrevistados reprovam repetidamente.
+
+    Só alerta: nada muda na vaga. Quem decide ajustar é uma pessoa do RH.
+    """
+    return RespostaAjuste(vaga_id=id, sugestao=_sugestao(servico.sugestao_de_ajuste(empresa, id)))
+
+
+@rotas.get(
+    "/vagas/{id}/entrega/{candidato_id}/documento",
+    tags=["vagas"],
+    response_model=RespostaDocumento,
+    responses=_respostas(
+        RespostaDocumento(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            candidato_id=exemplos.CONVITE.candidato_id,
+            documento=(
+                "# Contexto para entrevista: Vaga de exemplo\n\n"
+                "> **SIMULAÇÃO**: pessoa, conversa e entrega fictícias.\n"
+            ),
+        )
+    ),
+)
+def documento_de_entrega(
+    id: str, candidato_id: str, empresa: EmpresaDaSessao, servico: Servico
+) -> RespostaDocumento:
+    """O pacote entregue ao destino, como documento. Só existe para quem já foi entregue."""
+    return RespostaDocumento(
+        vaga_id=id,
+        candidato_id=candidato_id,
+        documento=servico.documento(empresa, id, candidato_id),
+    )
+
+
 @rotas.get(
     "/vagas/{id}/convites",
     tags=["vagas"],
@@ -641,9 +885,137 @@ def consultar_entrega(id: str, empresa: EmpresaDaSessao, servico: Servico) -> Re
 def listar_convites(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaConvites:
     """Lista os convites da vaga com o estado de cada um. Todo convite aqui é simulado."""
     itens = [
-        ItemConvite.de(r.convite, r.estado, r.tentativa) for r in servico.convites(empresa, id)
+        ItemConvite.de(r.convite, r.estado, r.tentativa, r.duvidas, r.retorno)
+        for r in servico.convites(empresa, id)
     ]
     return RespostaConvites(vaga_id=id, itens=itens)
+
+
+@rotas.get(
+    "/vagas/{id}/talent-garden",
+    tags=["vagas"],
+    response_model=RespostaTalentGarden,
+    responses=_respostas(
+        RespostaTalentGarden(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            itens=[
+                ItemTalentGarden(
+                    candidato_id=exemplos.CONVITE.candidato_id,
+                    motivo="nao_agora",
+                    confirmado=False,
+                    simulado=True,
+                )
+            ],
+        )
+    ),
+)
+def listar_talent_garden(
+    id: str, empresa: EmpresaDaSessao, servico: Servico
+) -> RespostaTalentGarden:
+    """Lista quem o agente sugeriu para o Talent Garden e se o RH já confirmou."""
+    itens = [ItemTalentGarden(**item.model_dump()) for item in servico.talent_garden(empresa, id)]
+    return RespostaTalentGarden(vaga_id=id, itens=itens)
+
+
+@rotas.get(
+    "/vagas/{id}/talent-garden/sugestoes",
+    tags=["vagas"],
+    response_model=RespostaSugestoesGarden,
+    responses=_respostas(
+        RespostaSugestoesGarden(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            itens=[
+                ItemSugestaoGarden(
+                    candidato_id=exemplos.CONVITE.candidato_id,
+                    vaga_origem_id="vaga-anterior",
+                    vaga_origem_titulo="Software Engineer",
+                    motivo="nao_agora",
+                    confirmado=True,
+                    canal="email",
+                    simulado=True,
+                )
+            ],
+        )
+    ),
+)
+def sugerir_do_talent_garden(
+    id: str, empresa: EmpresaDaSessao, servico: Servico
+) -> RespostaSugestoesGarden:
+    """Numa campanha nova, lembra quem está no Talent Garden das outras vagas da empresa."""
+    itens = [ItemSugestaoGarden(**vars(s)) for s in servico.sugestoes_garden(empresa, id)]
+    return RespostaSugestoesGarden(vaga_id=id, itens=itens)
+
+
+@rotas.post(
+    "/vagas/{id}/talent-garden/convites",
+    tags=["controle"],
+    response_model=RespostaConvites,
+    responses=_respostas(
+        RespostaConvites(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            itens=[ItemConvite.de(exemplos.CONVITE, EstadoConvite.AGUARDANDO, 1)],
+        ),
+        erros=_ERROS_DE_ACAO,
+    ),
+)
+def convidar_do_talent_garden(
+    id: str,
+    pedido: PedidoConviteGarden,
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaConvites:
+    """Manda o convite especial pelo canal do primeiro contato a quem o RH escolheu."""
+    servico.consultar(empresa, id)
+
+    def acao() -> RespostaConvites:
+        registros = servico.convidar_do_garden(
+            empresa, id, pedido.candidato_ids, pedido.responsavel
+        )
+        itens = [ItemConvite.de(r.convite, r.estado, r.tentativa) for r in registros]
+        return RespostaConvites(vaga_id=id, itens=itens)
+
+    return servico.idempotente(
+        empresa,
+        f"garden:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaConvites,
+        acao,
+    )
+
+
+@rotas.post(
+    "/vagas/{id}/retornos",
+    tags=["controle"],
+    response_model=RespostaRetornos,
+    responses=_respostas(
+        RespostaRetornos(vaga_id=exemplos.VAGA_EXEMPLO, itens=[RETORNO_EXEMPLO]),
+        erros=_ERROS_DE_ACAO,
+    ),
+)
+def acompanhar_retornos(
+    id: str,
+    pedido: Annotated[
+        PedidoRetornos, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_RETORNOS))
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaRetornos:
+    """Lê o resultado das entrevistas no destino e avisa cada pessoa uma vez.
+
+    O agente só comunica o que o destino decidiu. Nota da entrevista não aparece aqui.
+    """
+    servico.consultar(empresa, id)
+
+    def acao() -> RespostaRetornos:
+        return RespostaRetornos(vaga_id=id, itens=servico.acompanhar_entrevistas(empresa, id))
+
+    return servico.idempotente(
+        empresa,
+        f"retornos:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaRetornos,
+        acao,
+    )
 
 
 @rotas.get(
@@ -789,6 +1161,43 @@ def reverter_decisao(
 
 
 @rotas.post(
+    "/candidatos/{id}/revisao",
+    tags=["controle"],
+    response_model=RespostaRevisao,
+    responses=_respostas(RespostaRevisao(decisao=exemplos.DECISAO_REVERTIDA), erros=_ERROS_DE_ACAO),
+)
+def revisar_candidato(
+    id: str,
+    pedido: Annotated[
+        PedidoRevisao, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_REVISAO))
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaRevisao:
+    """O RH resolve a fila humana. Indicar só vale com requisitos atendidos e evidência."""
+    servico.consultar(empresa, pedido.vaga_id)
+
+    def acao() -> RespostaRevisao:
+        decisao = servico.resolver_fila(
+            empresa,
+            pedido.vaga_id,
+            id,
+            TipoDecisao(pedido.decisao),
+            pedido.motivo,
+            pedido.responsavel,
+        )
+        return RespostaRevisao(decisao=decisao)
+
+    return servico.idempotente(
+        empresa,
+        f"revisao:{pedido.vaga_id}:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaRevisao,
+        acao,
+    )
+
+
+@rotas.post(
     "/candidatos/{id}/destino",
     tags=["controle"],
     response_model=RespostaDestino,
@@ -898,6 +1307,11 @@ def _mensagem_de_validacao(erros: Sequence[Any]) -> str:
 
 
 _ERROS_DE_DOMINIO: dict[type[ErroContrato], tuple[int, str, str]] = {
+    PropostaSemModelo: (
+        409,
+        "proposta_sem_modelo",
+        "A proposta de critérios precisa do modelo. Suba a API com AGENTE_COM_MODELO=1.",
+    ),
     VagaInexistente: (404, "vaga_nao_encontrada", "Vaga não encontrada nesta empresa."),
     CandidatoInexistente: (
         404,
@@ -1023,7 +1437,55 @@ def _gerar_openapi(aplicacao: FastAPI) -> dict[str, Any]:
     return esquema
 
 
-def criar_app(servico: ServicoVagas | None = None) -> FastAPI:
+LIMITE_REQUISICOES_POR_MINUTO_PADRAO = 600
+"""Folga para o painel, que consulta a vaga a cada poucos segundos, sem deixar uma sessão abusar."""
+
+
+class LimiteRequisicoes:
+    """Janela deslizante por sessão (`X-Empresa-Id`, ou o endereço quando não há cabeçalho).
+
+    Fica em memória, por processo: serve ao link público da demonstração, não a vários servidores.
+    """
+
+    def __init__(
+        self,
+        maximo: int,
+        janela_s: float = 60.0,
+        relogio: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if maximo < 1 or janela_s <= 0:
+            raise ValueError("o limite precisa de máximo e janela positivos")
+        self._maximo = maximo
+        self._janela = janela_s
+        self._relogio = relogio
+        self._pedidos: dict[str, deque[float]] = {}
+        self._trava = threading.Lock()
+
+    @classmethod
+    def do_ambiente(cls) -> "LimiteRequisicoes":
+        texto = os.environ.get("LIMITE_REQUISICOES_POR_MINUTO", "").strip()
+        try:
+            maximo = int(texto) if texto else LIMITE_REQUISICOES_POR_MINUTO_PADRAO
+        except ValueError:
+            maximo = LIMITE_REQUISICOES_POR_MINUTO_PADRAO
+        return cls(max(1, maximo))
+
+    def esperar_s(self, chave: str) -> int:
+        """Zero quando o pedido pode seguir e já foi contado; senão, os segundos de espera."""
+        agora = self._relogio()
+        with self._trava:
+            pedidos = self._pedidos.setdefault(chave, deque())
+            while pedidos and agora - pedidos[0] >= self._janela:
+                pedidos.popleft()
+            if len(pedidos) >= self._maximo:
+                return max(1, math.ceil(self._janela - (agora - pedidos[0])))
+            pedidos.append(agora)
+            return 0
+
+
+def criar_app(
+    servico: ServicoVagas | None = None, *, limite: LimiteRequisicoes | None = None
+) -> FastAPI:
     """Cria a aplicação com o serviço injetado. Sem ele, monta a demonstração no primeiro pedido."""
     aplicacao = FastAPI(
         title="API do agente recrutador (proposta simulada)",
@@ -1033,6 +1495,28 @@ def criar_app(servico: ServicoVagas | None = None) -> FastAPI:
     )
     aplicacao.state.obter_servico = _lazy_demo() if servico is None else (lambda: servico)
     aplicacao.include_router(rotas)
+    limitador = LimiteRequisicoes.do_ambiente() if limite is None else limite
+
+    @aplicacao.middleware("http")
+    async def limitar_por_sessao(request: Request, seguir):
+        """Antes do CORS na pilha: a resposta 429 também leva os cabeçalhos de CORS."""
+        if request.method == "OPTIONS":
+            return await seguir(request)
+        sessao = (request.headers.get("X-Empresa-Id") or "").strip()
+        chave = (
+            f"sessao:{sessao}" if sessao else f"ip:{request.client.host if request.client else '-'}"
+        )
+        espera = limitador.esperar_s(chave)
+        if espera:
+            return JSONResponse(
+                _corpo_erro(
+                    "muitas_requisicoes", "Muitas requisições. Tente de novo em instantes."
+                ),
+                status_code=429,
+                headers={"Retry-After": str(espera)},
+            )
+        return await seguir(request)
+
     origens = os.environ.get("ORIGENS_PAINEL", ORIGENS_PAINEL_PADRAO)
     aplicacao.add_middleware(
         CORSMiddleware,
@@ -1059,7 +1543,7 @@ def _lazy_demo() -> Callable[[], ServicoVagas]:
     def obter() -> ServicoVagas:
         with trava:
             if not montado:
-                montado.append(montar_demo())
+                montado.append(montar_servico())
             return montado[0]
 
     return obter

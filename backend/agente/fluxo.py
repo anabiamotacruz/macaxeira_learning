@@ -13,6 +13,7 @@ import contextvars
 import hashlib
 import logging
 import os
+import re
 import threading
 import uuid
 from collections import deque
@@ -70,7 +71,7 @@ from backend.agente.regras import (
     separar_palavras,
     validar_criterios,
 )
-from backend.contratos.criterios import tem_termo_sensivel
+from backend.contratos.criterios import sem_acento, tem_termo_sensivel
 from backend.contratos.erros import (
     ErroContrato,
     LimiteGastoAtingido,
@@ -98,6 +99,7 @@ from backend.contratos.modelos import (
     Evidencia,
     PacoteContexto,
     RespostaCandidato,
+    ResultadoEntrevista,
     TipoConvite,
     TipoDecisao,
     TipoResposta,
@@ -113,7 +115,11 @@ ProvedorConsultas = Callable[[Vaga, int, Sequence[str]], list[str]]
 RegistrarCorte = Callable[[CorteFunil], None]
 Priorizador = Callable[[Vaga, list[Candidato], date, RegistrarCorte], list[Candidato]]
 RedatorConvite = Callable[[Vaga, Candidato, Analise, str | None], str]
+RespondedorDuvida = Callable[[Vaga, Candidato, str], str | None]
+"""Responde a dúvida pelo material da vaga, ou devolve None para uma pessoa responder."""
 """Escreve o texto do convite a partir da análise. Sem ele, o convite usa um texto fixo."""
+RedatorRetorno = Callable[[Vaga, Candidato, ResultadoEntrevista], str]
+"""Escreve o retorno pós-entrevista a partir do resultado do destino. Sem ele, texto neutro."""
 Reidentificador = Callable[[PacoteContexto, Candidato, Vaga, Decisao], PacoteContexto]
 """Reduz os achados antes das análises e informa quem saiu, por `RegistrarCorte`."""
 
@@ -176,6 +182,26 @@ CONSULTA_TODO_O_BANCO = ""
 LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
+GARDEN_NAO_AGORA = "nao_agora"
+GARDEN_ALEM_DO_ENCAMINHAMENTO = "alem_do_encaminhamento"
+_NAO_AGORA = re.compile(
+    r"\b(agora nao|nao agora|no momento nao|neste momento nao|nao posso agora|nao da agora"
+    r"|talvez depois|mais (pra|para) frente|daqui a|em breve|outra oportunidade"
+    r"|proxim[ao]s? (mes|meses|ano|semestre|vaga|vagas|oportunidade|oportunidades))\b"
+)
+"""Sobre o texto sem acento nem caixa. Só separa "agora não" de recusa: não decide nada."""
+RESPOSTA_NAO_AGORA = (
+    "Entendido, obrigado por responder! Se a equipe confirmar, seu perfil fica guardado para "
+    "uma próxima oportunidade desta empresa. Para não ser mais contatado, responda SAIR."
+)
+
+
+def eh_nao_agora(texto: str) -> bool:
+    """A pessoa disse que agora não pode, sem fechar a porta. O texto é dado, nunca instrução."""
+    return bool(_NAO_AGORA.search(" ".join(sem_acento(texto).casefold().split())))
+
+
+AVISO_AGENDAMENTO_SIMULADO = "Mensagem simulada: o agendamento acontece num destino simulado."
 REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
 RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
 REGRA_REVERSAO = "reversao_humana"
@@ -298,10 +324,43 @@ class ResumoVaga(Contrato):
     simulado: bool
 
 
+class DuvidaConvite(Contrato):
+    """Dúvida da pessoa sobre o convite. O texto dela fica aqui, nunca nos eventos."""
+
+    pergunta: str
+    resposta: str | None
+    encaminhada_a_pessoa: bool
+    simulado: bool
+    momento: AwareDatetime
+
+
+class RetornoEntrevista(Contrato):
+    """O que o agente comunicou depois da entrevista. Sem nota: o resultado é do destino."""
+
+    candidato_id: str
+    convite_id: str
+    aprovado: bool
+    mensagem: str
+    enviado: bool
+    simulado: bool
+    momento: AwareDatetime
+
+
 class RegistroConvite(Contrato):
     convite: Convite
     tentativa: int
     estado: EstadoConvite = EstadoConvite.A_ENVIAR
+    duvidas: list[DuvidaConvite] = Field(default_factory=list)
+    retorno: RetornoEntrevista | None = None
+
+
+class ItemGarden(Contrato):
+    """Sugestão do agente para o Talent Garden. Só a pessoa do RH confirma o destino."""
+
+    candidato_id: str
+    motivo: str
+    confirmado: bool
+    simulado: bool
 
 
 class ProgressoFluxo(Contrato):
@@ -327,6 +386,7 @@ class ProgressoFluxo(Contrato):
     convites: list[RegistroConvite] = []
     entregues: list[str] = []
     destinos: dict[str, DestinoPessoa] = {}
+    sugestoes_garden: dict[str, str] = {}
 
     def candidato(self, candidato_id: str) -> Candidato:
         for candidato in (*self.candidatos, *self.cortados):
@@ -450,6 +510,8 @@ class FluxoVaga:
         reidentificador: Reidentificador | None = None,
         concorrencia: int = CONCORRENCIA_PADRAO,
         redator_convite: RedatorConvite | None = None,
+        respondedor_duvida: RespondedorDuvida | None = None,
+        redator_retorno: RedatorRetorno | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -462,6 +524,8 @@ class FluxoVaga:
         self._resiliencia = Resiliencia() if resiliencia is None else resiliencia
         self._reidentificador = reidentificador
         self._redator_convite = redator_convite
+        self._respondedor_duvida = respondedor_duvida
+        self._redator_retorno = redator_retorno
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -614,6 +678,10 @@ class FluxoVaga:
                 self._registrar_opt_out(candidato_id)
             else:
                 self._aplicar_resposta(resposta.convite_id, resposta.tipo)
+                if resposta.tipo == TipoResposta.RECUSA and eh_nao_agora(resposta.texto):
+                    self._sugerir_garden(candidato_id, GARDEN_NAO_AGORA, registro)
+                if resposta.tipo == TipoResposta.DUVIDA:
+                    self._tratar_duvida(resposta.convite_id, resposta.texto)
 
         estado = self.estado
         if estado == EstadoFluxo.CONVIDANDO:
@@ -821,6 +889,91 @@ class FluxoVaga:
         if dados is None:
             return []
         return ProgressoFluxo.model_validate_json(dados).convites
+
+    def acompanhar_entrevistas(self) -> list[RetornoEntrevista]:
+        """Lê os resultados do destino e manda o retorno a quem já foi entregue, uma vez só.
+
+        O agente só comunica: a decisão vem do destino. Quem saiu ou perdeu a autorização não
+        recebe mensagem. Retorno que não saiu fica marcado e sai na próxima chamada.
+        """
+        progresso = self._progresso()
+        try:
+            resultados = self._destino.resultados(self.vaga.empresa_id, self.vaga.id)
+        except (ErroContrato, OSError, *ERROS_TEMPORARIOS) as erro:
+            self._evento("pos_entrevista", f"resultados indisponíveis: {type(erro).__name__}")
+            resultados = []
+        hoje = self._relogio().date()
+        for resultado in resultados:
+            if (resultado.empresa_id, resultado.vaga_id) != (self.vaga.empresa_id, self.vaga.id):
+                continue
+            candidato_id = resultado.candidato_id
+            registro = self._ultimo_convite(progresso, candidato_id)
+            if candidato_id not in progresso.entregues or registro is None:
+                continue
+            if registro.retorno is not None and registro.retorno.enviado:
+                continue
+            atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+            if atual.opt_out or not autorizacao_ativa(atual, hoje):
+                continue
+            self._enviar_retorno(registro, atual, resultado)
+        return [r.retorno for r in self._progresso().convites if r.retorno is not None]
+
+    def _ultimo_convite(
+        self, progresso: ProgressoFluxo, candidato_id: str
+    ) -> RegistroConvite | None:
+        registros = [r for r in progresso.convites if r.convite.candidato_id == candidato_id]
+        return registros[-1] if registros else None
+
+    def _texto_do_retorno(self, candidato: Candidato, resultado: ResultadoEntrevista) -> str:
+        """Texto do redator, quando houver; se ele falhar, um texto neutro que não decide nada."""
+        neutro = (
+            f"Obrigado pela entrevista para a vaga de {self.vaga.titulo}. "
+            "A equipe vai entrar em contato com o retorno."
+        )
+        if self._redator_retorno is None:
+            return neutro
+        try:
+            return self._redator_retorno(self.vaga, candidato, resultado)
+        except Exception:
+            logger.warning("retorno da vaga %s usou o texto neutro", self.vaga.id, exc_info=True)
+            return neutro
+
+    def _enviar_retorno(
+        self, registro: RegistroConvite, candidato: Candidato, resultado: ResultadoEntrevista
+    ) -> None:
+        texto = self._texto_do_retorno(candidato, resultado)
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:retorno",
+                "mensagem": texto,
+                "link_agendamento": None,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:retorno",
+            }
+        )
+        enviado = bool(
+            self._acao_idempotente(
+                mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+            )
+        )
+        retorno = RetornoEntrevista(
+            candidato_id=candidato.id,
+            convite_id=registro.convite.id,
+            aprovado=resultado.aprovado,
+            mensagem=texto,
+            enviado=enviado,
+            simulado=registro.convite.simulado or resultado.simulado,
+            momento=self._relogio(),
+        )
+
+        def guardar(atual: ProgressoFluxo) -> None:
+            alvo = next(r for r in atual.convites if r.convite.id == registro.convite.id)
+            alvo.retorno = retorno
+
+        self._mudar(guardar)
+        texto_evento = (
+            "retorno da entrevista enviado" if enviado else "retorno da entrevista não saiu"
+        )
+        self._evento("pos_entrevista", texto_evento, candidato.id)
 
     def pacotes_entregues(self) -> list[PacoteContexto]:
         """Os pacotes que já chegaram ao destino, montados como na entrega."""
@@ -1596,14 +1749,19 @@ class FluxoVaga:
         progresso.analises[analise.candidato_id] = analise
         progresso.invalidas_seguidas = 0
 
-        def gravar(atual: ProgressoFluxo) -> None:
+        def gravar(atual: ProgressoFluxo) -> int | None:
+            nova = analise.candidato_id not in atual.analises
             atual.analises[analise.candidato_id] = analise
             atual.invalidas_seguidas = 0
             if revisada:
                 atual.revisadas.append(analise.candidato_id)
+            return len(atual.analises) if nova else None
 
-        self._mudar(gravar)
+        total = self._mudar(gravar)
         self._concluir_candidato(indice)
+        if total is not None:
+            texto = f"análise e revisão concluídas ({total} até agora)"
+            self._evento("analise", texto, analise.candidato_id)
 
     def _exigir_coerencia(self, analise: Analise, candidato: Candidato) -> None:
         esperado = (self.vaga.empresa_id, self.vaga.id, candidato.id)
@@ -1659,6 +1817,7 @@ class FluxoVaga:
             if decisao.tipo == TipoDecisao.INDICAR:
                 if indicados >= limite:
                     decisao = nao_priorizada(decisao, limite)
+                    self._sugerir_garden(decisao.candidato_id, GARDEN_ALEM_DO_ENCAMINHAMENTO)
                 else:
                     indicados += 1
             self._registrar_decisao(decisao)
@@ -1788,15 +1947,14 @@ class FluxoVaga:
     def _novo_convite(
         self, progresso: ProgressoFluxo, candidato_id: str, tentativa: int
     ) -> RegistroConvite:
-        """Grava o convite antes do envio. Pessoa bloqueada não tem nem o link pedido ao destino."""
+        """Grava o convite antes do envio. O link de agendamento só é pedido depois do aceite."""
         candidato = progresso.candidato(candidato_id)
         atual = self._candidato_atual(candidato, progresso)
         hoje = self._relogio().date()
+        link = None
         if pode_contatar(atual, tentativa - 1, self.vaga, hoje):
-            link = self._link_de_agendamento(candidato_id)
             estado = EstadoConvite.A_ENVIAR
         else:
-            link = None
             estado = EstadoConvite.ENCERRADO
         identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
         mensagem = self._texto_do_convite(progresso, atual, link, estado)
@@ -1889,6 +2047,52 @@ class FluxoVaga:
         else:
             self._evento("convite", "envio do convite falhou", candidato.id)
 
+    def _tratar_duvida(self, convite_id: str, texto: str) -> None:
+        """Responde pelo material da vaga ou deixa a dúvida para uma pessoa. Nunca para o fluxo."""
+        progresso = self._progresso()
+        registro = next(r for r in progresso.convites if r.convite.id == convite_id)
+        if registro.estado in (EstadoConvite.ENCERRADO, EstadoConvite.CANCELADO):
+            return
+        candidato = progresso.candidato(registro.convite.candidato_id)
+        resposta = None
+        if self._respondedor_duvida is not None:
+            try:
+                resposta = self._respondedor_duvida(self.vaga, candidato, texto)
+            except Exception:
+                logger.warning(
+                    "dúvida da vaga %s ficou para uma pessoa", self.vaga.id, exc_info=True
+                )
+        duvida = DuvidaConvite(
+            pergunta=texto,
+            resposta=resposta,
+            encaminhada_a_pessoa=resposta is None,
+            simulado=registro.convite.simulado,
+            momento=self._relogio(),
+        )
+
+        def guardar(atual: ProgressoFluxo) -> int:
+            alvo = next(r for r in atual.convites if r.convite.id == convite_id)
+            alvo.duvidas.append(duvida)
+            return len(alvo.duvidas)
+
+        numero = self._mudar(guardar)
+        if resposta is None:
+            self._evento("duvida", "dúvida encaminhada a uma pessoa", candidato.id)
+            return
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:duvida:{numero}",
+                "mensagem": resposta,
+                "link_agendamento": None,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:duvida:{numero}",
+            }
+        )
+        enviada = self._acao_idempotente(
+            mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+        )
+        texto_evento = "dúvida respondida pelo agente" if enviada else "resposta à dúvida não saiu"
+        self._evento("duvida", texto_evento, candidato.id)
+
     def _aplicar_resposta(self, convite_id: str, tipo: TipoResposta) -> None:
         """Grava a resposta. Com silêncio, deixa o novo convite a enviar, se a pessoa pode."""
 
@@ -1925,6 +2129,155 @@ class FluxoVaga:
             self._evento(etapa, mensagem, candidato_id)
         elif tipo == TipoResposta.SILENCIO:
             self._preparar_reenvio(candidato_id, registro.tentativa)
+        elif tipo == TipoResposta.ACEITE:
+            self._enviar_link_apos_aceite(registro)
+
+    def talent_garden(self) -> list[ItemGarden]:
+        """Quem o agente sugeriu guardar para depois. Quem saiu da empresa não aparece."""
+        progresso = self._progresso()
+        itens = []
+        for candidato_id, motivo in progresso.sugestoes_garden.items():
+            candidato = progresso.candidato(candidato_id)
+            if candidato.opt_out or self._tem_opt_out(candidato):
+                continue
+            itens.append(
+                ItemGarden(
+                    candidato_id=candidato_id,
+                    motivo=motivo,
+                    confirmado=progresso.destinos.get(candidato_id) == DestinoPessoa.TALENT_GARDEN,
+                    simulado=candidato.simulado,
+                )
+            )
+        return itens
+
+    def pessoa(self, candidato_id: str) -> Candidato:
+        """A pessoa como esta vaga a conheceu. Sem mandato assinado, não há ninguém."""
+        return self._progresso().candidato(candidato_id)
+
+    def convidar_do_garden(
+        self, candidato: Candidato, responsavel: str, canal: str, vaga_origem: str
+    ) -> RegistroConvite:
+        """Convite especial a quem estava no Talent Garden. Só uma pessoa do RH autoriza.
+
+        Vai pelo canal do primeiro contato, com a saída. Repetir não manda de novo.
+        """
+        nome = exigir_humano(responsavel)
+        progresso = self._progresso()
+        if candidato.empresa_id != self.vaga.empresa_id:
+            raise AcaoRecusada("pessoa de outra empresa")
+        if candidato.opt_out or self._tem_opt_out(candidato):
+            raise AcaoRecusada("a pessoa pediu para não ser mais contatada")
+        anteriores = [r for r in progresso.convites if r.convite.candidato_id == candidato.id]
+        if anteriores:
+            return anteriores[-1]
+        texto = (
+            f"Olá! Você estava no Talent Garden desta empresa desde a vaga de {vaga_origem}, "
+            f"quando nos disse que aquele não era o momento. Surgiu a vaga de "
+            f"{self.vaga.titulo} e lembramos de você. Se quiser conversar, responda SIM. "
+            "Para não ser mais contatado, responda SAIR."
+        )
+        if candidato.simulado:
+            texto = f"{texto}\n\n{AVISO_AGENDAMENTO_SIMULADO}"
+        identificador = f"{self.vaga.id}:{candidato.id}:tg"
+        registro = RegistroConvite(
+            convite=Convite(
+                id=f"convite:{identificador}",
+                empresa_id=self.vaga.empresa_id,
+                tipo=TipoConvite.VAGA,
+                canal=canal,
+                vaga_id=self.vaga.id,
+                candidato_id=candidato.id,
+                mensagem=texto,
+                link_agendamento=None,
+                chave_idempotencia=f"convite:{self.vaga.empresa_id}:{identificador}",
+                simulado=candidato.simulado,
+            ),
+            tentativa=1,
+        )
+
+        def incluir(atual: ProgressoFluxo) -> None:
+            if all(c.id != candidato.id for c in (*atual.candidatos, *atual.cortados)):
+                atual.candidatos.append(candidato)
+            if not any(r.convite.id == registro.convite.id for r in atual.convites):
+                atual.convites.append(registro)
+
+        self._mudar(incluir)
+        self._evento(
+            "talent_garden",
+            f"convite especial do talent garden autorizado por {nome}",
+            candidato.id,
+        )
+        progresso = self._progresso()
+        with self._contexto(progresso, candidato.id):
+            self._enviar(progresso, registro)
+        return next(r for r in self._progresso().convites if r.convite.id == registro.convite.id)
+
+    def _sugerir_garden(
+        self, candidato_id: str, motivo: str, registro: RegistroConvite | None = None
+    ) -> None:
+        """Sugere o Talent Garden uma vez por pessoa. Não muda decisão nem destino."""
+
+        def sugerir(progresso: ProgressoFluxo) -> bool:
+            if candidato_id in progresso.sugestoes_garden:
+                return False
+            progresso.sugestoes_garden[candidato_id] = motivo
+            return True
+
+        if not self._mudar(sugerir):
+            return
+        self._evento("talent_garden", f"sugerido ao talent garden: {motivo}", candidato_id)
+        if registro is None:
+            return
+        texto = RESPOSTA_NAO_AGORA
+        if registro.convite.simulado:
+            texto = f"{texto}\n\n{AVISO_AGENDAMENTO_SIMULADO}"
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:garden",
+                "mensagem": texto,
+                "link_agendamento": None,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:garden",
+            }
+        )
+        self._acao_idempotente(
+            mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+        )
+
+    def _enviar_link_apos_aceite(self, registro: RegistroConvite) -> None:
+        """Com o aceite, pede o link ao destino e manda numa segunda mensagem. Quem marca é ele."""
+        candidato_id = registro.convite.candidato_id
+        link = self._link_de_agendamento(candidato_id)
+        if link is None:
+            return
+
+        def guardar(progresso: ProgressoFluxo) -> None:
+            alvo = next(r for r in progresso.convites if r.convite.id == registro.convite.id)
+            alvo.convite = alvo.convite.model_copy(update={"link_agendamento": link})
+
+        self._mudar(guardar)
+        texto = (
+            f"Que bom que você aceitou! Para escolher o horário da entrevista da vaga de "
+            f"{self.vaga.titulo}, use este link: {link}"
+        )
+        if registro.convite.simulado:
+            texto = f"{texto}\n\n{AVISO_AGENDAMENTO_SIMULADO}"
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:agendamento",
+                "mensagem": texto,
+                "link_agendamento": link,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:agendamento",
+            }
+        )
+        enviada = self._acao_idempotente(
+            mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+        )
+        texto_evento = (
+            "link de agendamento enviado depois do aceite"
+            if enviada
+            else "link de agendamento não saiu"
+        )
+        self._evento("agendamento", texto_evento, candidato_id)
 
     @staticmethod
     def _convite_aberto(

@@ -61,7 +61,7 @@ def test_busca_usa_os_perfis_sinteticos_da_frente_2(cliente):
     assert all(i["candidato"]["simulado"] for i in itens)
 
 
-def test_convite_diz_o_que_interessou_e_traz_o_link_da_nara(cliente):
+def test_convite_diz_o_que_interessou_e_o_link_da_nara_so_vem_com_o_aceite(cliente):
     vaga = _vaga_do_modelo(cliente)
 
     convites = cliente.get(f"/vagas/{vaga}/convites", headers=SESSAO).json()["itens"]
@@ -71,9 +71,19 @@ def test_convite_diz_o_que_interessou_e_traz_o_link_da_nara(cliente):
     for convite in enviados:
         assert "chamou nossa atenção por" in convite["mensagem"]
         assert PALAVRA_SAIDA in convite["mensagem"]
-        assert convite["link_destino"].startswith(BASE_LINK)
-        assert convite["link_destino"] in convite["mensagem"]
+        assert convite["link_destino"] is None
+        assert BASE_LINK not in convite["mensagem"]
         assert "{" not in convite["mensagem"]
+
+    primeiro = enviados[0]
+    cliente.post(
+        f"/convites/{primeiro['id']}/resposta",
+        headers=SESSAO,
+        json={"vaga_id": vaga, "tipo": "aceite", "chave_idempotencia": "aceite-link"},
+    )
+    depois = cliente.get(f"/vagas/{vaga}/convites", headers=SESSAO).json()["itens"]
+    aceito = next(c for c in depois if c["id"] == primeiro["id"])
+    assert aceito["link_destino"].startswith(BASE_LINK)
 
 
 def test_aceite_entrega_o_contexto_a_nara_simulada(cliente):

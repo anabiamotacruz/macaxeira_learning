@@ -29,6 +29,12 @@ curl -X POST -H "X-Empresa-Id: empresa-exemplo" -H "Content-Type: application/js
 
 A documentação interativa fica em `/docs`.
 
+Por padrão, a API sobe a demonstração sem modelo: tudo sintético e sem chave. Para o agente raciocinar com o modelo de verdade na análise, na revisão, nas consultas e nas dúvidas, defina `AGENTE_COM_MODELO=1` e `FEATHERLESS_API_KEY`. As pessoas, o contato e a Nara continuam simulados. O gasto do modelo conta para o limite do mandato: passou do limite, a vaga pausa. Sem a chave, a API avisa no log e segue sem modelo.
+
+Para a entrega à Nara passar por MCP, suba a Nara simulada com `uv run python -m backend.nara_simulada.mcp --porta 8765` e defina `NARA_MCP_URL=http://127.0.0.1:8765/mcp` antes de subir a API. O link do convite, o pacote e o resultado da entrevista passam pelo servidor, com um conector por empresa. Se a Nara cair, a vaga pausa com a entrega pendente.
+
+Com `AGENTE_BUSCA_REAL=1`, a busca também usa as fontes externas da Frente 2: Brave com `BRAVE_API_KEY`, Bright Data com `BRIGHTDATA_API_TOKEN` e `BRIGHTDATA_ZONA_WEB`, e PDL com `PDL_API_KEY`. Elas se somam aos perfis sintéticos. Quem vem delas chega sem autorização de contato, e o funil o segura antes da análise. Nenhum contato real é feito.
+
 ## Regras do contrato
 
 - **Sessão:** `empresa_id` vem do cabeçalho simulado `X-Empresa-Id`, nunca do corpo. Sem ele, a resposta é 401.

@@ -14,15 +14,25 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
+from backend.agente.configuracao import PerguntaVaga
+from backend.agente.documento import documento_de_ingestao
 from backend.agente.fluxo import (
+    CANAL_CONVITE,
     REGRA_REVERSAO,
+    AcaoRecusada,
     FluxoVaga,
+    ItemGarden,
     Priorizador,
     ProvedorConsultas,
     RedatorConvite,
+    RedatorRetorno,
     RegistroConvite,
     Reidentificador,
+    RespondedorDuvida,
+    RetornoEntrevista,
+    TransicaoInvalida,
     concorrencia_do_ambiente,
     consulta_pelo_titulo,
     exigir_humano,
@@ -47,6 +57,7 @@ from backend.contratos.modelos import (
     EstadoVaga,
     EventoFluxo,
     Mandato,
+    PropostaAjuste,
     RespostaCandidato,
     ResumoExecucao,
     SaidaPersonalizada,
@@ -59,6 +70,10 @@ from backend.contratos.modelos import (
 from backend.modelos.resiliencia import Resiliencia
 
 logger = logging.getLogger(__name__)
+
+
+class PropostaSemModelo(ErroContrato):
+    """A proposta de critérios precisa do modelo, e esta montagem não tem um."""
 
 
 class VagaInexistente(ErroContrato):
@@ -83,6 +98,19 @@ class AditivoNecessario(ErroContrato):
 
 class ChaveReutilizada(ErroContrato):
     """A mesma chave de idempotência chegou com outro pedido."""
+
+
+@dataclass(frozen=True)
+class SugestaoGarden:
+    """Pessoa do Talent Garden de outra vaga da empresa, para o RH decidir se convida."""
+
+    candidato_id: str
+    vaga_origem_id: str
+    vaga_origem_titulo: str
+    motivo: str
+    confirmado: bool
+    canal: str
+    simulado: bool
 
 
 @dataclass(frozen=True)
@@ -116,6 +144,10 @@ class DependenciasFluxo:
     reidentificador: Reidentificador | None = None
     concorrencia: int = field(default_factory=concorrencia_do_ambiente)
     redator_convite: RedatorConvite | None = None
+    respondedor_duvida: RespondedorDuvida | None = None
+    redator_retorno: RedatorRetorno | None = None
+    propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None
+    """Recebe a descrição e a empresa. Sem ele, a proposta de critérios fica indisponível."""
 
 
 def _novo_id_de_vaga() -> str:
@@ -164,6 +196,8 @@ class ServicoVagas:
             reidentificador=d.reidentificador,
             concorrencia=d.concorrencia,
             redator_convite=d.redator_convite,
+            respondedor_duvida=d.respondedor_duvida,
+            redator_retorno=d.redator_retorno,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:
@@ -276,6 +310,71 @@ class ServicoVagas:
     def convites(self, empresa_id: str, vaga_id: str) -> list[RegistroConvite]:
         return self._fluxo(empresa_id, vaga_id).convites()
 
+    def talent_garden(self, empresa_id: str, vaga_id: str) -> list[ItemGarden]:
+        return self._fluxo(empresa_id, vaga_id).talent_garden()
+
+    def sugestoes_garden(self, empresa_id: str, vaga_id: str) -> list[SugestaoGarden]:
+        """Quem está no Talent Garden das outras vagas da empresa e ainda não foi chamado aqui."""
+        alvo = self._fluxo(empresa_id, vaga_id)
+        chamados = {r.convite.candidato_id for r in alvo.convites()}
+        sugestoes: dict[str, SugestaoGarden] = {}
+        for vaga in self.vagas(empresa_id):
+            if vaga.id == vaga_id:
+                continue
+            origem = self._novo_fluxo(vaga)
+            try:
+                itens = origem.talent_garden()
+            except TransicaoInvalida:
+                continue
+            canais = {r.convite.candidato_id: r.convite.canal for r in origem.convites()}
+            for item in itens:
+                if item.candidato_id in chamados or item.candidato_id in sugestoes:
+                    continue
+                sugestoes[item.candidato_id] = SugestaoGarden(
+                    candidato_id=item.candidato_id,
+                    vaga_origem_id=vaga.id,
+                    vaga_origem_titulo=vaga.titulo,
+                    motivo=item.motivo,
+                    confirmado=item.confirmado,
+                    canal=canais.get(item.candidato_id, CANAL_CONVITE),
+                    simulado=item.simulado,
+                )
+        return list(sugestoes.values())
+
+    def convidar_do_garden(
+        self, empresa_id: str, vaga_id: str, candidato_ids: list[str], responsavel: str
+    ) -> list[RegistroConvite]:
+        """Manda o convite especial a quem o RH escolheu entre as sugestões."""
+        sugestoes = {s.candidato_id: s for s in self.sugestoes_garden(empresa_id, vaga_id)}
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        ja = {r.convite.candidato_id: r for r in fluxo.convites()}
+        fora = [c for c in candidato_ids if c not in sugestoes and c not in ja]
+        if fora:
+            raise AcaoRecusada(f"fora das sugestões do talent garden: {', '.join(fora)}")
+        registros = []
+        with self._exclusivo(empresa_id, vaga_id):
+            for candidato_id in candidato_ids:
+                if candidato_id in ja:
+                    registros.append(ja[candidato_id])
+                    continue
+                sugestao = sugestoes[candidato_id]
+                origem = self._fluxo(empresa_id, sugestao.vaga_origem_id)
+                registros.append(
+                    fluxo.convidar_do_garden(
+                        origem.pessoa(candidato_id),
+                        responsavel,
+                        sugestao.canal,
+                        sugestao.vaga_origem_titulo,
+                    )
+                )
+        return registros
+
+    def acompanhar_entrevistas(self, empresa_id: str, vaga_id: str) -> list[RetornoEntrevista]:
+        """Manda o retorno do destino a quem já foi entrevistado. Repetir não reenvia."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        with self._exclusivo(empresa_id, vaga_id):
+            return fluxo.acompanhar_entrevistas()
+
     def entregar(self, empresa_id: str, vaga_id: str) -> tuple[list[str], list[str]]:
         """Entrega quem o fluxo já libera. Devolve quem foi entregue e quem ficou pendente."""
         fluxo = self._fluxo(empresa_id, vaga_id)
@@ -300,6 +399,39 @@ class ServicoVagas:
             simulado=True,
             momento=self._dependencias.relogio(),
         )
+
+    def propor_vaga(self, empresa_id: str, descricao: str) -> Vaga | PerguntaVaga:
+        """Critérios propostos a partir da descrição. Não cria vaga: a pessoa revisa e cria."""
+        propositor = self._dependencias.propositor_vaga
+        if propositor is None:
+            raise PropostaSemModelo("a proposta de critérios precisa do modelo")
+        return propositor(descricao, empresa_id)
+
+    def sugestao_de_ajuste(self, empresa_id: str, vaga_id: str) -> PropostaAjuste | None:
+        """Lê os resultados do destino e sugere ajuste. Só alerta: nada muda na vaga."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        try:
+            resultados = self._dependencias.destino.resultados(empresa_id, vaga_id)
+        except (ErroContrato, OSError) as erro:
+            logger.warning("sem resultados do destino para sugerir ajuste: %s", type(erro).__name__)
+            return None
+        return propor_ajuste(fluxo.vaga, resultados)
+
+    def documento(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
+        """O documento de ingestão de quem já foi entregue ao destino, com a conversa."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        pacote = next(
+            (p for p in fluxo.pacotes_entregues() if p.candidato_id == candidato_id), None
+        )
+        if pacote is None:
+            raise CandidatoInexistente("não há entrega para esta pessoa nesta vaga")
+        duvidas = [
+            duvida
+            for registro in fluxo.convites()
+            if registro.convite.candidato_id == candidato_id
+            for duvida in registro.duvidas
+        ]
+        return documento_de_ingestao(pacote, fluxo.vaga, duvidas)
 
     def resumo(self, empresa_id: str, vaga_id: str) -> ResumoExecucao:
         fluxo = self._fluxo(empresa_id, vaga_id)
@@ -363,6 +495,21 @@ class ServicoVagas:
             if decisao.candidato_id == candidato_id and decisao.regra != REGRA_REVERSAO
         ]
         return historico[-1], nova
+
+    def resolver_fila(
+        self,
+        empresa_id: str,
+        vaga_id: str,
+        candidato_id: str,
+        tipo: TipoDecisao,
+        motivo: str,
+        responsavel: str,
+    ) -> Decisao:
+        """Uma pessoa do RH decide quem estava na fila humana: indicar ou descartar."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        self._exigir_candidato_na_vaga(empresa_id, vaga_id, candidato_id)
+        with self._exclusivo(empresa_id, vaga_id):
+            return fluxo.resolver_fila(candidato_id, tipo, motivo, responsavel)
 
     def registrar_destino(
         self,
