@@ -301,7 +301,7 @@ RESPOSTA_BRAVE = {
 }
 
 
-def test_com_a_chave_a_linkdapi_vem_primeiro():
+def test_com_a_chave_a_linkdapi_vem_logo_depois_do_linkedin_pela_brave():
     ambiente = {
         "LINK_API_KEY": CHAVE_1,
         "PDL_API_KEY": CHAVE_PDL,
@@ -309,6 +309,7 @@ def test_com_a_chave_a_linkdapi_vem_primeiro():
         "PROVEDORES_ORCAMENTO_EXECUCAO_USD": "5",
     }
     assert nomes(montar(ambiente, TransporteSimulado())) == [
+        "linkedin_brave",
         "linkdapi#1",
         "people_data_labs_busca",
         "brave",
@@ -328,6 +329,7 @@ def test_so_a_linkdapi_liga_a_cadeia():
 def test_chaves_reserva_entram_em_ordem_ate_o_primeiro_numero_ausente():
     ambiente = {**AMBIENTE_TRES, "LINK_API_KEY_5": "chave-sintetica-cinco", "BRAVE_API_KEY": "b"}
     assert nomes(montar(ambiente, TransporteSimulado())) == [
+        "linkedin_brave",
         "linkdapi#1",
         "linkdapi#2",
         "linkdapi#3",
@@ -378,11 +380,12 @@ def test_chave_recusada_passa_para_a_proxima():
 
 def test_todas_sem_credito_passam_ao_proximo_provedor():
     sem = [erro(402, "Insufficient credits") for _ in range(3)]
-    transporte = TransporteSimulado(*sem, resposta_json(RESPOSTA_BRAVE))
+    sem_perfis = resposta_json({"web": {"results": []}})  # o linkedin_brave não acha ninguém
+    transporte = TransporteSimulado(sem_perfis, *sem, resposta_json(RESPOSTA_BRAVE))
     fonte = montar({**AMBIENTE_TRES, "BRAVE_API_KEY": CHAVE_BRAVE}, transporte)
     resultado = fonte.cadeia.consultar(EMPRESA, POR_TEXTO)
     assert resultado.provedor == "brave"
-    assert chaves_usadas(transporte)[:3] == [CHAVE_1, CHAVE_2, CHAVE_3]
+    assert chaves_usadas(transporte)[1:4] == [CHAVE_1, CHAVE_2, CHAVE_3]
     metricas = fonte.metricas()["provedores"]
     assert {"linkdapi#1", "linkdapi#2", "linkdapi#3", "brave"} <= set(metricas)
 
