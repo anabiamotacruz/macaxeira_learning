@@ -24,6 +24,7 @@ from pathlib import Path
 from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
 from backend.agente.configuracao import PerguntaVaga, propor_configuracao
 from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
+from backend.agente.interpretacao import MODELO_INTERPRETACAO_PADRAO, interpretar_com_modelo
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
@@ -39,7 +40,14 @@ from backend.contratos.interfaces import (
     FonteCandidatos,
     Revisor,
 )
-from backend.contratos.modelos import Analise, Candidato, Evidencia, ResultadoEntrevista, Vaga
+from backend.contratos.modelos import (
+    Analise,
+    Candidato,
+    Evidencia,
+    ResultadoEntrevista,
+    TipoResposta,
+    Vaga,
+)
 from backend.contratos.simulacoes import (
     BancoTalentosSimulado,
     ClienteModeloSimulado,
@@ -371,6 +379,7 @@ def _montar(
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
     propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None,
+    interpretador: Callable[[str], TipoResposta | str | None] | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
@@ -397,6 +406,7 @@ def _montar(
             respondedor_duvida=respondedor_duvida,
             redator_retorno=redigir_retorno,
             propositor_vaga=propositor_vaga,
+            interpretador=interpretador,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),
@@ -448,6 +458,7 @@ def montar_com_modelo(
     medidor_gasto: Callable[[], float],
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
+    cliente_interpretacao: ClienteModelo | None = None,
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
 
@@ -468,6 +479,9 @@ def montar_com_modelo(
         fonte_extra=fonte_extra,
         propositor_vaga=lambda descricao, empresa_id: propor_configuracao(
             descricao, empresa_id, cliente, campos_do_banco=campos_do_banco_demo()
+        ),
+        interpretador=lambda texto: interpretar_com_modelo(
+            texto, cliente if cliente_interpretacao is None else cliente_interpretacao
         ),
     )
 
@@ -492,9 +506,34 @@ def montar_servico(
         logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
         return montar_demo(caminho, destino=destino, fonte_extra=extra)
 
+    interpretacao = _cliente_de_interpretacao(criar_cliente, ambiente, cliente)
+
     def gasto() -> float:
-        return float(getattr(cliente, "custo_total_usd", 0.0))
+        clientes = {id(c): c for c in (cliente, interpretacao)}.values()
+        return sum(float(getattr(c, "custo_total_usd", 0.0)) for c in clientes)
 
     return montar_com_modelo(
-        caminho, cliente=cliente, medidor_gasto=gasto, destino=destino, fonte_extra=extra
+        caminho,
+        cliente=cliente,
+        medidor_gasto=gasto,
+        destino=destino,
+        fonte_extra=extra,
+        cliente_interpretacao=interpretacao,
     )
+
+
+MODELO_INTERPRETACAO = "MODELO_INTERPRETACAO"
+
+
+def _cliente_de_interpretacao(
+    criar_cliente: Callable[..., ClienteModelo],
+    ambiente: Mapping[str, str],
+    principal: ClienteModelo,
+) -> ClienteModelo:
+    """Modelo pequeno e barato para ler a intenção da pessoa. Sem ele, usa o principal."""
+    modelo = ambiente.get(MODELO_INTERPRETACAO, "").strip() or MODELO_INTERPRETACAO_PADRAO
+    try:
+        return criar_cliente(modelo=modelo)
+    except (TypeError, ModeloIndisponivel) as erro:
+        logger.warning("interpretação usa o modelo principal: %s", type(erro).__name__)
+        return principal

@@ -42,6 +42,8 @@ PRECOS_USD: dict[str, tuple[float, float]] = {
     "zai-org/GLM-5.2": (1.4, 4.4),
     "zai-org/GLM-5.1": (1.3, 4.3),
     "zai-org/GLM-4.7-Flash": (0.0653, 0.4),
+    "Qwen/Qwen2.5-14B-Instruct": (0.10775, 0.28),
+    "Qwen/Qwen2.5-7B-Instruct": (0.17, 0.2),
 }
 """Entrada e saída, em USD por milhão de tokens, conforme `GET /v1/models` em 7/11/2026."""
 

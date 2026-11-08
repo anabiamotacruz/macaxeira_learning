@@ -23,6 +23,7 @@ from backend.agente.fluxo import (
     REGRA_REVERSAO,
     AcaoRecusada,
     FluxoVaga,
+    Interpretador,
     ItemGarden,
     Priorizador,
     ProvedorConsultas,
@@ -147,6 +148,7 @@ class DependenciasFluxo:
     redator_convite: RedatorConvite | None = None
     respondedor_duvida: RespondedorDuvida | None = None
     redator_retorno: RedatorRetorno | None = None
+    interpretador: Interpretador | None = None
     propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None
     """Recebe a descrição e a empresa. Sem ele, a proposta de critérios fica indisponível."""
 
@@ -199,6 +201,7 @@ class ServicoVagas:
             redator_convite=d.redator_convite,
             respondedor_duvida=d.respondedor_duvida,
             redator_retorno=d.redator_retorno,
+            interpretador=d.interpretador,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:

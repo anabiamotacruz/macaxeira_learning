@@ -116,6 +116,8 @@ RegistrarCorte = Callable[[CorteFunil], None]
 Priorizador = Callable[[Vaga, list[Candidato], date, RegistrarCorte], list[Candidato]]
 RedatorConvite = Callable[[Vaga, Candidato, Analise, str | None], str]
 RespondedorDuvida = Callable[[Vaga, Candidato, str], str | None]
+Interpretador = Callable[[str], TipoResposta | str | None]
+"""Lê a mensagem livre da pessoa: aceite, recusa, opt-out, `NAO_AGORA` ou `None` (dúvida)."""
 """Responde a dúvida pelo material da vaga, ou devolve None para uma pessoa responder."""
 """Escreve o texto do convite a partir da análise. Sem ele, o convite usa um texto fixo."""
 RedatorRetorno = Callable[[Vaga, Candidato, ResultadoEntrevista], str]
@@ -501,6 +503,7 @@ class FluxoVaga:
         redator_convite: RedatorConvite | None = None,
         respondedor_duvida: RespondedorDuvida | None = None,
         redator_retorno: RedatorRetorno | None = None,
+        interpretador: Interpretador | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -515,6 +518,7 @@ class FluxoVaga:
         self._redator_convite = redator_convite
         self._respondedor_duvida = respondedor_duvida
         self._redator_retorno = redator_retorno
+        self._interpretador = interpretar_mensagem if interpretador is None else interpretador
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -661,7 +665,7 @@ class FluxoVaga:
             raise AcaoRecusada(f"convite desconhecido nesta vaga: {resposta.convite_id!r}")
         candidato_id = registro.convite.candidato_id
         if resposta.tipo == TipoResposta.DUVIDA:
-            interpretada = interpretar_mensagem(resposta.texto)
+            interpretada = self._interpretar(resposta.texto)
             if interpretada is not None:
                 tipo = TipoResposta.RECUSA if interpretada == NAO_AGORA else interpretada
                 resposta = resposta.model_copy(update={"tipo": tipo})
@@ -2128,6 +2132,16 @@ class FluxoVaga:
             self._preparar_reenvio(candidato_id, registro.tentativa)
         elif tipo == TipoResposta.ACEITE:
             self._enviar_link_apos_aceite(registro)
+
+    def _interpretar(self, texto: str) -> TipoResposta | str | None:
+        """Falha do interpretador nunca decide: a mensagem continua dúvida."""
+        try:
+            return self._interpretador(texto)
+        except Exception:
+            logger.warning(
+                "interpretação da vaga %s ficou como dúvida", self.vaga.id, exc_info=True
+            )
+            return None
 
     def talent_garden(self) -> list[ItemGarden]:
         """Quem o agente sugeriu guardar para depois. Quem saiu da empresa não aparece."""
