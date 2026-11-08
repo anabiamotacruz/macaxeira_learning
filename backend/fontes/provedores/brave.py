@@ -8,9 +8,13 @@ aparecer lá. A referência só descreve o erro de 404, 422 e 429. O 401, o 403 
 `SUBSCRIPTION_TOKEN_INVALID` num 422 foram tratados por precaução, sem confirmação oficial.
 
 Armazenamento: os termos (seção 3(b)(i)) proíbem guardar, fazer cache ou montar base de resultados,
-salvo armazenamento transitório necessário à operação. O FAQ só libera com plano que inclua esse
-direito, e a Brave não publica qual é. Enquanto ele não estiver contratado, resultado desta fonte
-não pode ser gravado no banco de talentos: ver a questão Q4 da spec 004.
+salvo armazenamento transitório necessário à operação. Por decisão do responsável pelo produto, a
+Brave é só descoberta transitória: cada resultado sai marcado como `descoberta`, e título, trecho e
+qualquer outro texto dela ficam só em memória, durante a execução, para escolher a página a ler.
+Nada disso vai ao banco, a candidato, a decisão, a evento, a rastro ou a log. A URL só serve para
+ler a página; o que fica é o que a leitura trouxe (`FonteProvedores`). O cache é o
+`CacheDescobertas`, preso à execução. A URL e os dados guardados ainda precisam de revisão
+jurídica: ver a questão Q4 da spec 004.
 """
 
 import html
@@ -89,9 +93,11 @@ def _sem_marcacao(valor: Any) -> str:
 
 
 class ProvedorBrave:
-    """Implementa `ProvedorDados`, só para consultas de texto."""
+    """Implementa `ProvedorDados`, só para consultas de texto. Cada resultado é só descoberta."""
 
     nome = NOME
+    so_descoberta = True
+    """A cadeia guarda o resultado só no `CacheDescobertas`, nunca no cache de consultas."""
 
     def __init__(
         self,
@@ -224,4 +230,5 @@ class ProvedorBrave:
             confianca=ConfiancaDado.DECLARADO,
             texto=". ".join(partes),
             atributos=atributos,
+            descoberta=True,
         )

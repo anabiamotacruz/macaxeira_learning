@@ -13,7 +13,8 @@
    `LINKDAPI_PERFIS_POR_PAGINA` ajustam a consulta.
 1. Busca da People Data Labs (Person Search), a principal: devolve perfis com cargo, competências
    e experiência. Entra com `PDL_API_KEY`; `PDL_PAIS` e `PDL_TAMANHO_PAGINA` ajustam a consulta.
-2. Brave, a busca na web, que assume quando o PDL falha ou não acha.
+2. Brave, a busca na web, que assume quando o PDL falha ou não acha. É só descoberta transitória:
+   sem a Bright Data para ler as páginas, nenhuma descoberta vira candidato, e o estado avisa.
 3. Bright Data, que lê páginas. A SERP dela usa alvo Google e só entra com `BRIGHTDATA_ZONA_BUSCA`
    e `BRIGHTDATA_BUSCA_HABILITADA=1`.
 4. Enriquecimento da People Data Labs (Person Enrichment), só por identidade.
@@ -137,6 +138,10 @@ def _limite(ambiente: Mapping[str, str], nome: str, padrao: float) -> float:
     if not math.isfinite(valor) or valor < 0:
         raise ValueError(f"{nome} inválido: use um número finito e não negativo")
     return valor
+
+
+def _le_paginas(ambiente: Mapping[str, str]) -> bool:
+    return all(_valor(ambiente, nome) for nome in (BRIGHTDATA_API_TOKEN, BRIGHTDATA_ZONA_WEB))
 
 
 def _provedor_brave(
@@ -344,6 +349,11 @@ def montar_fonte_externa(
     provedores: list[ProvedorDados] = []
     if modo is ModoDados.REAIS and _valor(ambiente, BRAVE_API_KEY) is None:
         avisos.append(f"{BRAVE_API_KEY} ausente: busca na web indisponível")
+    elif modo is ModoDados.REAIS and not _le_paginas(ambiente):
+        avisos.append(
+            "a Brave só descobre páginas e nada lido dela é guardado: sem "
+            f"{BRIGHTDATA_API_TOKEN} e {BRIGHTDATA_ZONA_WEB}, nenhuma descoberta vira candidato"
+        )
     tem_linkdapi = bool(_chaves_linkdapi(ambiente))
     if modo is ModoDados.REAIS and (
         tem_linkdapi

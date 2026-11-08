@@ -2,6 +2,10 @@
 
 Quem vem de provedor entra sempre sem autorização e como pendente: o funil o corta até a pessoa
 autorizar. Nada aqui contata ninguém, e o contato vindo de provedor fica marcado como tal.
+
+Achado de descoberta, como o da Brave, só serve para escolher a página a ler. Ele nunca vira
+candidato: ou a página é lida e fica o que ela trouxe, com a URL dela e a data da leitura, ou nada
+fica, e só a contagem de descobertas sem leitura é registrada, sem URL nem texto.
 """
 
 import logging
@@ -78,6 +82,8 @@ class SupressaoPorBanco:
 
 def candidato_de_item(empresa_id: str, item: ItemColetado) -> Candidato:
     """Converte para o contrato atual. A procedência vem por último: dado externo não a troca."""
+    if item.descoberta:  # nem a mensagem leva a URL ou o texto
+        raise ValueError("achado de descoberta não vira candidato: leia a página antes")
     atributos = dict(item.atributos)
     if item.email:
         atributos["email"] = item.email
@@ -155,7 +161,14 @@ class FonteProvedores:
         resultado = self.cadeia.consultar(empresa_id, consulta)
         if consulta.texto is None or resultado.situacao != SituacaoConsulta.ENCONTRADO:
             return resultado
-        return resultado.model_copy(update={"itens": self._aprofundar(empresa_id, resultado.itens)})
+        itens, sem_leitura = self._aprofundar(empresa_id, resultado.itens)
+        if sem_leitura:
+            self.cadeia.metricas.registrar_descobertas_sem_leitura(sem_leitura)
+            logger.info("descobertas sem leitura: %d", sem_leitura)
+        atualizacao: dict = {"itens": itens, "descobertas_sem_leitura": sem_leitura}
+        if not itens:
+            atualizacao["situacao"] = SituacaoConsulta.NAO_ENCONTRADO
+        return resultado.model_copy(update=atualizacao)
 
     def ler_pagina(self, empresa_id: str, url: str) -> ResultadoCadeia:
         return self.cadeia.consultar(empresa_id, ConsultaProvedor(url=url))
@@ -181,19 +194,39 @@ class FonteProvedores:
             return []
         return [c for c in self._fonte_sintetica.buscar(empresa_id, consulta, pagina) if c.simulado]
 
-    def _aprofundar(self, empresa_id: str, itens: list[ItemColetado]) -> list[ItemColetado]:
-        """Um trecho de busca não é perfil: lê as primeiras páginas, cada uma com os controles."""
+    def _aprofundar(
+        self, empresa_id: str, itens: list[ItemColetado]
+    ) -> tuple[list[ItemColetado], int]:
+        """Um trecho de busca não é perfil: lê as primeiras páginas, cada uma com os controles.
+
+        Devolve também quantas descobertas ficaram sem leitura. Delas, nada sobra.
+        """
         aprofundados: list[ItemColetado] = []
+        sem_leitura = 0
         for posicao, item in enumerate(itens):
-            if (
-                posicao >= self._paginas_por_consulta
-                or item.url is None
-                or item.provedor in PROVEDORES_DE_PERFIL
-            ):
+            ao_alcance = posicao < self._paginas_por_consulta and item.url is not None
+            if item.descoberta:
+                lidos = self._ler_descoberta(empresa_id, item.url) if ao_alcance else []
+                sem_leitura += not lidos
+                aprofundados.extend(lidos)
+            elif not ao_alcance or item.provedor in PROVEDORES_DE_PERFIL:
                 aprofundados.append(item)
-                continue
-            aprofundados.extend(self._ler_ou_manter(empresa_id, item))
-        return aprofundados
+            else:
+                aprofundados.extend(self._ler_ou_manter(empresa_id, item))
+        return aprofundados, sem_leitura
+
+    def _ler_descoberta(self, empresa_id: str, url: str | None) -> list[ItemColetado]:
+        """Só a página lida volta. Sem leitura, a descoberta inteira é descartada."""
+        if url is None:
+            return []
+        try:
+            lido = self.ler_pagina(empresa_id, url)
+        except FonteIndisponivel as erro:
+            logger.info("página descoberta não lida: %s", type(erro).__name__)
+            return []
+        if lido.situacao != SituacaoConsulta.ENCONTRADO:
+            return []
+        return [item for item in lido.itens if not item.descoberta]
 
     def _ler_ou_manter(self, empresa_id: str, item: ItemColetado) -> list[ItemColetado]:
         try:
