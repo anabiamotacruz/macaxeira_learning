@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>CORA · Catálogo de vagas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F8F5}
+button,input,select,textarea{font:inherit;color:inherit}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #FB3C0D;outline-offset:2px}
+input::placeholder,textarea::placeholder{color:#5E7672}
+.num{font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.btn{transition:background-color .15s ease,border-color .15s ease}
+.btn-primary:hover{background:#C42C08 !important}
+.btn-outline:hover{background:#EEF2EF !important}
+.pill:hover{background:#F1F4F2}
+.pill[aria-current="page"]:hover{background:#EEF2EF}
+.row-hover:hover{background:#FAFBF9}
+.title-link:hover{color:#DC3209 !important}
+.show-md{display:none !important}
+@media (max-width: 860px){.hide-md{display:none !important}.show-md{display:flex !important}}
+@media (max-width: 600px){.hide-sm{display:none !important}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; background: #F7F8F5; color: #0B3038; font-family: Geist, system-ui, sans-serif; font-size: 14px; line-height: 1.5;">
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+<header style="height: 60px; box-sizing: border-box; background: #FFFFFF; border-bottom: 1px solid #E4E9E5; position: sticky; top: 0; z-index: 10;">
+<div style="max-width: 1240px; height: 100%; margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: 20px;">
+<a href="#catalogo" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #0B3038; flex-shrink: 0;"><img src="/_blob/ee2246b172b155521d853cac5cc9c71f" alt="" width="28" height="29" style="width: 28px; height: 29px; object-fit: contain;"><span style="font-size: 18px; font-weight: 600; letter-spacing: -0.03em;">CORA</span></a>
+<nav class="hide-md" aria-label="Principal" style="display: flex; align-items: center; gap: 4px;">
+<a href="#catalogo" class="pill" aria-current="page" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; background: #EEF2EF; color: #0B3038; font-weight: 600;">Vagas</a>
+<a href="#banco" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Banco de talentos</a>
+<a href="#empresa" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Empresa</a>
+</nav>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+<label class="hide-md" style="width: 240px; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-radius: 8px; background: #F1F4F2; color: #526C68;">
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.4 10.4 3.1 3.1"></path></svg>
+<span class="sr-only">Buscar pessoas ou vagas</span>
+<input type="search" placeholder="Buscar pessoas ou vagas" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13px; color: #0B3038;">
+<kbd style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #526C68; padding: 1px 6px; border-radius: 5px; border: 1px solid #DFE6E1; background: #FFFFFF;">⌘K</kbd>
+</label>
+<a href="#criar-vaga" class="btn btn-primary" style="height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Criar vaga</a>
+<button type="button" class="show-md" aria-label="Abrir menu" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; align-items: center; justify-content: center; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"></path></svg></button>
+<button type="button" aria-label="Conta de Ana Ribeiro" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; border: 0; background: #0B3038; color: #FFFFFF; font-size: 12px; font-weight: 600; cursor: pointer;">AR</button>
+</div>
+</div>
+</header>
+
+<main id="catalogo" style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 32px 24px 56px; display: flex; flex-direction: column; gap: 24px;">
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px;">
+<div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.15;">Vagas</h1>
+<p style="margin: 0; color: #526C68; font-size: 15px;">Acompanhe as buscas da Maré Tech e o quanto falta para cada meta.</p>
+</div>
+<a href="#modelos" class="btn btn-outline" style="height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; text-decoration: none;">Criar a partir de um modelo</a>
+</div>
+
+<section aria-label="Resumo" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px;">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; color: #526C68;">Vagas buscando</span>
+<span class="num" style="font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1;">2</span>
+<span style="font-size: 12px; color: #5E7672;">1 rascunho aguarda aprovação dos critérios</span>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; color: #526C68;">Perfis encontrados</span>
+<span class="num" style="font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1;">40</span>
+<span style="font-size: 12px; color: #5E7672;">nas vagas buscando, cada um com a origem</span>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; color: #526C68;">Aguardando autorização</span>
+<span class="num" style="font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1;">5</span>
+<span style="font-size: 12px; color: #5E7672;">só são abordadas depois de autorizar</span>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 13px; color: #526C68;">Entregues à Nara</span>
+<span class="num" style="font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1;">3 <span style="font-size: 16px; font-weight: 500; color: #526C68;">de 9</span></span>
+<span style="font-size: 12px; color: #5E7672;">soma das metas das vagas buscando</span>
+</div>
+</section>
+
+<section aria-label="Vagas" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #EDF1EE;">
+<div role="tablist" aria-label="Filtrar por status" style="display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 9px; background: #EAF0EC;">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="4">
+<button type="button" role="tab" aria-selected="{{tab.selected}}" onClick="{{tab.pick}}" style="{{tab.style}}">{{tab.label}} <span class="num" style="{{tab.countStyle}}">{{tab.count}}</span></button>
+</sc-for>
+</div>
+<label style="flex: 1 1 240px; height: 38px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; color: #526C68;">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.4 10.4 3.1 3.1"></path></svg>
+<span class="sr-only">Buscar por vaga</span>
+<input type="search" placeholder="Buscar por vaga" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 14px; color: #0B3038;">
+</label>
+<button type="button" class="btn btn-outline" style="height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M5 8h6M7 12h2"></path></svg>Filtros</button>
+</div>
+
+<div style="overflow-x: auto;">
+<div role="table" aria-label="Lista de vagas" style="min-width: 980px;">
+<div role="row" style="display: grid; grid-template-columns: minmax(280px, 2.4fr) 1.3fr 1fr 1.5fr 0.7fr 0.8fr 36px; gap: 16px; padding: 10px 16px; background: #FAFBF9; border-bottom: 1px solid #EDF1EE; font-size: 12px; font-weight: 500; color: #5E7672;">
+<span role="columnheader">Vaga</span><span role="columnheader">Local e modelo</span><span role="columnheader">Status</span><span role="columnheader">Progresso da meta</span><span role="columnheader">Pessoas</span><span role="columnheader">Criada em</span><span role="columnheader"><span class="sr-only">Abrir</span></span>
+</div>
+<sc-for list="{{vagas}}" as="v" hint-placeholder-count="5">
+<div role="row" class="row-hover" style="display: grid; grid-template-columns: minmax(280px, 2.4fr) 1.3fr 1fr 1.5fr 0.7fr 0.8fr 36px; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #F1F4F2; align-items: center;">
+<div role="cell" style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+<span aria-hidden="true" style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 9px; background: #EEF2EF; color: #2C4F55; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="11" height="8" rx="1.5"></rect><path d="M6 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 9h11"></path></svg></span>
+<span style="display: flex; flex-direction: column; min-width: 0;">
+<a href="{{v.href}}" class="title-link" style="font-size: 14px; font-weight: 600; color: #0B3038; text-decoration: none;">{{v.titulo}}</a>
+<span style="font-size: 12px; color: #5E7672;"><span style="font-family: 'Geist Mono', monospace;">vaga {{v.codigo}}</span> · {{v.area}}</span>
+</span>
+</div>
+<div role="cell" style="display: flex; flex-direction: column; font-size: 13px;"><span>{{v.local}}</span><span style="font-size: 12px; color: #5E7672;">{{v.modelo}}</span></div>
+<div role="cell"><span style="{{v.badgeStyle}}"><sc-if value="{{v.ativo}}" hint-placeholder-val="{{true}}"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #FB3C0D;"></span></sc-if>{{v.status}}</span></div>
+<div role="cell" style="display: flex; flex-direction: column; gap: 6px;">
+<span style="height: 6px; border-radius: 3px; background: #EDF1EE; overflow: hidden;"><span style="{{v.barStyle}}"></span></span>
+<span style="font-size: 12px; color: #526C68;">{{v.progresso}}</span>
+</div>
+<div role="cell" class="num" style="font-size: 13px;">{{v.pessoas}}</div>
+<div role="cell" class="num" style="font-size: 13px; color: #526C68;">{{v.criada}}</div>
+<div role="cell"><a href="{{v.href}}" aria-label="{{v.abrirLabel}}" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #526C68;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 4 4 4-4 4"></path></svg></a></div>
+</div>
+</sc-for>
+<sc-if value="{{vazio}}" hint-placeholder-val="{{false}}">
+<p style="margin: 0; padding: 40px 16px; text-align: center; color: #526C68;">Nenhuma vaga com esse status.</p>
+</sc-if>
+</div>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 12px; color: #5E7672;">Critérios e primeiro lote de convites de cada vaga passam por revisão humana: Ana Ribeiro</span>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":990}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filtro: 'todas' };
+  }
+  badge(status) {
+    const base = 'display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid ';
+    if (status === 'Concluída') return base + '#CDE6D5; background: #E3F3E8; color: #2F6E52;';
+    if (status === 'Rascunho') return base + '#F1D58A; background: #FFF1CC; color: #855A0E;';
+    return base + '#DFE6E1; background: #EEF2EF; color: #2C4F55;';
+  }
+  todas() {
+    return [
+      { codigo: '014', titulo: 'Pessoa Desenvolvedora Backend Sênior', area: 'Tecnologia', local: 'Remoto', modelo: 'Encontro mensal em Recife', status: 'Buscando', chave: 'buscando', pct: 20, progresso: '1 de 5 entregues à Nara', pessoas: '23', criada: '07/11/2026' },
+      { codigo: '013', titulo: 'Product Designer Pleno', area: 'Produto', local: 'Recife, PE', modelo: 'Híbrido, 2 dias no escritório', status: 'Buscando', chave: 'buscando', pct: 50, progresso: '2 de 4 entregues à Nara', pessoas: '17', criada: '05/11/2026' },
+      { codigo: '015', titulo: 'Pessoa Engenheira de Plataforma', area: 'Tecnologia', local: 'Remoto', modelo: 'Remoto', status: 'Rascunho', chave: 'rascunho', pct: 0, progresso: 'Critérios aguardam sua aprovação', pessoas: '–', criada: '08/11/2026' },
+      { codigo: '012', titulo: 'Analista de Dados Pleno', area: 'Dados', local: 'Remoto', modelo: 'Remoto', status: 'Concluída', chave: 'concluida', pct: 100, progresso: '3 de 3 entregues à Nara', pessoas: '31', criada: '21/10/2026' },
+      { codigo: '011', titulo: 'Analista de People Ops', area: 'Pessoas', local: 'Recife, PE', modelo: 'Presencial', status: 'Concluída', chave: 'concluida', pct: 100, progresso: '2 de 2 entregues à Nara', pessoas: '12', criada: '02/10/2026' }
+    ];
+  }
+  renderVals() {
+    const lista = this.todas();
+    const filtro = this.state.filtro;
+    const opcoes = [
+      ['todas', 'Todas'],
+      ['buscando', 'Buscando'],
+      ['concluida', 'Concluídas'],
+      ['rascunho', 'Rascunhos']
+    ];
+    const tabs = opcoes.map(([k, label]) => {
+      const ativo = filtro === k;
+      const n = k === 'todas' ? lista.length : lista.filter((v) => v.chave === k).length;
+      return {
+        label,
+        count: String(n),
+        selected: ativo ? 'true' : 'false',
+        pick: () => this.setState({ filtro: k }),
+        style: 'height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; cursor: pointer; ' + (ativo ? 'background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,48,56,0.1); color: #0B3038; font-weight: 600;' : 'background: transparent; color: #526C68; font-weight: 500;'),
+        countStyle: 'font-size: 12px; font-weight: 500; color: ' + (ativo ? '#526C68' : '#526C68') + ';'
+      };
+    });
+    const vagas = lista
+      .filter((v) => filtro === 'todas' || v.chave === filtro)
+      .map((v) => Object.assign({}, v, {
+        href: '#vaga-' + v.codigo,
+        abrirLabel: 'Abrir painel da vaga ' + v.titulo,
+        ativo: v.chave === 'buscando',
+        badgeStyle: this.badge(v.status),
+        barStyle: 'display: block; height: 100%; border-radius: 3px; width: ' + v.pct + '%; background: ' + (v.chave === 'concluida' ? '#2F6E52' : '#FB3C0D') + ';'
+      }));
+    return { tabs, vagas, vazio: vagas.length === 0 };
+  }
+}
+</script>
+</body>
+</html>

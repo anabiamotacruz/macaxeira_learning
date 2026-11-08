@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>CORA · Perfil da empresa</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F8F5}
+button,input,select,textarea{font:inherit;color:inherit}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #FB3C0D;outline-offset:2px}
+input::placeholder,textarea::placeholder{color:#5E7672}
+input[type="checkbox"]{accent-color:#DC3209;width:16px;height:16px;margin:0}
+.num{font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.btn{transition:background-color .15s ease,border-color .15s ease}
+.btn-primary:hover{background:#C42C08 !important}
+.btn-outline:hover{background:#EEF2EF !important}
+.pill:hover{background:#F1F4F2}
+.pill[aria-current="page"]:hover{background:#EEF2EF}
+.show-md{display:none !important}
+@media (max-width: 860px){.hide-md{display:none !important}.show-md{display:flex !important}}
+@media (max-width: 600px){.hide-sm{display:none !important}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; background: #F7F8F5; color: #0B3038; font-family: Geist, system-ui, sans-serif; font-size: 14px; line-height: 1.5;">
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+<header style="height: 60px; box-sizing: border-box; background: #FFFFFF; border-bottom: 1px solid #E4E9E5; position: sticky; top: 0; z-index: 10;">
+<div style="max-width: 1240px; height: 100%; margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: 20px;">
+<a href="#catalogo" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #0B3038; flex-shrink: 0;"><img src="/_blob/ee2246b172b155521d853cac5cc9c71f" alt="" width="28" height="29" style="width: 28px; height: 29px; object-fit: contain;"><span style="font-size: 18px; font-weight: 600; letter-spacing: -0.03em;">CORA</span></a>
+<nav class="hide-md" aria-label="Principal" style="display: flex; align-items: center; gap: 4px;">
+<a href="#catalogo" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Vagas</a>
+<a href="#banco" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Banco de talentos</a>
+<a href="#empresa" class="pill" aria-current="page" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; background: #EEF2EF; color: #0B3038; font-weight: 600;">Empresa</a>
+</nav>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+<label class="hide-md" style="width: 240px; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-radius: 8px; background: #F1F4F2; color: #526C68;">
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.4 10.4 3.1 3.1"></path></svg>
+<span class="sr-only">Buscar pessoas ou vagas</span>
+<input type="search" placeholder="Buscar pessoas ou vagas" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13px; color: #0B3038;">
+<kbd style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #526C68; padding: 1px 6px; border-radius: 5px; border: 1px solid #DFE6E1; background: #FFFFFF;">⌘K</kbd>
+</label>
+<a href="#criar-vaga" class="btn btn-primary" style="height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Criar vaga</a>
+<button type="button" class="show-md" aria-label="Abrir menu" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; align-items: center; justify-content: center; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"></path></svg></button>
+<button type="button" aria-label="Conta de Ana Ribeiro" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; border: 0; background: #0B3038; color: #FFFFFF; font-size: 12px; font-weight: 600; cursor: pointer;">AR</button>
+</div>
+</div>
+</header>
+
+<main id="empresa" style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 32px 24px 56px; display: flex; flex-direction: column; gap: 22px;">
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.15;">Perfil da empresa</h1>
+<p style="margin: 0; color: #526C68; font-size: 15px; max-width: 620px;">O que vale para todas as vagas da Maré Tech. Este contexto orienta a CORA, mas não substitui decisões humanas.</p>
+</div>
+</div>
+
+<section aria-labelledby="sec-id" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+<div style="display: flex; align-items: center; gap: 14px; min-width: 0;">
+<span aria-hidden="true" style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 10px; background: #EEF2EF; color: #0B3038; display: flex; align-items: center; justify-content: center;"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14V3.5L8 2v12M8 5h5v9M5 5.5h1M5 8h1M5 10.5h1M10 7h1M10 9.5h1M10 12h1M1.5 14h13"></path></svg></span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<h2 id="sec-id" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Maré Tech</h2>
+<span style="font-size: 13px; color: #526C68;">Identificador no cabeçalho <span style="font-family: 'Geist Mono', monospace;">X-Empresa-Id</span>: <span style="font-family: 'Geist Mono', monospace; color: #0B3038;">mare-tech</span></span>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 24px; font-size: 13px;">
+<span style="display: flex; flex-direction: column;"><span style="color: #526C68;">Pessoas no banco</span><span class="num" style="font-size: 18px; font-weight: 600;">54</span></span>
+<span style="display: flex; flex-direction: column;"><span style="color: #526C68;">Vagas buscando</span><span class="num" style="font-size: 18px; font-weight: 600;">2</span></span>
+<span style="display: flex; flex-direction: column; max-width: 220px;"><span style="color: #526C68;">Banco</span><span style="font-weight: 500;">Isolado: nada aparece para outra empresa</span></span>
+</div>
+</section>
+
+<section aria-labelledby="sec-blacklist" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="padding: 20px 24px 16px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px;">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+<h2 id="sec-blacklist" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Blacklist de empresas</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68; max-width: 620px;">Empresas com contrato de não aliciamento ou fidelidade. Quem trabalha hoje nelas não é coletado nem abordado em nenhuma vaga. Cada vaga pode acrescentar empresas, nunca tirar.</p>
+</div>
+<span class="num" style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;">3 ativas</span>
+</div>
+<div style="overflow-x: auto;">
+<div role="table" aria-label="Empresas na blacklist" style="min-width: 760px;">
+<div role="row" style="display: grid; grid-template-columns: 1.4fr 1fr 1.1fr 1.3fr 80px; gap: 14px; padding: 10px 24px; border-top: 1px solid #EDF1EE; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 12px; font-weight: 500; color: #5E7672;"><span role="columnheader">Empresa</span><span role="columnheader">Contrato</span><span role="columnheader">Válido até</span><span role="columnheader">Registrado por</span><span role="columnheader"><span class="sr-only">Ações</span></span></div>
+
+<div role="row" style="display: grid; grid-template-columns: 1.4fr 1fr 1.1fr 1.3fr 80px; gap: 14px; padding: 13px 24px; border-bottom: 1px solid #F1F4F2; align-items: center;">
+<span role="cell" style="font-weight: 500;">Vértice Pagamentos</span>
+<span role="cell"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-size: 12px; font-weight: 600;">Não aliciamento</span></span>
+<span role="cell" class="num" style="color: #2C4F55;">03/2027</span>
+<span role="cell" style="display: flex; flex-direction: column; font-size: 13px;"><span>Ana Ribeiro</span><span class="num" style="font-size: 12px; color: #5E7672;">em 14/03/2025</span></span>
+<span role="cell" style="display: flex; gap: 4px;"><button type="button" class="btn btn-outline" aria-label="Editar Vértice Pagamentos" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3 13 5.5 6 12.5H3.5V10Z"></path></svg></button><button type="button" class="btn btn-outline" aria-label="Remover Vértice Pagamentos" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"></path></svg></button></span>
+</div>
+
+<div role="row" style="display: grid; grid-template-columns: 1.4fr 1fr 1.1fr 1.3fr 80px; gap: 14px; padding: 13px 24px; border-bottom: 1px solid #F1F4F2; align-items: center;">
+<span role="cell" style="font-weight: 500;">Lumen Saúde</span>
+<span role="cell"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;">Fidelidade</span></span>
+<span role="cell" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="num" style="color: #2C4F55;">11/2026</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #F1D58A; background: #FFF1CC; color: #855A0E; font-size: 12px; font-weight: 600;">Vence este mês</span></span>
+<span role="cell" style="display: flex; flex-direction: column; font-size: 13px;"><span>Ana Ribeiro</span><span class="num" style="font-size: 12px; color: #5E7672;">em 02/11/2024</span></span>
+<span role="cell" style="display: flex; gap: 4px;"><button type="button" class="btn btn-outline" aria-label="Editar Lumen Saúde" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3 13 5.5 6 12.5H3.5V10Z"></path></svg></button><button type="button" class="btn btn-outline" aria-label="Remover Lumen Saúde" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"></path></svg></button></span>
+</div>
+
+<div role="row" style="display: grid; grid-template-columns: 1.4fr 1fr 1.1fr 1.3fr 80px; gap: 14px; padding: 13px 24px; border-bottom: 1px solid #F1F4F2; align-items: center;">
+<span role="cell" style="font-weight: 500;">Orla Logística</span>
+<span role="cell"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-size: 12px; font-weight: 600;">Não aliciamento</span></span>
+<span role="cell" class="num" style="color: #2C4F55;">08/2027</span>
+<span role="cell" style="display: flex; flex-direction: column; font-size: 13px;"><span>Ana Ribeiro</span><span class="num" style="font-size: 12px; color: #5E7672;">em 20/08/2025</span></span>
+<span role="cell" style="display: flex; gap: 4px;"><button type="button" class="btn btn-outline" aria-label="Editar Orla Logística" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3 13 5.5 6 12.5H3.5V10Z"></path></svg></button><button type="button" class="btn btn-outline" aria-label="Remover Orla Logística" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"></path></svg></button></span>
+</div>
+</div>
+</div>
+<div style="padding: 16px 24px 20px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;">
+<label style="flex: 2 1 220px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Empresa<input type="text" placeholder="Nome da empresa" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="flex: 1 1 160px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Contrato<select style="height: 40px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"><option>Não aliciamento</option><option>Fidelidade</option></select></label>
+<label style="flex: 1 1 120px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Válido até<input type="text" placeholder="MM/AAAA" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<button type="button" class="btn btn-outline" style="height: 40px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Adicionar empresa</button>
+</div>
+</section>
+
+<section aria-labelledby="sec-contato" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px 24px; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h2 id="sec-contato" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Regras de contato</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68;">Estas regras rodam em código. O modelo de IA não consegue mudar nenhuma delas, nem a pedido de um candidato.</p>
+</div>
+
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 10px;">
+<legend style="padding: 0; margin-bottom: 10px; font-size: 13px; font-weight: 600;">Canais</legend>
+<label style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px;"><input type="checkbox" checked="checked" style="margin-top: 3px;"><span style="display: flex; flex-direction: column;"><span style="font-weight: 500;">E-mail</span><span style="font-size: 12px; color: #5E7672;">Primeiro contato e pedido de autorização são sempre por e-mail.</span></span></label>
+<label style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px;"><input type="checkbox" checked="checked" style="margin-top: 3px;"><span style="display: flex; flex-direction: column;"><span style="font-weight: 500;">WhatsApp</span><span style="font-size: 12px; color: #5E7672;">Só abre quando a pessoa chama pelo link do e-mail.</span></span></label>
+</fieldset>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px;">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Tentativas por pessoa e vaga<input type="number" min="1" max="3" value="2" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Intervalo entre tentativas (dias)<input type="number" min="1" value="3" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Horário de envio<select style="height: 40px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"><option selected>Dias úteis, 9h às 18h</option><option>Dias úteis, 8h às 20h</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Validade da autorização (meses)<input type="number" min="1" max="24" value="12" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Como a CORA se apresenta<input type="text" value="CORA, assistente de recrutamento da Maré Tech" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+
+<div style="border-radius: 10px; border: 1px solid #DFE6E1; background: #F7F8F5; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path></svg>Sempre valem, para qualquer vaga</span>
+<ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #2C4F55;">
+<li>Sem autorização, a pessoa recebe só o pedido de autorização, nunca a vaga.</li>
+<li>O primeiro lote de convites de cada vaga espera a aprovação do RH.</li>
+<li>Pedido de remoção ou “não quero contato” encerra tudo na hora.</li>
+<li>A CORA se apresenta como assistente, nunca como pessoa.</li>
+<li>A CORA não agenda entrevistas: quem agenda e avalia é a Nara.</li>
+</ul>
+</div>
+</section>
+
+<section aria-labelledby="sec-contexto" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h2 id="sec-contexto" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Contexto para o agente</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68;">Usado para escrever mensagens e explicar a vaga. Não vira critério de busca.</p>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Valores da cultura<textarea rows="3" style="box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; line-height: 1.55; color: #0B3038; resize: vertical;">Colaboração, transparência e aprendizado contínuo. Times pequenos com autonomia e revisão de código entre pares.</textarea></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Regras de alinhamento do agente<textarea rows="3" style="box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; line-height: 1.55; color: #0B3038; resize: vertical;">Priorizar evidências verificáveis. Na dúvida sobre salário, benefícios ou prazos, passar a pergunta ao RH em vez de responder.</textarea></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Restrições de contratação<textarea rows="2" placeholder="Registre restrições legítimas e verificáveis." style="box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; line-height: 1.55; color: #0B3038; resize: vertical;"></textarea></label>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 12px; color: #5E7672;">Alterações valem para as próximas buscas e ficam no rastro com quem mudou.</span>
+<div style="display: flex; gap: 10px;">
+<button type="button" class="btn btn-outline" style="height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;">Descartar alterações</button>
+<button type="button" class="btn btn-primary" style="height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer;">Salvar perfil</button>
+</div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1920}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

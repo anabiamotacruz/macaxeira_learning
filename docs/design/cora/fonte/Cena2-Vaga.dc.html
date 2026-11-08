@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Cena 2 · Criar vaga e blacklist</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1280px; height: 720px; box-sizing: border-box; background: #F7F8F5; color: #0B3038; font-family: Geist, sans-serif; display: flex; flex-direction: column; position: relative; overflow: hidden;">
+
+<div style="display: flex; align-items: center; gap: 16px; padding: 0 28px; height: 58px; flex-shrink: 0; background: #FFFFFF; border-bottom: 1px solid #E4E9E5;">
+<span style="display: flex; align-items: center; gap: 6px;"><img src="/_blob/ee2246b172b155521d853cac5cc9c71f" alt="" width="26" height="27" style="width: 26px; height: 27px; object-fit: contain;"><span style="font-weight: 600; font-size: 17px; letter-spacing: -0.03em;">CORA</span></span>
+<span style="display: flex; gap: 2px; font-size: 14px;">
+<span style="padding: 6px 12px; border-radius: 8px; background: #EEF2EF; font-weight: 600;">Vagas</span>
+<span style="padding: 6px 12px; color: #526C68;">Banco de talentos</span>
+<span style="padding: 6px 12px; color: #526C68;">Empresa</span>
+</span>
+<span style="margin-left: auto; width: 240px; height: 34px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 8px; background: #F1F4F2; font-size: 13px; color: #5E7672;">Buscar pessoas ou vagas<span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid #DFE6E1; background: #FFFFFF;">⌘K</span></span>
+<span style="height: 34px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 13px; font-weight: 600;">Criar vaga</span>
+<span style="width: 32px; height: 32px; border-radius: 50%; background: #0B3038; color: #FFFFFF; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">AR</span>
+</div>
+
+<main style="flex: 1; max-width: 1140px; width: 100%; box-sizing: border-box; margin: 0 auto; padding: 22px 32px; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 30px; font-weight: 600; letter-spacing: -0.04em;">Criar vaga</span>
+<span style="font-size: 14px; color: #5E7672;">Descreva a vaga. A CORA propõe os critérios e só começa depois da sua aprovação.</span>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; padding: 14px 16px; font-size: 17px; line-height: 1.5;">Backend sênior, Go ou Python, 5+ anos com filas. Remoto. Não abordar quem trabalha na Vértice Pagamentos.</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px;">
+<span style="font-size: 15px; font-weight: 600;">Critérios propostos pela CORA</span>
+<span style="font-size: 12px; font-weight: 600; color: #A43826;">Eliminatórios</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px;">
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-weight: 600;">5+ anos de backend</span>
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-weight: 600;">Go ou Python em produção</span>
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-weight: 600;">Filas e mensageria</span>
+</div>
+<span style="font-size: 12px; font-weight: 600; color: #2F6E52;">Desejáveis</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px;">
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-weight: 600;">Kafka</span>
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-weight: 600;">AWS</span>
+<span style="padding: 4px 10px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-weight: 600;">Liderança técnica</span>
+</div>
+<span style="font-size: 13px; color: #526C68;">Meta: 5 pessoas interessadas na Nara em 7 dias</span>
+</div>
+
+<div style="background: #FFFFFF; border: 2px solid #FB3C0D; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 0 0 5px #FFF1EE; position: relative;">
+<span style="font-size: 15px; font-weight: 600;">Blacklist desta vaga</span>
+<span style="font-size: 13px; color: #526C68;">Contratos de fidelidade e não aliciamento</span>
+<span style="display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 8px; background: #F7F8F5; font-size: 14px;"><span style="font-weight: 500;">Vértice Pagamentos</span><span style="color: #526C68;">até 03/2027</span></span>
+<span style="display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 8px; background: #F7F8F5; font-size: 14px;"><span style="font-weight: 500;">Lumen Saúde</span><span style="color: #526C68;">até 11/2026</span></span>
+<span style="display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 8px; border: 1px dashed #FB3C0D; font-size: 14px;"><span style="font-weight: 500;">Orla Logística|</span><span style="color: #DC3209;">adicionando…</span></span>
+<svg width="30" height="30" viewBox="0 0 24 24" style="position: absolute; right: 44px; bottom: 30px;" aria-hidden="true"><path d="M5 3l14 8-6 2-3 6z" fill="#0B3038" stroke="#FFFFFF" stroke-width="1.4"></path></svg>
+</div>
+</div>
+
+<div style="display: flex; justify-content: flex-end; gap: 10px;">
+<span style="height: 40px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; font-weight: 500;">Salvar rascunho</span>
+<span style="height: 40px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600;">Aprovar critérios e começar</span>
+</div>
+</main>
+
+<div style="position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); padding: 12px 24px; border-radius: 999px; background: #0B3038; color: #FFFFFF; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap;">Clientes com contrato nunca são abordados.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

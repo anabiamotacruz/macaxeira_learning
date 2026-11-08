@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>CORA · Painel da vaga</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F8F5}
+button,input,select,textarea{font:inherit;color:inherit}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #FB3C0D;outline-offset:2px}
+input::placeholder,textarea::placeholder{color:#5E7672}
+.num{font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.btn{transition:background-color .15s ease,border-color .15s ease}
+.btn-primary:hover{background:#C42C08 !important}
+.btn-outline:hover{background:#EEF2EF !important}
+.pill:hover{background:#F1F4F2}
+.pill[aria-current="page"]:hover{background:#EEF2EF}
+.card-link:hover{border-color:#C9D5CF !important;box-shadow:0 2px 6px rgba(11,48,56,0.08) !important}
+.row-hover:hover{background:#FAFBF9}
+.show-md{display:none !important}
+@media (max-width: 860px){.hide-md{display:none !important}.show-md{display:flex !important}}
+@media (max-width: 600px){.hide-sm{display:none !important}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; background: #F7F8F5; color: #0B3038; font-family: Geist, system-ui, sans-serif; font-size: 14px; line-height: 1.5;">
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+<header style="height: 60px; box-sizing: border-box; background: #FFFFFF; border-bottom: 1px solid #E4E9E5; position: sticky; top: 0; z-index: 10;">
+<div style="max-width: 1240px; height: 100%; margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: 20px;">
+<a href="#catalogo" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #0B3038; flex-shrink: 0;"><img src="/_blob/ee2246b172b155521d853cac5cc9c71f" alt="" width="28" height="29" style="width: 28px; height: 29px; object-fit: contain;"><span style="font-size: 18px; font-weight: 600; letter-spacing: -0.03em;">CORA</span></a>
+<nav class="hide-md" aria-label="Principal" style="display: flex; align-items: center; gap: 4px;">
+<a href="#catalogo" class="pill" aria-current="page" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; background: #EEF2EF; color: #0B3038; font-weight: 600;">Vagas</a>
+<a href="#banco" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Banco de talentos</a>
+<a href="#empresa" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Empresa</a>
+</nav>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+<label class="hide-md" style="width: 240px; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-radius: 8px; background: #F1F4F2; color: #526C68;">
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.4 10.4 3.1 3.1"></path></svg>
+<span class="sr-only">Buscar pessoas ou vagas</span>
+<input type="search" placeholder="Buscar pessoas ou vagas" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13px; color: #0B3038;">
+<kbd style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #526C68; padding: 1px 6px; border-radius: 5px; border: 1px solid #DFE6E1; background: #FFFFFF;">⌘K</kbd>
+</label>
+<a href="#criar-vaga" class="btn btn-primary" style="height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Criar vaga</a>
+<button type="button" class="show-md" aria-label="Abrir menu" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; align-items: center; justify-content: center; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"></path></svg></button>
+<button type="button" aria-label="Conta de Ana Ribeiro" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; border: 0; background: #0B3038; color: #FFFFFF; font-size: 12px; font-weight: 600; cursor: pointer;">AR</button>
+</div>
+</div>
+</header>
+
+<main id="vaga-014" style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 32px 24px 24px; display: flex; flex-direction: column; gap: 22px;">
+
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<nav aria-label="Caminho" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #5E7672;"><a href="#catalogo" style="color: #5E7672; text-decoration: none;">Vagas</a><span aria-hidden="true">/</span><span aria-current="page" style="color: #0B3038;">Backend Sênior</span></nav>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.15;">Pessoa Desenvolvedora Backend Sênior</h1>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #FB3C0D;"></span>Buscando</span>
+</div>
+<p style="margin: 0; font-size: 13px; color: #526C68;"><span style="font-family: 'Geist Mono', monospace;">vaga 014</span> · Tecnologia · Remoto, encontro mensal em Recife · criada em 07/11/2026 · prazo até 14/11/2026</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<button type="button" class="btn btn-outline" style="height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4v8M10 4v8"></path></svg>Pausar busca</button>
+<button type="button" class="btn btn-outline" onClick="{{verCriterios}}" style="height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;">Ver critérios</button>
+</div>
+</div>
+</div>
+
+<section aria-label="Mandato" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 14px 18px; border-radius: 12px; border: 1px solid #DFE6E1; background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,48,56,0.06); font-size: 13px; color: #2C4F55;">
+<span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #0B3038;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 3 4v4c0 3 2.2 5.2 5 6 2.8-.8 5-3 5-6V4Z"></path><path d="m5.8 8 1.6 1.6L10.5 6.5"></path></svg>Mandato assinado por Ana Ribeiro em 07/11, 11h05</span>
+<span>Nota mínima <b class="num">0,70</b></span>
+<span>Até <b class="num">5</b> indicações sem revisão</span>
+<span><b class="num">2</b> tentativas de contato por pessoa</span>
+<span>Aceita evidência autodeclarada</span>
+</section>
+
+<section aria-label="Números da vaga" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 13px; color: #526C68;">Encontradas</span><span class="num" style="font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">23</span><span style="font-size: 12px; color: #5E7672;">1 bloqueada pela blacklist</span></div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 13px; color: #526C68;">Analisadas</span><span class="num" style="font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">15</span><span style="font-size: 12px; color: #5E7672;">7 na fila de análise</span></div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 13px; color: #526C68;">Descartadas por regra</span><span class="num" style="font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">7</span><span style="font-size: 12px; color: #5E7672;">cada uma com a regra registrada</span></div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 13px; color: #526C68;">Para o RH decidir</span><span class="num" style="font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">1</span><span style="font-size: 12px; color: #5E7672;">falta dado num eliminatório</span></div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 13px; color: #526C68;">Meta</span><span class="num" style="font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">1 <span style="font-size: 15px; font-weight: 500; color: #526C68;">de 5 na Nara</span></span><span style="height: 6px; border-radius: 3px; background: #EDF1EE; overflow: hidden;"><span style="display: block; width: 20%; height: 100%; background: #FB3C0D; border-radius: 3px;"></span></span></div>
+</section>
+
+<section aria-label="Lote de convites" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 12px; border: 1px solid #F1D58A; background: #FFF8E3;">
+<span style="display: flex; align-items: flex-start; gap: 10px; min-width: 0;">
+<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#855A0E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px;"><rect x="2" y="3.5" width="12" height="9" rx="1.5"></rect><path d="m2.5 4.5 5.5 4 5.5-4"></path></svg>
+<span style="display: flex; flex-direction: column;"><span style="font-weight: 600; color: #0B3038;">Lote de convites aguardando sua aprovação</span><span style="font-size: 13px; color: #6B4A0C;">Pedro Alves e Camila Duarte estão autorizados e acima da nota mínima. Nenhuma mensagem sai antes do seu ok.</span></span>
+</span>
+<div style="display: flex; gap: 10px;">
+<button type="button" class="btn btn-outline" style="height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;">Revisar mensagens</button>
+<button type="button" class="btn btn-primary" style="height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer;">Aprovar lote (2)</button>
+</div>
+</section>
+
+<section aria-label="Pessoas da vaga" style="display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; border-bottom: 1px solid #E4E9E5;">
+<div role="tablist" aria-label="Seções da vaga" style="display: flex; gap: 20px;">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="4">
+<button type="button" role="tab" aria-selected="{{tab.selected}}" onClick="{{tab.pick}}" style="{{tab.style}}">{{tab.label}}</button>
+</sc-for>
+</div>
+<span style="padding-bottom: 10px; font-size: 12px; color: #5E7672;">Atualizado há 2 min · a CORA não agenda e não decide contratação</span>
+</div>
+
+<sc-if value="{{abaCriterios}}" hint-placeholder-val="{{false}}">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
+<span style="display: flex; flex-direction: column;"><span style="font-weight: 600;">Critérios aprovados</span><span style="font-size: 12px; color: #5E7672;">Aprovados por Ana Ribeiro em 07/11, 11h02. Eliminatórios rodam em código, nunca no modelo.</span></span>
+<button type="button" class="btn btn-outline" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 13px; font-weight: 500; cursor: pointer;">Propor ajuste</button>
+</div>
+<div style="padding: 9px 18px; border-top: 1px solid #EDF1EE; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 13px; font-weight: 600;">Eliminatórios</div>
+<div style="display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">E-01</span><span style="font-weight: 500;">Pelo menos 5 anos com backend</span><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #526C68;">anos_backend &gt;= 5</span></div>
+<div style="display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">E-02</span><span style="font-weight: 500;">Go ou Python em produção</span><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #526C68;">linguagem in go, python</span></div>
+<div style="display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #EDF1EE; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">E-03</span><span style="font-weight: 500;">Filas e mensageria</span><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #526C68;">filas_mensageria = sim</span></div>
+<div style="padding: 9px 18px; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 13px; font-weight: 600;">Desejáveis</div>
+<div style="display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">D-01</span><span style="font-weight: 500;">Kafka</span><span class="num" style="font-size: 13px; color: #526C68;">peso 3</span></div>
+<div style="display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">D-02</span><span style="font-weight: 500;">AWS</span><span class="num" style="font-size: 13px; color: #526C68;">peso 2</span></div>
+<div style="display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">D-03</span><span style="font-weight: 500;">Liderança técnica</span><span class="num" style="font-size: 13px; color: #526C68;">peso 3</span></div>
+<div style="display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; padding: 12px 18px; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">D-04</span><span style="font-weight: 500;">Observabilidade</span><span class="num" style="font-size: 13px; color: #526C68;">peso 1</span></div>
+</div>
+</sc-if>
+
+<sc-if value="{{abaQuadro}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 16px;">
+<div style="overflow-x: auto; padding-bottom: 4px;">
+<div style="display: grid; grid-template-columns: repeat(4, minmax(230px, 1fr)); gap: 12px; min-width: 950px; align-items: start;">
+<sc-for list="{{colunas}}" as="col" hint-placeholder-count="4">
+<div style="border-radius: 12px; background: #EEF2EF; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 6px;">
+<span style="font-size: 13px; font-weight: 600;">{{col.titulo}}</span>
+<span class="num" style="min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 6px; background: #FFFFFF; border: 1px solid #DFE6E1; font-size: 12px; font-weight: 600; color: #2C4F55; display: inline-flex; align-items: center; justify-content: center;">{{col.total}}</span>
+</div>
+<sc-for list="{{col.cards}}" as="p" hint-placeholder-count="2">
+<a href="{{p.href}}" class="card-link" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; border: 1px solid #DFE6E1; background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,48,56,0.06); text-decoration: none; color: #0B3038;">
+<span style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+<span style="display: flex; flex-direction: column; min-width: 0;"><span style="font-size: 14px; font-weight: 600;">{{p.nome}}</span><span style="font-size: 12px; color: #5E7672;">{{p.cargo}}</span></span>
+<span class="num" style="{{p.notaStyle}}">{{p.nota}}</span>
+</span>
+<span style="display: flex; flex-wrap: wrap; gap: 6px;"><span style="{{p.badgeStyle}}">{{p.badge}}</span><sc-if value="{{p.nara}}" hint-placeholder-val="{{false}}"><span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 6px; border: 1px solid #F1C36A; background: #FFF7DF; color: #805D16;">Nara simulada</span></sc-if></span>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #526C68;"><sc-if value="{{p.vivo}}" hint-placeholder-val="{{false}}"><span aria-hidden="true" style="width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: #FB3C0D;"></span></sc-if>{{p.detalhe}}</span>
+</a>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;">
+<span style="font-size: 13px; font-weight: 600;">Descartadas pelas regras (7)</span>
+<sc-for list="{{descartadas}}" as="d" hint-placeholder-count="3">
+<span style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px;"><span style="font-weight: 500;">{{d.nome}}</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-size: 12px; font-weight: 600;">{{d.regra}}</span></span>
+</sc-for>
+<button type="button" onClick="{{verLista}}" style="margin-left: auto; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #0B3038; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;">Ver todas na lista</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{abaLista}}" hint-placeholder-val="{{false}}">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="overflow-x: auto;">
+<div role="table" aria-label="Pessoas da vaga" style="min-width: 900px;">
+<div role="row" style="display: grid; grid-template-columns: 1.6fr 0.5fr 1.5fr 1.1fr 1.2fr 1.5fr; gap: 14px; padding: 10px 18px; background: #FAFBF9; border-bottom: 1px solid #EDF1EE; font-size: 12px; font-weight: 500; color: #5E7672;"><span role="columnheader">Pessoa</span><span role="columnheader">Nota</span><span role="columnheader">Situação</span><span role="columnheader">Etapa</span><span role="columnheader">Origem</span><span role="columnheader">Última ação</span></div>
+<sc-for list="{{lista}}" as="p" hint-placeholder-count="6">
+<div role="row" class="row-hover" style="display: grid; grid-template-columns: 1.6fr 0.5fr 1.5fr 1.1fr 1.2fr 1.5fr; gap: 14px; padding: 12px 18px; border-bottom: 1px solid #F1F4F2; align-items: center; font-size: 13px;">
+<span role="cell" style="display: flex; flex-direction: column; min-width: 0;"><a href="{{p.href}}" style="font-weight: 600; color: #0B3038; text-decoration: none;">{{p.nome}}</a><span style="font-size: 12px; color: #5E7672;">{{p.cargo}}</span></span>
+<span role="cell" class="num" style="{{p.notaStyle}}">{{p.nota}}</span>
+<span role="cell"><span style="{{p.badgeStyle}}">{{p.badge}}</span></span>
+<span role="cell">{{p.etapa}}</span>
+<span role="cell" style="color: #526C68;">{{p.origem}}</span>
+<span role="cell" style="color: #526C68;">{{p.detalhe}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{abaRastro}}" hint-placeholder-val="{{false}}">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #EDF1EE;">
+<span style="display: flex; flex-direction: column;"><span style="font-weight: 600;">Rastro da vaga 014</span><span style="font-size: 12px; color: #5E7672;">Toda chamada de modelo e ferramenta, com a regra aplicada e o custo</span></span>
+<button type="button" class="btn btn-outline" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 13px; font-weight: 500; cursor: pointer;">Exportar rastro</button>
+</div>
+<div style="overflow-x: auto;">
+<div role="table" aria-label="Eventos do rastro" style="min-width: 820px; font-size: 13px;">
+<div role="row" style="display: grid; grid-template-columns: 80px 130px 1fr 150px 110px; gap: 14px; padding: 10px 18px; background: #FAFBF9; border-bottom: 1px solid #EDF1EE; font-size: 12px; font-weight: 500; color: #5E7672;"><span role="columnheader">Hora</span><span role="columnheader">Etapa</span><span role="columnheader">O que aconteceu</span><span role="columnheader">Rastro</span><span role="columnheader" style="text-align: right;">Custo</span></div>
+<sc-for list="{{eventos}}" as="e" hint-placeholder-count="9">
+<div role="row" style="display: grid; grid-template-columns: 80px 130px 1fr 150px 110px; gap: 14px; padding: 10px 18px; border-bottom: 1px solid #F1F4F2; align-items: center;">
+<span role="cell" class="num" style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #526C68;">{{e.hora}}</span>
+<span role="cell"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;">{{e.etapa}}</span></span>
+<span role="cell">{{e.msg}}</span>
+<span role="cell" style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #526C68;">{{e.id}}</span>
+<span role="cell" class="num" style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #526C68; text-align: right;">{{e.custo}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+</section>
+
+<section aria-labelledby="sec-registro" style="display: flex; flex-direction: column; gap: 12px;">
+<h2 id="sec-registro" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Registro do agente</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;">
+
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px; display: flex; flex-direction: column; gap: 12px;">
+<span style="font-size: 14px; font-weight: 600;">Fontes</span>
+<dl style="margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; font-size: 13px;">
+<dt style="color: #2C4F55;">Banco de talentos da Maré Tech</dt><dd class="num" style="margin: 0; font-weight: 600;">14</dd>
+<dt style="color: #2C4F55;">LinkedIn, pela Bright Data</dt><dd class="num" style="margin: 0; font-weight: 600;">9</dd>
+</dl>
+<span style="font-size: 12px; color: #5E7672;">Cada perfil guarda de onde veio e quando foi atualizado.</span>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px; display: flex; flex-direction: column; gap: 12px;">
+<span style="font-size: 14px; font-weight: 600;">Blacklist aplicada</span>
+<span style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;">Vértice Pagamentos</span>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;">Lumen Saúde</span>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;">Orla Logística</span>
+</span>
+<span style="font-size: 13px; color: #2C4F55;"><b class="num">1</b> perfil bloqueado antes da análise: trabalha hoje na Vértice Pagamentos.</span>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px; display: flex; flex-direction: column; gap: 12px;">
+<span style="font-size: 14px; font-weight: 600;">Descartes por regra</span>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #2C4F55;">
+<li style="display: flex; gap: 10px;"><b class="num" style="min-width: 12px; color: #0B3038;">3</b>E-03 Filas e mensageria</li>
+<li style="display: flex; gap: 10px;"><b class="num" style="min-width: 12px; color: #0B3038;">2</b>E-01 Menos de 5 anos com backend</li>
+<li style="display: flex; gap: 10px;"><b class="num" style="min-width: 12px; color: #0B3038;">1</b>Autorização de contato vencida</li>
+<li style="display: flex; gap: 10px;"><b class="num" style="min-width: 12px; color: #0B3038;">1</b>Pediu para não ser contatada</li>
+</ul>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 18px; display: flex; flex-direction: column; gap: 12px;">
+<span style="font-size: 14px; font-weight: 600;">Custo</span>
+<span class="num" style="font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">R$ 38,60 <span style="font-size: 13px; font-weight: 500; color: #526C68;">de R$ 60,00 de limite</span></span>
+<dl style="margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px;">
+<dt style="color: #2C4F55;">Por pessoa analisada</dt><dd class="num" style="margin: 0; font-weight: 600;">R$ 0,42</dd>
+<dt style="color: #2C4F55;">Por pessoa entregue</dt><dd class="num" style="margin: 0; font-weight: 600;">R$ 4,80</dd>
+<dt style="color: #2C4F55;">Tokens usados</dt><dd class="num" style="margin: 0; font-weight: 600;">182 mil</dd>
+</dl>
+<span style="font-size: 12px; color: #5E7672;">Passou do limite, a busca pausa sozinha.</span>
+</div>
+
+</div>
+</section>
+
+<div role="group" aria-label="Pedir à CORA" style="position: sticky; bottom: 20px; z-index: 6; align-self: center; width: 100%; max-width: 720px; box-sizing: border-box; margin-top: 8px; background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 14px; box-shadow: 0 12px 32px -16px rgba(11,48,56,0.35); padding: 12px 12px 10px 16px; display: flex; flex-direction: column; gap: 10px;">
+<label for="pedido-cora" class="sr-only">Pedido para a CORA</label>
+<input id="pedido-cora" type="text" placeholder="Peça algo à CORA: 'traga mais 3 pessoas de Recife'" style="width: 100%; box-sizing: border-box; border: 0; background: transparent; font-size: 15px; color: #0B3038; padding: 4px 0;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+<div role="group" aria-label="Modo" style="display: flex; gap: 6px;">
+<button type="button" aria-pressed="false" style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.4 10.4 3.1 3.1"></path></svg>Buscar</button>
+<button type="button" aria-pressed="true" style="height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 9.4 6.6 13.5 8 9.4 9.4 8 13.5 6.6 9.4 2.5 8 6.6 6.6Z"></path></svg>Agente</button>
+</div>
+<button type="button" class="btn btn-primary" aria-label="Enviar pedido à CORA" style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; border: 0; background: #DC3209; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3.5M4 7.5 8 3.5l4 4"></path></svg></button>
+</div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1570}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { aba: 'quadro' };
+  }
+  badge(tipo) {
+    const base = 'display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid ';
+    if (tipo === 'autorizada') return base + '#CDE6D5; background: #E3F3E8; color: #2F6E52;';
+    if (tipo === 'aguardando') return base + '#F1D58A; background: #FFF1CC; color: #855A0E;';
+    if (tipo === 'descartada') return base + '#F0B5AA; background: #FFF1EE; color: #A43826;';
+    return base + '#DFE6E1; background: #EEF2EF; color: #2C4F55;';
+  }
+  pessoas() {
+    return [
+      { col: 'analisando', nome: 'Rafael Nunes', cargo: 'Eng. de Software Sênior', nota: '–', tipo: 'neutro', badge: 'Em análise', detalhe: 'Lendo histórico e evidências', vivo: true, etapa: 'Analisando', origem: 'LinkedIn (Bright Data)' },
+      { col: 'analisando', nome: 'Felipe Araújo', cargo: 'Dev Backend Sênior', nota: '81', tipo: 'aguardando', badge: 'Para o RH decidir', detalhe: 'Sem dado sobre E-03 no perfil', etapa: 'Analisando', origem: 'Banco da Maré Tech' },
+      { col: 'analisando', nome: 'Pedro Alves', cargo: 'Eng. Backend Sênior', nota: '88', tipo: 'autorizada', badge: 'Autorizada', detalhe: 'No lote de convites, aguarda você', etapa: 'Analisando', origem: 'Banco da Maré Tech' },
+      { col: 'analisando', nome: 'Camila Duarte', cargo: 'Eng. de Pagamentos', nota: '85', tipo: 'autorizada', badge: 'Autorizada', detalhe: 'No lote de convites, aguarda você', etapa: 'Analisando', origem: 'Banco da Maré Tech' },
+      { col: 'autorizacao', nome: 'Tiago Moura', cargo: 'Eng. Backend Sênior', nota: '87', tipo: 'aguardando', badge: 'Aguardando autorização', detalhe: 'Pedido enviado por e-mail, 07/11 18h', etapa: 'Autorização', origem: 'LinkedIn (Bright Data)' },
+      { col: 'autorizacao', nome: 'Júlia Ramos', cargo: 'Dev Backend Sênior', nota: '84', tipo: 'aguardando', badge: 'Aguardando autorização', detalhe: 'Lembrete 1 de 2 enviado hoje', etapa: 'Autorização', origem: 'LinkedIn (Bright Data)' },
+      { col: 'conversa', nome: 'Larissa Rocha', cargo: 'Eng. Backend Sênior', nota: '92', tipo: 'autorizada', badge: 'Autorizada', detalhe: 'WhatsApp, recebeu o link da Nara', vivo: true, etapa: 'Em conversa', origem: 'LinkedIn (Bright Data)', href: '#candidato-larissa-rocha' },
+      { col: 'conversa', nome: 'Diego Farias', cargo: 'Eng. de Plataforma', nota: '86', tipo: 'autorizada', badge: 'Autorizada', detalhe: 'E-mail sem resposta, tentativa 1 de 2', etapa: 'Em conversa', origem: 'Banco da Maré Tech' },
+      { col: 'nara', nome: 'Marina Costa', cargo: 'Eng. Backend Sênior', nota: '90', tipo: 'autorizada', badge: 'Autorizada', detalhe: 'Entrevista qui, 14h, agendada pela Nara', etapa: 'Entregue à Nara', origem: 'Banco da Maré Tech', nara: true }
+    ];
+  }
+  descartes() {
+    return [
+      { nome: 'Bruno Castro', cargo: 'Dev Backend Pleno', nota: '–', regra: 'E-03 Filas e mensageria', origem: 'Banco da Maré Tech' },
+      { nome: 'Lucas Prado', cargo: 'Dev Backend Pleno', nota: '–', regra: 'E-01 Menos de 5 anos', origem: 'LinkedIn (Bright Data)' },
+      { nome: 'Sofia Mendes', cargo: 'Eng. de Software', nota: '–', regra: 'Autorização vencida', origem: 'Banco da Maré Tech' }
+    ];
+  }
+  renderVals() {
+    const aba = this.state.aba;
+    const tabs = [['quadro', 'Quadro'], ['lista', 'Lista'], ['rastro', 'Rastro'], ['criterios', 'Critérios']].map(([k, label]) => {
+      const ativo = aba === k;
+      return {
+        label,
+        selected: ativo ? 'true' : 'false',
+        pick: () => this.setState({ aba: k }),
+        style: 'height: 40px; padding: 0 2px; margin-bottom: -1px; border: 0; border-bottom: 2px solid ' + (ativo ? '#FB3C0D' : 'transparent') + '; background: transparent; font-size: 14px; cursor: pointer; ' + (ativo ? 'color: #0B3038; font-weight: 600;' : 'color: #526C68; font-weight: 500;')
+      };
+    });
+    const notaStyle = (n) => n === '–' ? 'font-size: 16px; font-weight: 600; color: #526C68;' : 'font-size: 18px; font-weight: 700; color: #DC3209; letter-spacing: -0.02em; line-height: 1.2;';
+    const ps = this.pessoas().map((p) => Object.assign({ vivo: false, nara: false, href: '#candidato' }, p, {
+      badgeStyle: this.badge(p.tipo),
+      notaStyle: notaStyle(p.nota)
+    }));
+    const cols = [
+      ['analisando', 'Analisando'],
+      ['autorizacao', 'Aguardando autorização'],
+      ['conversa', 'Em conversa'],
+      ['nara', 'Entregue à Nara']
+    ].map(([k, titulo]) => {
+      const cards = ps.filter((p) => p.col === k);
+      return { titulo, total: String(cards.length), cards };
+    });
+    const desc = this.descartes();
+    const lista = ps.concat(desc.map((d) => ({
+      nome: d.nome, cargo: d.cargo, nota: d.nota, notaStyle: notaStyle(d.nota), badge: 'Descartada · ' + d.regra, badgeStyle: this.badge('descartada'), etapa: 'Encerrada', origem: d.origem, detalhe: 'Regra registrada no rastro', href: '#candidato'
+    })));
+    const eventos = [
+      { hora: '11:02', etapa: 'Conversa', msg: 'Ana Ribeiro respondeu a faixa salarial (R$ 9 mil a R$ 12 mil). A CORA repassou a Larissa com o link da Nara.', id: 'r-014-0419', custo: 'R$ 0,03' },
+      { hora: '10:41', etapa: 'Conversa', msg: 'Larissa Rocha perguntou a faixa salarial. Sem resposta segura no material da vaga: dúvida enviada a Ana Ribeiro.', id: 'r-014-0412', custo: 'R$ 0,03' },
+      { hora: '10:29', etapa: 'Análise', msg: 'Pedro Alves: E-01, E-02 e E-03 atendidos. Nota 88, acima de 0,70. Vai para o lote de convites.', id: 'r-014-0398', custo: 'R$ 0,42' },
+      { hora: '10:22', etapa: 'Decisão', msg: 'Felipe Araújo: falta dado sobre E-03. Regra requisito_sem_dado: vai para o RH decidir.', id: 'r-014-0391', custo: 'R$ 0,00' },
+      { hora: '10:15', etapa: 'Decisão', msg: 'Bruno Castro descartado. Regra E-03 Filas e mensageria: nenhuma evidência no perfil.', id: 'r-014-0387', custo: 'R$ 0,00' },
+      { hora: '09:58', etapa: 'Blacklist', msg: '1 perfil bloqueado antes da análise: empresa atual na blacklist (Vértice Pagamentos).', id: 'r-014-0371', custo: 'R$ 0,00' },
+      { hora: '09:40', etapa: 'Busca', msg: 'LinkedIn pela Bright Data: 9 perfis novos coletados para a vaga.', id: 'r-014-0360', custo: 'R$ 1,90' },
+      { hora: '09:31', etapa: 'Entrega', msg: 'Dossiê de Marina Costa entregue à Nara simulada. A Nara agendou a entrevista para qui, 14h.', id: 'r-014-0352', custo: 'R$ 0,00' },
+      { hora: '09:02', etapa: 'Convite', msg: 'E-mail enviado a Larissa Rocha, do lote aprovado por Ana Ribeiro. Tentativa 1 de 2.', id: 'r-014-0340', custo: 'R$ 0,04' }
+    ];
+    return {
+      tabs,
+      abaQuadro: aba === 'quadro',
+      abaLista: aba === 'lista',
+      abaRastro: aba === 'rastro',
+      abaCriterios: aba === 'criterios',
+      colunas: cols,
+      descartadas: desc,
+      lista,
+      eventos,
+      verLista: () => this.setState({ aba: 'lista' }),
+      verCriterios: () => this.setState({ aba: 'criterios' })
+    };
+  }
+}
+</script>
+</body>
+</html>

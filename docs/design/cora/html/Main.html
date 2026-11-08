@@ -1,0 +1,716 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&amp;display=swap">
+<style>
+body{margin:0;background:#F7F8F5}
+a{color:#0B3038;text-underline-offset:3px}a:hover{color:#DC3209}
+::selection{background:#FFD3C6;color:#0B3038}
+button,textarea{font:inherit}
+button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #FB3C0D;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.btn{transition:background-color .15s ease, box-shadow .15s ease}
+.btn-primary:hover{background:#C42C08 !important}
+.btn-outline:hover{background:#EEF2EF !important}
+@media (max-width: 860px){
+  .hide-md{display:none !important}
+  .stack-md{flex-direction:column !important;align-items:flex-start !important}
+}
+@media (max-width: 600px){
+  .hide-sm{display:none !important}
+}
+</style>
+</head><body>
+<template id="tpl">
+
+<div style="background: #F7F8F5; color: #0B3038; font-family: Geist, system-ui, sans-serif; font-size: 16px; line-height: 1.55;">
+
+<header style="border-bottom: 1px solid #E4E9E5; background: rgba(255,255,255,0.7);">
+<nav aria-label="Principal" style="max-width: 1240px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<a href="#topo" style="display: flex; align-items: center; gap: 8px; text-decoration: none;">
+<img src="coral.png" alt="" width="36" height="37" style="width: 36px; height: 37px; object-fit: contain;">
+<span style="display: flex; flex-direction: column;">
+<span style="font-weight: 600; font-size: 21px; line-height: 1; letter-spacing: -0.03em;">CORA</span>
+<span class="hide-sm" style="font-size: 10px; color: #5E7672; margin-top: 3px;">Recrutamento ativo</span>
+</span>
+</a>
+<div class="hide-md" style="display: flex; gap: 30px; font-size: 14px;">
+<a href="#como" style="text-decoration: none; color: #526C68;">Como funciona</a>
+<a href="#situacoes" style="text-decoration: none; color: #526C68;">Situações</a>
+<a href="#blacklist" style="text-decoration: none; color: #526C68;">Blacklist</a>
+<a href="#conversa" style="text-decoration: none; color: #526C68;">Conversa</a>
+<a href="#regras" style="text-decoration: none; color: #526C68;">Regras</a>
+</div>
+<div style="display: flex; gap: 8px; align-items: center;">
+<a class="btn btn-outline hide-sm" href="#acesso" style="height: 40px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; text-decoration: none; font-size: 14px; font-weight: 500;">Entrar</a>
+<a class="btn btn-primary" href="#topo" style="height: 40px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; background: #DC3209; color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 600; box-shadow: 0 3px 7px rgba(251,60,13,0.22);">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Criar vaga</a>
+</div>
+</nav>
+</header>
+
+<section id="topo" style="max-width: 1240px; margin: 0 auto; padding: 52px 24px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 18px;">
+<h1 style="margin: 0; font-weight: 600; font-size: clamp(42px, 5.8vw, 78px); line-height: 0.98; letter-spacing: -0.04em; text-wrap: balance;">Diga a vaga.<br><span style="color: #FB3C0D;">A CORA traz as pessoas.</span></h1>
+<p style="margin: 0; max-width: 640px; font-size: 19px; color: #526C68; text-wrap: balance;">A CORA procura no seu banco de talentos e no LinkedIn, explica por que escolheu cada pessoa, faz o primeiro contato e entrega quem topou pronto para a entrevista na Nara.</p>
+
+<div style="width: 100%; max-width: 760px; margin-top: 16px; background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06), 0 16px 32px -20px rgba(11,48,56,0.28); text-align: left;">
+<label for="vaga" style="display: block; padding: 14px 16px 0; font-size: 13px; font-weight: 500; color: #526C68;">Descreva a vaga como falaria com alguém do time</label>
+<textarea id="vaga" rows="3" value="{{prompt}}" onChange="{{onPrompt}}" style="display: block; width: 100%; box-sizing: border-box; border: 0; resize: none; padding: 8px 16px 6px; font-size: 18px; line-height: 1.5; color: #0B3038; background: transparent; outline: none;"></textarea>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 10px 10px 16px; border-top: 1px solid #EDF1EE; flex-wrap: wrap;">
+<span style="font-size: 13px; color: #5E7672; display: flex; align-items: center; gap: 8px;">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path></svg>
+Nada começa antes de você aprovar os critérios</span>
+<a class="btn btn-primary" href="#produto" style="height: 40px; box-sizing: border-box; padding: 0 16px; border-radius: 8px; background: #DC3209; color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">Começar hunting
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"></path></svg></a>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 900px;">
+<sc-for list="{{chips}}" as="chip" hint-placeholder-count="5">
+<button type="button" class="btn btn-outline" onClick="{{chip.pick}}" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; font-size: 13px; cursor: pointer;">{{chip.label}}</button>
+</sc-for>
+</div>
+<p style="margin: 4px 0 0; font-size: 13px; color: #5E7672;">Entrega direto na Nara, da Tako</p>
+</section>
+
+<section id="produto" aria-label="A CORA trabalhando numa vaga" style="max-width: 1240px; margin: 0 auto; padding: 8px 24px 72px;">
+<div style="background: #E8EEEA; border-radius: 16px; padding: clamp(10px, 3vw, 40px);">
+<div style="background: #F7F8F5; border: 1px solid #DCE5E0; border-radius: 12px; overflow: hidden; box-shadow: 0 30px 60px -40px rgba(11,48,56,0.5); display: flex; flex-direction: column; min-height: 560px;">
+
+<div style="display: flex; align-items: center; gap: 16px; padding: 0 18px; height: 56px; background: #FFFFFF; border-bottom: 1px solid #E4E9E5;">
+<span style="display: flex; align-items: center; gap: 6px;"><img src="coral.png" alt="" width="24" height="25" style="width: 24px; height: 25px; object-fit: contain;"><span style="font-weight: 600; font-size: 16px; letter-spacing: -0.03em;">CORA</span></span>
+<span class="hide-md" style="display: flex; gap: 2px; font-size: 13px;">
+<span style="padding: 5px 11px; border-radius: 8px; background: #EEF2EF; font-weight: 600;">Vagas</span>
+<span style="padding: 5px 11px; color: #526C68;">Banco de talentos</span>
+<span style="padding: 5px 11px; color: #526C68;">Empresa</span>
+</span>
+<span class="hide-md" style="margin-left: auto; width: 220px; height: 32px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 8px; background: #F1F4F2; font-size: 12px; color: #5E7672;">Buscar pessoas ou vagas<span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid #DFE6E1; background: #FFFFFF;">⌘K</span></span>
+<span style="height: 32px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 13px; font-weight: 600;">Criar vaga</span>
+<span style="width: 30px; height: 30px; border-radius: 50%; background: #0B3038; color: #FFFFFF; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center;">AR</span>
+</div>
+
+<div style="flex: 1 1 0; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 12px; color: #5E7672;">Vagas / Backend Sênior</span>
+<span style="font-size: 22px; font-weight: 600; letter-spacing: -0.03em;">Pessoa Desenvolvedora Backend Sênior</span>
+<span style="font-size: 13px; color: #5E7672;">Meta: 5 pessoas interessadas na Nara em 7 dias · 2 de 5 entregues</span>
+</div>
+<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #FFF1CC; color: #855A0E;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #C98A12;"></span>Buscando</span>
+</div>
+</div>
+
+<div role="tablist" aria-label="Visualização" style="display: flex; gap: 22px; border-bottom: 1px solid #E4E9E5; font-size: 13px;">
+<span role="tab" aria-selected="true" style="padding: 0 0 9px; border-bottom: 2px solid #FB3C0D; margin-bottom: -1px; font-weight: 600;">Quadro</span>
+<span role="tab" aria-selected="false" style="padding: 0 0 9px; color: #526C68;">Lista</span>
+<span role="tab" aria-selected="false" style="padding: 0 0 9px; color: #526C68;">Rastro</span>
+<span role="tab" aria-selected="false" style="padding: 0 0 9px; color: #526C68;">Critérios</span>
+</div>
+
+<div style="overflow-x: auto;">
+<div style="display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 12px; min-width: 800px;">
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 12px; font-weight: 500; color: #526C68; display: flex; gap: 6px; align-items: center;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #3A6F6C;"></span>Analisando <span class="num" style="color: #5E7672;">62</span></span>
+<div style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span style="font-size: 13px; font-weight: 600;">Camila Nunes</span><span style="font-size: 12px; color: #5E7672;">Python, AWS · 6 anos</span><span style="font-size: 12px; color: #3A6F6C;">Lendo evidências…</span></div>
+<div style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span style="font-size: 13px; font-weight: 600;">Rafael Lima</span><span style="font-size: 12px; color: #5E7672;">Go, gRPC · 5 anos</span><span style="font-size: 12px; color: #3A6F6C;">Revisor conferindo</span></div>
+<div style="border: 1px dashed #D0D9D4; border-radius: 10px; padding: 10px 12px; font-size: 12px; color: #5E7672;">+ 60 na fila</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 12px; font-weight: 500; color: #526C68; display: flex; gap: 6px; align-items: center;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #C98A12;"></span>Aguardando autorização <span class="num" style="color: #5E7672;">9</span></span>
+<div style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span style="display: flex; justify-content: space-between;"><span style="font-size: 13px; font-weight: 600;">Tiago Moura</span><span class="num" style="font-size: 13px; font-weight: 700; color: #DC3209;">87</span></span><span style="font-size: 12px; color: #5E7672;">Só recebeu o pedido de autorização</span></div>
+<div style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span style="display: flex; justify-content: space-between;"><span style="font-size: 13px; font-weight: 600;">Júlia Prado</span><span class="num" style="font-size: 13px; font-weight: 700; color: #DC3209;">83</span></span><span style="font-size: 12px; color: #5E7672;">Autorização vencida · renovar</span></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 12px; font-weight: 500; color: #526C68; display: flex; gap: 6px; align-items: center;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #FB3C0D;"></span>Em conversa <span class="num" style="color: #5E7672;">4</span></span>
+<div style="background: #FFFFFF; border: 1px solid #F0B5AA; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; box-shadow: 0 0 0 3px #FFF1EE;"><span style="display: flex; justify-content: space-between;"><span style="font-size: 13px; font-weight: 600;">Larissa Rocha</span><span class="num" style="font-size: 13px; font-weight: 700; color: #DC3209;">92</span></span><span style="font-size: 12px; color: #2C4F55;">“Topo conversar. Remoto mesmo?”</span><span style="font-size: 11px; color: #5E7672;">WhatsApp · agora</span></div>
+<div style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span style="display: flex; justify-content: space-between;"><span style="font-size: 13px; font-weight: 600;">André Sales</span><span class="num" style="font-size: 13px; font-weight: 700; color: #DC3209;">85</span></span><span style="font-size: 12px; color: #5E7672;">E-mail aberto · sem resposta</span></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 12px; font-weight: 500; color: #526C68; display: flex; gap: 6px; align-items: center;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #377B5D;"></span>Entregue à Nara <span class="num" style="color: #5E7672;">2</span></span>
+<div style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span style="display: flex; justify-content: space-between;"><span style="font-size: 13px; font-weight: 600;">Marina Costa</span><span class="num" style="font-size: 13px; font-weight: 700; color: #DC3209;">90</span></span><span style="font-size: 12px; color: #2F6E52;">Entrevista qui, 14h · dossiê enviado</span></div>
+<div style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;"><span style="display: flex; justify-content: space-between;"><span style="font-size: 13px; font-weight: 600;">Pedro Alves</span><span class="num" style="font-size: 13px; font-weight: 700; color: #DC3209;">88</span></span><span style="font-size: 12px; color: #2F6E52;">Entrevista sex, 10h · dossiê enviado</span></div>
+</div>
+
+</div>
+</div>
+
+<div style="margin-top: auto; background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 10px; padding: 12px 14px; font-family: 'Geist Mono', monospace; font-size: 12px; line-height: 1.85; color: #2C4F55; display: flex; flex-direction: column;">
+<span><span style="color: #2F6E52;">feito</span> · 1.284 perfis do banco lidos, 37 com autorização vencida saíram da busca</span>
+<span><span style="color: #2F6E52;">feito</span> · LinkedIn via Bright Data, 316 perfis</span>
+<span><span style="color: #A43826;">bloqueio</span> · 41 perfis ignorados pela blacklist: Vértice, Lumen, Orla</span>
+<span><span style="color: #DC3209;">agora</span> · analisando 62 perfis por critério, trabalhou por 47s</span>
+</div>
+<div style="align-self: center; width: 100%; max-width: 640px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 14px; box-shadow: 0 12px 32px -16px rgba(11,48,56,0.35);">
+<span style="flex: 1; min-width: 0; font-size: 13px; color: #5E7672; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Peça algo à CORA: “traga mais 3 pessoas de Recife”</span>
+<span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #FFF1EE; color: #A43826;">Agente</span>
+<span style="width: 32px; height: 32px; border-radius: 50%; background: #DC3209; color: #FFFFFF; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></span>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section aria-label="Integrações" style="max-width: 1240px; margin: 0 auto; padding: 0 24px 24px;">
+<div style="background: #EEF1EE; border: 1px solid #E4E9E5; border-radius: 14px; padding: 26px 28px; display: flex; flex-direction: column; gap: 18px;">
+<span style="font-size: 13px; color: #5E7672; text-align: center;">Conectada a</span>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-around; gap: 22px 40px; color: #6A7E7A;">
+<span style="font-size: 26px; font-weight: 700; letter-spacing: -0.04em;">tako<span style="font-size: 14px; font-weight: 500; letter-spacing: 0; margin-left: 6px;">Nara</span></span>
+<span style="font-size: 23px; font-weight: 600; letter-spacing: -0.02em;">Bright Data</span>
+<span style="font-size: 24px; font-weight: 700; letter-spacing: -0.03em;">LinkedIn</span>
+<span style="font-size: 23px; font-weight: 600; letter-spacing: -0.02em;">WhatsApp</span>
+<span style="font-size: 23px; font-weight: 500; letter-spacing: -0.02em;">e-mail</span>
+<span style="font-size: 23px; font-weight: 600; letter-spacing: 0.02em; font-family: 'Geist Mono', monospace;">MCP</span>
+</div>
+</div>
+</section>
+
+<section id="como" style="max-width: 1240px; margin: 0 auto; padding: 112px 24px 104px; display: flex; flex-direction: column; gap: 52px;">
+<div class="stack-md" style="display: flex; justify-content: space-between; align-items: flex-end; gap: 32px;">
+<h2 style="margin: 0; max-width: 760px; font-weight: 600; font-size: clamp(38px, 5.2vw, 68px); line-height: 1; letter-spacing: -0.04em; text-wrap: balance;">O amigo favorito do <span style="color: #FB3C0D;">seu RH</span>.</h2>
+<p style="margin: 0; max-width: 380px; color: #526C68; font-size: 18px;">Ela caça, conversa e organiza. Você entrevista e decide.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px;">
+<div style="border-top: 2px solid #FB3C0D; padding-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+<h3 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">Trabalha enquanto você entrevista</h3>
+<p style="margin: 0; color: #526C68;">Abra a vaga de manhã e volte com pessoas interessadas, cada uma com o porquê da escolha.</p>
+</div>
+<div style="border-top: 2px solid #3A6F6C; padding-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+<h3 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">Conversa como gente, não como robô</h3>
+<p style="margin: 0; color: #526C68;">E-mail pessoal, WhatsApp no tom da sua empresa e resposta em minutos, dentro dos horários de contato que você definir.</p>
+</div>
+<div style="border-top: 2px solid #0B3038; padding-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+<h3 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">Seu banco de talentos sempre em dia</h3>
+<p style="margin: 0; color: #526C68;">Quem quase entrou na vaga passada volta na próxima. Autorização vencida sai da busca, e quem pede para sair tem os dados apagados.</p>
+</div>
+</div>
+</section>
+
+<section id="situacoes" style="max-width: 1240px; margin: 0 auto; padding: 0 24px 120px; display: flex; flex-wrap: wrap; gap: 56px; align-items: center;">
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 18px;">
+<h2 style="margin: 0; font-weight: 600; font-size: clamp(32px, 3.8vw, 48px); line-height: 1.04; letter-spacing: -0.04em; text-wrap: balance;">Cada nota tem um porquê. Cada pessoa, uma situação.</h2>
+<p style="margin: 0; color: #526C68; font-size: 18px; max-width: 460px;">Nota por critério, evidência com fonte e as lacunas que valem uma pergunta. A situação diz o que a CORA pode fazer com cada pessoa.</p>
+<div role="tablist" aria-label="Situação da pessoa" style="align-self: flex-start; display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-radius: 10px; background: #EAF0EC;">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{tab.selected}}" onClick="{{tab.pick}}" style="{{tab.style}}">{{tab.label}}</button>
+</sc-for>
+</div>
+<p style="margin: 0; color: #2C4F55; font-size: 15px; max-width: 460px; min-height: 48px;">{{situ.texto}}</p>
+</div>
+<div style="flex: 1 1 520px; min-width: 0; background: #E8EEEA; border-radius: 16px; padding: clamp(10px, 3vw, 32px);">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 22px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+<div style="display: flex; gap: 12px; align-items: center;">
+<span style="width: 44px; height: 44px; border-radius: 50%; background: #FFF1EE; color: #A43826; display: flex; align-items: center; justify-content: center; font-weight: 600;">{{situ.iniciais}}</span>
+<span style="display: flex; flex-direction: column;"><span style="font-size: 17px; font-weight: 600; letter-spacing: -0.02em;">{{situ.nome}}</span><span style="font-size: 13px; color: #5E7672;">{{situ.email}}</span></span>
+</div>
+<span style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;"><span class="num" style="font-size: 40px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; color: #DC3209;">{{situ.nota}}</span><span style="{{situ.badgeStyle}}">{{situ.badge}}</span></span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; font-size: 14px;">
+<sc-for list="{{situ.criterios}}" as="c" hint-placeholder-count="4">
+<div style="display: grid; grid-template-columns: 1fr 80px; gap: 6px 12px; align-items: center;"><span>{{c.nome}}</span><span style="{{c.rotuloStyle}}">{{c.rotulo}}</span><span style="grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #EDF1EE;"><span style="{{c.barStyle}}"></span></span></div>
+</sc-for>
+</div>
+<div style="border-radius: 8px; background: #F7F8F5; border: 1px solid #EDF1EE; padding: 12px 14px; font-size: 14px; color: #2C4F55;"><span style="color: #0B3038; font-weight: 600;">{{situ.notaTitulo}}</span> {{situ.notaTexto}}</div>
+<span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #5E7672;">{{situ.rastro}}</span>
+</div>
+</div>
+</section>
+
+<section id="blacklist" style="max-width: 1240px; margin: 0 auto; padding: 0 24px 120px; display: flex; flex-wrap: wrap-reverse; gap: 56px; align-items: center;">
+<div style="flex: 1 1 520px; min-width: 0; background: #E8EEEA; border-radius: 16px; padding: clamp(10px, 3vw, 32px);">
+<div style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(11,48,56,0.06);">
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; gap: 12px; flex-wrap: wrap;">
+<span style="display: flex; flex-direction: column;"><span style="font-weight: 600; letter-spacing: -0.02em;">Blacklist de empresas</span><span style="font-size: 13px; color: #5E7672;">Ninguém destas empresas é coletado ou abordado</span></span>
+<span class="btn btn-outline" style="height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; font-size: 13px; font-weight: 500;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Adicionar empresa</span>
+</div>
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 0.7fr; gap: 12px; padding: 10px 18px; font-size: 12px; font-weight: 500; color: #5E7672; border-top: 1px solid #EDF1EE; border-bottom: 1px solid #EDF1EE; background: #FAFBF9;"><span>Empresa</span><span>Contrato</span><span style="text-align: right;">Até</span></div>
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 0.7fr; gap: 12px; padding: 13px 18px; font-size: 14px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-weight: 500;">Vértice Pagamentos</span><span><span style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826;">Não aliciamento</span></span><span class="num" style="text-align: right; color: #526C68;">03/2027</span></div>
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 0.7fr; gap: 12px; padding: 13px 18px; font-size: 14px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-weight: 500;">Lumen Saúde</span><span><span style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55;">Fidelidade</span></span><span class="num" style="text-align: right; color: #526C68;">11/2026</span></div>
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 0.7fr; gap: 12px; padding: 13px 18px; font-size: 14px; align-items: center;"><span style="font-weight: 500;">Orla Logística</span><span><span style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826;">Não aliciamento</span></span><span class="num" style="text-align: right; color: #526C68;">08/2027</span></div>
+<div style="padding: 12px 18px; background: #FFF1EE; border-top: 1px solid #F0B5AA; color: #A43826; font-family: 'Geist Mono', monospace; font-size: 12px;">conector.linkedin · 41 perfis não coletados · regra BL-03</div>
+</div>
+</div>
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 18px;">
+<h2 style="margin: 0; font-weight: 600; font-size: clamp(32px, 3.8vw, 48px); line-height: 1.04; letter-spacing: -0.04em; text-wrap: balance;">Seus contratos valem mais que um bom perfil.</h2>
+<p style="margin: 0; color: #526C68; font-size: 18px; max-width: 460px;">Cliente com cláusula de não aliciamento ou contrato de fidelidade entra na blacklist. A CORA nem coleta o perfil de quem trabalha lá, e nunca aborda essas pessoas. É uma regra fixa: a IA não tem como ignorá-la.</p>
+</div>
+</section>
+
+<section id="conversa" style="background: #0B3038; color: #F1F5F2;">
+<div style="max-width: 1240px; margin: 0 auto; padding: 120px 24px; display: flex; flex-direction: column; gap: 52px;">
+<div class="stack-md" style="display: flex; justify-content: space-between; align-items: flex-end; gap: 32px;">
+<h2 style="margin: 0; max-width: 720px; font-weight: 600; font-size: clamp(34px, 4.4vw, 56px); line-height: 1.02; letter-spacing: -0.04em; text-wrap: balance;">A conversa que nenhum recrutador tem tempo de ter.</h2>
+<p style="margin: 0; max-width: 400px; color: #B4C7C3; font-size: 17px;">Escolha um cargo e veja a CORA em ação: o e-mail chega, a pessoa responde e a conversa segue no WhatsApp até a entrevista com a Nara.</p>
+</div>
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+<div role="tablist" aria-label="Cargo de exemplo" style="display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-radius: 10px; background: rgba(255,255,255,0.08);">
+<sc-for list="{{cargos}}" as="cg" hint-placeholder-count="4">
+<button type="button" role="tab" aria-selected="{{cg.selected}}" onClick="{{cg.pick}}" style="{{cg.style}}">{{cg.label}}</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px;">
+<button type="button" onClick="{{toggle}}" aria-label="{{playLabel}}" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #2B5A60; background: transparent; color: #F1F5F2; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+<sc-if value="{{playing}}" hint-placeholder-val="{{true}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="3" height="10" rx="1"></rect><rect x="9" y="3" width="3" height="10" rx="1"></rect></svg></sc-if>
+<sc-if value="{{paused}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3l8 5-8 5z"></path></svg></sc-if>
+{{playLabel}}</button>
+<button type="button" onClick="{{restart}}" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #2B5A60; background: transparent; color: #F1F5F2; font-size: 13px; font-weight: 500; cursor: pointer;">Recomeçar</button>
+</div>
+</div>
+
+<ol aria-label="Etapas da demonstração" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; list-style: none; margin: 0; padding: 0;">
+<sc-for list="{{fases}}" as="f" hint-placeholder-count="4">
+<li style="display: flex; flex-direction: column; gap: 8px; min-width: 0;"><span style="{{f.barStyle}}"></span><span style="{{f.labelStyle}}">{{f.label}}</span></li>
+</sc-for>
+</ol>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch;">
+
+<div style="flex: 1.25 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+<div style="background: #FFFFFF; color: #202124; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 60px -30px rgba(0,0,0,0.5);">
+<div style="display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 12px;">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; background: #FFF1EE; display: flex; align-items: center; justify-content: center;"><img src="coral.png" alt="" width="24" height="25" style="width: 24px; height: 25px; object-fit: contain;"></span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;">
+<span style="font-size: 14px; color: #5F6368;"><b style="color: #202124; font-weight: 600;">CORA</b> &lt;no-reply@cora.com&gt;</span>
+<span style="font-size: 12px; color: #5F6368;">para mim</span>
+</span>
+<span class="num" style="font-size: 12px; color: #5F6368; white-space: nowrap;">{{d.hora1}}</span>
+</div>
+<div style="background: #F4F5F2; padding: clamp(10px, 2vw, 20px);">
+<div style="max-width: 560px; margin: 0 auto; background: #FFFFFF; border: 1px solid #E3E7E3; border-radius: 12px; overflow: hidden;">
+<div style="display: flex; align-items: center; gap: 12px; padding: 20px 24px; background: #183038;">
+<img src="coral.png" alt="" width="34" height="35" style="width: 34px; height: 35px; object-fit: contain;">
+<span style="display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; color: #FFFFFF;">CORA</span><span style="font-size: 9px; font-weight: 500; letter-spacing: 0.14em; color: #CFE0DC;">CONEXÃO DE OPORTUNIDADE DE RECRUTAMENTO ATIVO</span></span>
+</div>
+<div style="padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; color: #183038;">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: #3A6F6C;">NOVA OPORTUNIDADE</span>
+<span style="font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15;">{{d.vaga}}</span>
+<span style="font-size: 15px; line-height: 1.6; color: #2C4F55;">Olá, {{d.primeiroNome}}! A CORA tem uma vaga de <b style="color: #183038;">{{d.vaga}}</b> e o seu perfil chamou a nossa atenção por:</span>
+<span style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{d.chips}}" as="chip" hint-placeholder-count="2">
+<span style="font-size: 14px; padding: 5px 13px; border-radius: 999px; border: 1px solid #F0C3B8; background: #FFF4F1; color: #A43826;">{{chip}}</span>
+</sc-for>
+</span>
+<span style="font-size: 15px; line-height: 1.6; color: #2C4F55;">Se tiver interesse, a próxima conversa é rápida e pelo WhatsApp:</span>
+<span style="{{ctaStyle}}">Quero conversar sobre a vaga</span>
+<span style="height: 1px; background: #E6EAE7; margin: 6px 0 2px;"></span>
+<span style="font-size: 13px; line-height: 1.6; color: #526C68;"><b style="color: #2C4F55;">Por que você recebeu este e-mail:</b> encontramos o seu perfil profissional público em <span style="color: #3A6F6C; text-decoration: underline; text-underline-offset: 2px;">{{d.linkedin}}</span> e ele combina com esta vaga. Guardamos só dados profissionais públicos para falar sobre ela.</span>
+<span style="font-size: 13px; line-height: 1.6; color: #526C68;">Não quer mais receber contatos? <span style="color: #A43826; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;">Não quero mais contato</span> ou responda SAIR. O pedido vale para sempre, em todas as vagas.</span>
+</div>
+<div style="padding: 12px 24px; background: #F7F8F5; border-top: 1px solid #E6EAE7; font-size: 12px; color: #5E7672;">CORA · recrutamento ativo</div>
+</div>
+</div>
+<sc-if value="{{replyOn}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid #EDF1EE; font-size: 13px; color: #2C4F55;">
+<span style="width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: #FB3C0D;"></span>
+<span style="flex: 1; min-width: 0;"><b style="color: #0B3038;">{{d.primeiroNome}}</b> clicou em “Quero conversar sobre a vaga” · {{d.hora2}}</span>
+<span style="white-space: nowrap; color: #2F6E52; font-weight: 600;">abriu o WhatsApp</span>
+</div>
+</sc-if>
+</div>
+<div style="flex: 1; min-height: 150px; border: 1px solid #1C4A50; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+<span style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #B4C7C3;"><span>O que a CORA anotou para a entrevista</span><span class="num">{{notasContagem}}</span></span>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 20px;">
+<sc-for list="{{notas}}" as="n" hint-placeholder-count="3">
+<span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 12px; color: #9DB3AF;">{{n.rotulo}}</span><span style="color: #F1F5F2;">{{n.valor}}</span></span>
+</sc-for>
+</div>
+<sc-if value="{{semNotas}}" hint-placeholder-val="{{false}}">
+<span style="font-size: 14px; color: #9DB3AF;">Aparece aqui o que a pessoa contar na conversa.</span>
+</sc-if>
+</div>
+</div>
+
+<div style="flex: 0 1 340px; min-width: 280px; margin: 0 auto; background: #050F11; border-radius: 38px; padding: 10px; box-shadow: 0 30px 60px -30px rgba(0,0,0,0.6);">
+<div style="height: 600px; border-radius: 30px; overflow: hidden; display: flex; flex-direction: column; background: #EFEAE2;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; background: #1F5F55; color: #FFFFFF;">
+<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
+<span style="width: 34px; height: 34px; border-radius: 50%; background: #FFFFFF; display: flex; align-items: center; justify-content: center;"><img src="coral.png" alt="" width="22" height="23" style="width: 22px; height: 23px; object-fit: contain;"></span>
+<span style="display: flex; flex-direction: column; line-height: 1.2;"><span style="font-size: 15px; font-weight: 600;">CORA · Maré Tech</span><span style="font-size: 12px; color: #CFE6E0;">{{status}}</span></span>
+</div>
+<div style="flex: 1; padding: 12px 10px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; overflow: hidden; font-size: 14px; line-height: 1.4;">
+<span style="align-self: center; font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #FFFFFF; color: #54656F;">Hoje</span>
+<sc-for list="{{msgs}}" as="m" hint-placeholder-count="4">
+<span style="{{m.style}}">{{m.txt}}<span style="display: block; text-align: right; font-size: 10px; color: #667781; margin-top: 2px;">{{m.hora}}</span></span>
+</sc-for>
+<sc-if value="{{typing}}" hint-placeholder-val="{{false}}">
+<span style="{{typingStyle}}">digitando…</span>
+</sc-if>
+<sc-if value="{{done}}" hint-placeholder-val="{{false}}">
+<span style="align-self: center; margin-top: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #FB3C0D; color: #FFFFFF;">Entrevista marcada com a Nara · {{d.entrevista}}</span>
+</sc-if>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px 14px;">
+<span style="flex: 1; height: 38px; border-radius: 19px; background: #FFFFFF; display: flex; align-items: center; padding: 0 14px; font-size: 13px; color: #8696A0;">Mensagem</span>
+<span style="width: 38px; height: 38px; border-radius: 50%; background: #1F5F55; display: flex; align-items: center; justify-content: center; color: #FFFFFF;"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 8l12-6-4 13-2.5-5z"></path></svg></span>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<section style="max-width: 1240px; margin: 0 auto; padding: 120px 24px; display: flex; flex-wrap: wrap; gap: 56px; align-items: center;">
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 18px;">
+<h2 style="margin: 0; font-weight: 600; font-size: clamp(32px, 3.8vw, 48px); line-height: 1.04; letter-spacing: -0.04em; text-wrap: balance;">A entrevista começa sabendo o que importa.</h2>
+<p style="margin: 0; color: #526C68; font-size: 18px; max-width: 460px;">Quando a pessoa agenda, a Nara recebe um dossiê: por que ela, as evidências com fonte, o que ela contou na conversa e as lacunas para investigar. Lacuna é pergunta, nunca defeito.</p>
+</div>
+<div style="flex: 1 1 520px; min-width: 0; background: #E8EEEA; border-radius: 16px; padding: clamp(10px, 3vw, 40px);">
+<article style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 6px; padding: clamp(22px, 4vw, 44px); display: flex; flex-direction: column; gap: 18px; box-shadow: 0 24px 48px -32px rgba(11,48,56,0.45);">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; color: #5E7672;"><span style="display: flex; align-items: center; gap: 6px;"><img src="coral.png" alt="" width="18" height="19" style="width: 18px; height: 19px; object-fit: contain;">Dossiê para a entrevista · Vaga 014</span><span>Para a Nara</span></div>
+<h3 style="margin: 0; font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: clamp(26px, 3vw, 34px); letter-spacing: -0.02em; line-height: 1.1;">Larissa Rocha, Backend Sênior</h3>
+<div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-weight: 600; font-size: 14px; color: #DC3209;">Por que ela</span><span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; color: #2C4F55;">Go em produção há cinco anos, com evidência em dois projetos públicos. Liderou a migração para Kafka.</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-weight: 600; font-size: 14px; color: #DC3209;">O que ela contou</span><span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; color: #2C4F55;">Quer remoto, liderança técnica sem gestão e pode começar em 30 dias.</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-weight: 600; font-size: 14px; color: #DC3209;">Para aprofundar</span><span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; color: #2C4F55;">Pausa de oito meses em 2023: pergunte, não penalize. Pouca experiência com observabilidade.</span></div>
+<span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #5E7672; padding-top: 12px; border-top: 1px solid #EDF1EE;">rastro a91f · autorizada até 05/2027</span>
+</article>
+</div>
+</section>
+
+<section id="regras" style="border-top: 1px solid #E4E9E5;">
+<div style="max-width: 1240px; margin: 0 auto; padding: 120px 24px; display: flex; flex-wrap: wrap; gap: 56px;">
+<div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 18px;">
+<h2 style="margin: 0; font-weight: 600; font-size: clamp(32px, 3.8vw, 48px); line-height: 1.04; letter-spacing: -0.04em; text-wrap: balance;">Autonomia onde ajuda. Regra fixa onde importa.</h2>
+<p style="margin: 0; color: #526C68; font-size: 18px;">A CORA não agenda, não avalia a entrevista e não decide contratações. A Nara entrevista. Seu time decide.</p>
+</div>
+<div style="flex: 1.4 1 520px; min-width: 0; display: flex; flex-direction: column;">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; padding: 22px 0; border-top: 1px solid #DCE5E0;"><span style="font-weight: 600; font-size: 18px; letter-spacing: -0.02em;">Requisito eliminatório não é opinião</span><span style="color: #526C68;">Eliminatórios, autorização e limites de contato são regras fixas. A IA não decide sobre eles.</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; padding: 22px 0; border-top: 1px solid #DCE5E0;"><span style="font-weight: 600; font-size: 18px; letter-spacing: -0.02em;">Autorização vencida sai da busca</span><span style="color: #526C68;">Cada empresa tem o próprio banco. Nada de uma aparece para outra.</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; padding: 22px 0; border-top: 1px solid #DCE5E0;"><span style="font-weight: 600; font-size: 18px; letter-spacing: -0.02em;">Nome e gênero não mudam a nota</span><span style="color: #526C68;">Atributo sensível não é critério, e isso é testado a cada versão.</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; padding: 22px 0; border-top: 1px solid #DCE5E0; border-bottom: 1px solid #DCE5E0;"><span style="font-weight: 600; font-size: 18px; letter-spacing: -0.02em;">Todo passo deixa rastro</span><span style="color: #526C68;">Cada decisão guarda evidência, regra aplicada e custo por candidato.</span></div>
+</div>
+</div>
+</section>
+
+<section id="acesso" style="background: #DC3209; color: #FFFFFF;">
+<div style="max-width: 1240px; margin: 0 auto; padding: 112px 24px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px;">
+<h2 style="margin: 0; max-width: 900px; font-weight: 600; font-size: clamp(40px, 5.6vw, 76px); line-height: 0.98; letter-spacing: -0.04em; text-wrap: balance;">Abra sua primeira vaga hoje.</h2>
+<p style="margin: 0; font-size: 18px; color: #FFFFFF;">Você paga por candidato entregue à entrevista: R$ 290.</p>
+<div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center;">
+<a class="btn" href="#topo" style="height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 18px; border-radius: 8px; background: #FFFFFF; color: #0B3038; text-decoration: none; font-weight: 600;">Criar vaga</a>
+<a class="btn" href="#produto" style="height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 18px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.7); color: #FFFFFF; text-decoration: none; font-weight: 500;">Ver a demo</a>
+</div>
+</div>
+</section>
+
+<footer style="background: #0B3038; color: #B4C7C3;">
+<div style="max-width: 1240px; margin: 0 auto; padding: 40px 24px 56px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 32px; font-size: 14px;">
+<div style="display: flex; flex-direction: column; gap: 10px; max-width: 340px;">
+<span style="display: flex; align-items: center; gap: 8px;"><img src="coral.png" alt="" width="30" height="31" style="width: 30px; height: 31px; object-fit: contain;"><span style="font-weight: 600; font-size: 19px; letter-spacing: -0.03em; color: #FFFFFF;">CORA</span></span>
+<span>Conexão de Oportunidade de Recrutamento Ativo. Feita no Converge Challenge, Desafio Tako.</span>
+</div>
+<div style="display: flex; gap: 56px; flex-wrap: wrap;">
+<div style="display: flex; flex-direction: column; gap: 8px;"><span style="color: #FFFFFF; font-weight: 600;">Produto</span><a href="#como" style="text-decoration: none; color: #B4C7C3;">Como funciona</a><a href="#blacklist" style="text-decoration: none; color: #B4C7C3;">Blacklist</a><a href="#regras" style="text-decoration: none; color: #B4C7C3;">Regras</a></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><span style="color: #FFFFFF; font-weight: 600;">Privacidade</span><a href="#regras" style="text-decoration: none; color: #B4C7C3;">Autorização e LGPD</a><a href="#regras" style="text-decoration: none; color: #B4C7C3;">Pedir remoção</a></div>
+</div>
+</div>
+</footer>
+
+</div>
+</template><div id="root"></div>
+<script>
+class DCLogic { constructor(p){ this.props = p || {}; this.state = {}; }
+  setState(p){ Object.assign(this.state, typeof p === 'function' ? p(this.state) : p); window.__render(); }
+  forceUpdate(){ window.__render(); } }
+</script>
+<script>
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { prompt: 'Backend sênior, Go ou Python, 5+ anos com filas. Remoto. Não abordar quem trabalha na Vértice Pagamentos.', situ: 'autorizada', cargo: 'python', step: 0, playing: true };
+  }
+  componentDidMount() {
+    let reduzir = false;
+    try { reduzir = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduzir) {
+      this.setState({ playing: false, step: this.roteiro(this.state.cargo).length - 1 });
+    }
+    this.agendar();
+  }
+  agendar() {
+    const d = this.conversas()[this.state.cargo];
+    const passos = this.roteiro(this.state.cargo);
+    const s = this.state.step;
+    let texto = '';
+    if (s === 0) texto = 'x'.repeat(120);
+    else if (s === 1) texto = 'x'.repeat(50);
+    else if (passos[s] === 'wa') texto = d.wa[s - 2][1];
+    const espera = s >= passos.length - 1 ? 2600 : Math.min(3400, 1100 + texto.length * 18);
+    this.timer = setTimeout(() => {
+      if (this.state.playing) {
+        const total = passos.length;
+        const proximo = this.state.step + 1;
+        this.setState({ step: proximo >= total + 1 ? 0 : proximo });
+      }
+      this.agendar();
+    }, espera);
+  }
+  componentWillUnmount() {
+    clearTimeout(this.timer);
+  }
+  conversas() {
+    return {
+      python: {
+        label: 'Dev Python', vaga: 'Pessoa Desenvolvedora Python', chips: ['Python', 'APIs'], linkedin: 'linkedin.com/in/exemplo-lucas', nome: 'Lucas Andrade', primeiroNome: 'Lucas', iniciais: 'LA', email: 'lucas.andrade@exemplo.com', hora1: '10:25', hora2: '10:31', entrevista: 'sex, 10h',
+        assunto: 'Nova oportunidade: Pessoa Desenvolvedora Python',
+        corpo: '', resposta: '',
+        wa: [
+          ['p', 'Oi! Cliquei no link do e-mail. A vaga é remota?'],
+          ['c', 'Oi, Lucas! É híbrida em Recife, dois dias no escritório. Hoje você trabalha mais com APIs ou com dados?'],
+          ['p', 'Mais com APIs, FastAPI no dia a dia.'],
+          ['c', 'Ótimo, é o centro da vaga. Quando você conseguiria começar?'],
+          ['p', 'Em 15 dias.'],
+          ['c', 'Perfeito. Escolha um horário com a Nara, que conduz a entrevista: agenda.nara.exemplo/022-lucas']
+        ]
+      },
+      backend: {
+        label: 'Backend Sênior', vaga: 'Pessoa Desenvolvedora Backend Sênior', chips: ['Go', 'Kafka', 'Liderança técnica'], linkedin: 'linkedin.com/in/exemplo-larissa', nome: 'Larissa Rocha', primeiroNome: 'Larissa', iniciais: 'LR', email: 'larissa.rocha@exemplo.com', hora1: '9:02', hora2: '9:14', entrevista: 'qui, 14h',
+        assunto: 'Larissa, uma vaga de Backend com a sua cara',
+        corpo: 'Oi, Larissa. Sou a CORA, assistente de recrutamento da Maré Tech. Vi sua migração para Kafka na fintech e lembrei de uma vaga remota de Backend Sênior com liderança técnica. Se fizer sentido, a gente conversa rapidinho pelo WhatsApp.',
+        resposta: 'Oi! Tenho interesse sim. Te chamei no WhatsApp pelo link.',
+        wa: [
+          ['p', 'Oi! Vim pelo e-mail. A vaga é remota mesmo?'],
+          ['c', 'É sim, com um encontro por mês em Recife. Hoje você prefere liderar tecnicamente ou também gerir pessoas?'],
+          ['p', 'Liderar tecnicamente. Gestão não é meu momento.'],
+          ['c', 'Faz sentido, e é exatamente o desenho da vaga. Quando você conseguiria começar?'],
+          ['p', 'Uns 30 dias.'],
+          ['c', 'Perfeito. Escolha um horário com a Nara, que conduz a entrevista: agenda.nara.exemplo/014-larissa']
+        ]
+      },
+      design: {
+        label: 'Product Designer', vaga: 'Product Designer Pleno', chips: ['Pesquisa com usuários', 'Apps financeiros'], linkedin: 'linkedin.com/in/exemplo-ana', nome: 'Ana Beatriz Souza', primeiroNome: 'Ana', iniciais: 'AS', email: 'ana.souza@exemplo.com', hora1: '10:31', hora2: '10:40', entrevista: 'ter, 11h',
+        assunto: 'Ana, seu case de onboarding chamou atenção',
+        corpo: 'Oi, Ana. Sou a CORA, da Maré Tech. Seu case de onboarding de app financeiro é bem o que o time de produto procura. Temos uma vaga de Product Designer Pleno, híbrida em Recife. Topa conversar?',
+        resposta: 'Oi, CORA! Topo sim, vou te chamar no WhatsApp.',
+        wa: [
+          ['p', 'Oi! Quantos dias no escritório?'],
+          ['c', 'Dois por semana, terça e quinta. Hoje você trabalha mais com pesquisa ou com interface?'],
+          ['p', 'Metade a metade, mas quero puxar mais pesquisa.'],
+          ['c', 'Boa notícia: a vaga tem pesquisa com usuários todo trimestre. Posso mandar o link para você escolher um horário?'],
+          ['p', 'Pode sim!'],
+          ['c', 'Aqui: agenda.nara.exemplo/021-ana. A Nara já recebe o seu contexto, não precisa repetir nada.']
+        ]
+      },
+      dados: {
+        label: 'Analista de Dados', vaga: 'Analista de Dados Pleno', chips: ['dbt', 'Airflow', 'SQL'], linkedin: 'linkedin.com/in/exemplo-rafael', nome: 'Rafael Lima', primeiroNome: 'Rafael', iniciais: 'RL', email: 'rafael.lima@exemplo.com', hora1: '18:05', hora2: '18:22', entrevista: 'seg, 16h',
+        assunto: 'Rafael, dbt e Airflow por aqui também',
+        corpo: 'Oi, Rafael. Sou a CORA, da Maré Tech. Vi que você montou pipelines com dbt e Airflow, a mesma stack do nosso time de dados. A vaga é de Analista de Dados Pleno, híbrida em São Paulo. Posso te contar mais?',
+        resposta: 'Pode sim. Prefiro falar pelo WhatsApp, te chamei lá.',
+        wa: [
+          ['p', 'Oi. Qual a faixa salarial?'],
+          ['c', 'A faixa é de R$ 9 mil a R$ 12 mil e está no material da vaga. Quer que eu mande a descrição completa?'],
+          ['p', 'Manda. E o time tem quantas pessoas?'],
+          ['c', 'Seis, com uma liderança técnica. Acabei de mandar a descrição no seu e-mail também.'],
+          ['p', 'Curti. Como sigo?'],
+          ['c', 'Escolha um horário com a Nara por aqui: agenda.nara.exemplo/017-rafael']
+        ]
+      },
+      vendas: {
+        label: 'Vendas B2B', vaga: 'Executiva de Vendas B2B', chips: ['SaaS para RH', 'Vendas consultivas'], linkedin: 'linkedin.com/in/exemplo-carla', nome: 'Carla Mendes', primeiroNome: 'Carla', iniciais: 'CM', email: 'carla.mendes@exemplo.com', hora1: '14:12', hora2: '14:30', entrevista: 'qua, 9h',
+        assunto: 'Carla, vendas consultivas para RH',
+        corpo: 'Oi, Carla. Sou a CORA, da Maré Tech. Sua experiência vendendo SaaS para RH combina com a vaga de Executiva de Vendas B2B. É remota, com metas trimestrais. Faz sentido conversar?',
+        resposta: 'Oi! Faz sim, mas tenho uma dúvida. Te chamo no WhatsApp.',
+        wa: [
+          ['p', 'Oi! Tenho interesse, mas estou em outro processo seletivo.'],
+          ['c', 'Sem problema, obrigada por avisar. Prefere seguir em paralelo ou que eu volte a falar daqui a um mês?'],
+          ['p', 'Pode seguir em paralelo.'],
+          ['c', 'Combinado, vou deixar isso anotado para a entrevista. Ficou alguma dúvida sobre a vaga?'],
+          ['p', 'Não, tudo certo.'],
+          ['c', 'Então escolha um horário com a Nara: agenda.nara.exemplo/019-carla']
+        ]
+      }
+    };
+  }
+  roteiro(cargo) {
+    const d = this.conversas()[cargo];
+    return ['email', 'reply'].concat(d.wa.map(() => 'wa')).concat(['fim']);
+  }
+  renderVals() {
+    const ideias = [
+      'Backend sênior, Go ou Python, 5+ anos com filas. Remoto. Não abordar quem trabalha na Vértice Pagamentos.',
+      'Product Designer pleno em Recife, com portfólio de app financeiro.',
+      'Reative quem autorizou o banco em 2025 e combina com Dados Pleno.',
+      'Engenheira de dados que já usou dbt e Airflow, híbrido em São Paulo.',
+      'Ignore perfis da Lumen Saúde e da Orla Logística nesta vaga.'
+    ];
+    const rotulos = ['Backend sênior remoto', 'Designer em Recife', 'Reativar o banco', 'Dados com dbt', 'Respeitar a blacklist'];
+    const tom = {
+      atende: { cor: '#2F6E52', barra: '#377B5D' },
+      parcial: { cor: '#855A0E', barra: '#C98A12' },
+      lacuna: { cor: '#5E7672', barra: '#9AA7A4' },
+      falha: { cor: '#A43826', barra: '#FB3C0D' }
+    };
+    const crit = (nome, rotulo, pct) => ({
+      nome, rotulo,
+      rotuloStyle: 'text-align: right; font-size: 13px; color: ' + tom[rotulo === 'não atende' ? 'falha' : rotulo].cor + ';',
+      barStyle: 'display: block; height: 6px; border-radius: 3px; width: ' + pct + '%; background: ' + tom[rotulo === 'não atende' ? 'falha' : rotulo].barra + ';'
+    });
+    const badge = (bg, fg, bd) => 'font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 6px; border: 1px solid ' + bd + '; background: ' + bg + '; color: ' + fg + ';';
+    const situacoes = {
+      autorizada: {
+        label: 'Autorizada', badge: 'Autorizada', badgeStyle: badge('#E3F3E8', '#2F6E52', '#CDE6D5'),
+        texto: 'Autorizou o uso dos dados. Entra na busca e pode receber o convite para a vaga.',
+        nome: 'Larissa Rocha', iniciais: 'LR', email: 'larissa.rocha@exemplo.com · Recife', nota: '92',
+        criterios: [crit('Go ou Python em produção', 'atende', 96), crit('Filas e mensageria', 'atende', 90), crit('Liderança técnica', 'parcial', 68), crit('Observabilidade', 'lacuna', 32)],
+        notaTitulo: 'Evidência.', notaTexto: 'Liderou a migração para Kafka numa fintech, de 2022 a 2024. Fonte: LinkedIn.', rastro: 'revisor aprovou · rastro a91f'
+      },
+      aguardando: {
+        label: 'Aguardando autorização', badge: 'Aguardando', badgeStyle: badge('#FFF1CC', '#855A0E', '#F1D58A'),
+        texto: 'Perfil novo ou com autorização vencida. Recebe só o pedido de autorização e fica fora da busca até responder.',
+        nome: 'Tiago Moura', iniciais: 'TM', email: 'tiago.moura@exemplo.com · Fortaleza', nota: '87',
+        criterios: [crit('Go ou Python em produção', 'atende', 92), crit('Filas e mensageria', 'atende', 84), crit('Liderança técnica', 'parcial', 60), crit('Observabilidade', 'atende', 80)],
+        notaTitulo: 'Próximo passo.', notaTexto: 'Pedido de autorização enviado ontem. O convite para a vaga só sai depois do sim.', rastro: 'autorização pendente · rastro 7c02'
+      },
+      descartada: {
+        label: 'Descartada', badge: 'Descartada', badgeStyle: badge('#FFF1EE', '#A43826', '#F0B5AA'),
+        texto: 'Não atende a um requisito eliminatório ou trabalha numa empresa da blacklist. O motivo fica salvo para auditoria.',
+        nome: 'Bruno Castro', iniciais: 'BC', email: 'bruno.castro@exemplo.com · Natal', nota: '–',
+        criterios: [crit('Go ou Python em produção', 'atende', 88), crit('Filas e mensageria', 'não atende', 12), crit('Liderança técnica', 'lacuna', 30), crit('Observabilidade', 'lacuna', 25)],
+        notaTitulo: 'Regra E-03.', notaTexto: 'Filas e mensageria é eliminatório nesta vaga e não há evidência no perfil.', rastro: 'descarte registrado · rastro 3e9b'
+      }
+    };
+    const atual = situacoes[this.state.situ];
+    const tabs = ['autorizada', 'aguardando', 'descartada'].map((k) => {
+      const sel = this.state.situ === k;
+      return {
+        label: situacoes[k].label,
+        selected: sel ? 'true' : 'false',
+        pick: () => this.setState({ situ: k }),
+        style: 'height: 34px; padding: 0 14px; border: 0; border-radius: 7px; font-size: 14px; cursor: pointer; ' + (sel ? 'background: #FFFFFF; color: #0B3038; font-weight: 600; box-shadow: 0 1px 2px rgba(11,48,56,0.12);' : 'background: transparent; color: #526C68; font-weight: 500;')
+      };
+    });
+    const conversas = this.conversas();
+    const cargo = this.state.cargo;
+    const d = conversas[cargo];
+    const passos = this.roteiro(cargo);
+    const step = Math.min(this.state.step, passos.length - 1);
+    const horaBase = d.hora2;
+    const bolha = (de) => 'align-self: ' + (de === 'c' ? 'flex-end' : 'flex-start') + '; max-width: 82%; padding: 6px 9px 4px; border-radius: ' + (de === 'c' ? '8px 0 8px 8px' : '0 8px 8px 8px') + '; background: ' + (de === 'c' ? '#D9FDD3' : '#FFFFFF') + '; color: #111B21; box-shadow: 0 1px 0.5px rgba(11,20,26,0.13);';
+    const msgs = d.wa
+      .map((m, i) => ({ de: m[0], txt: m[1], idx: i + 2, hora: horaBase.replace(/:(\d+)/, (x, mm) => ':' + String(Math.min(59, Number(mm) + i)).padStart(2, '0')), style: bolha(m[0]) }))
+      .filter((m) => m.idx <= step);
+    const prox = passos[step + 1];
+    const proxMsg = prox === 'wa' ? d.wa[step + 1 - 2] : null;
+    const typing = !!proxMsg && this.state.playing;
+    const cargos = Object.keys(conversas).map((k) => {
+      const sel = k === cargo;
+      return {
+        label: conversas[k].label,
+        selected: sel ? 'true' : 'false',
+        pick: () => this.setState({ cargo: k, step: 0, playing: true }),
+        style: 'height: 36px; padding: 0 14px; border: 0; border-radius: 7px; font-size: 14px; cursor: pointer; ' + (sel ? 'background: #FFFFFF; color: #0B3038; font-weight: 600;' : 'background: transparent; color: #CFE0DC; font-weight: 500;')
+      };
+    });
+    const anotacoes = {
+      python: [['Modelo de trabalho', 'Híbrido em Recife, 2 dias', 3], ['Stack', 'APIs com FastAPI', 4], ['Disponibilidade', '15 dias', 6], ['Próximo passo', 'Link da Nara enviado', 7]],
+      backend: [['Modelo de trabalho', 'Remoto, 1 encontro por mês', 3], ['Momento', 'Liderança técnica, sem gestão', 4], ['Disponibilidade', '30 dias', 6], ['Próximo passo', 'Link da Nara enviado', 7]],
+      design: [['Modelo de trabalho', 'Híbrido, terça e quinta', 3], ['Interesse', 'Quer puxar mais pesquisa', 4], ['Combinado', 'Topou a entrevista', 6], ['Próximo passo', 'Link da Nara enviado', 7]],
+      dados: [['Dúvida', 'Faixa salarial', 3], ['Enviado', 'Descrição completa por e-mail', 5], ['Combinado', 'Quer seguir', 6], ['Próximo passo', 'Link da Nara enviado', 7]],
+      vendas: [['Contexto', 'Em outro processo seletivo', 2], ['Combinado', 'Seguir em paralelo', 4], ['Para a entrevista', 'Perguntar sobre o outro processo', 5], ['Próximo passo', 'Link da Nara enviado', 7]]
+    };
+    const notas = anotacoes[cargo].filter((n) => n[2] <= step).map((n) => ({ rotulo: n[0], valor: n[1] }));
+    const fimIdx = passos.length - 1;
+    const faseAtual = step === 0 ? 0 : step === 1 ? 1 : step < fimIdx ? 2 : 3;
+    const fases = ['E-mail enviado', 'Clique no e-mail', 'Conversa no WhatsApp', 'Entrevista marcada'].map((label, i) => {
+      const feita = i < faseAtual;
+      const atual = i === faseAtual;
+      return {
+        label,
+        barStyle: 'display: block; height: 4px; border-radius: 2px; background: ' + (atual ? '#FB3C0D' : feita ? '#F1F5F2' : 'rgba(255,255,255,0.18)') + ';',
+        labelStyle: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (atual ? '#FFFFFF' : feita ? '#CFE0DC' : '#9DB3AF') + '; font-weight: ' + (atual ? '600' : '400') + ';'
+      };
+    });
+    return {
+      notas,
+      semNotas: notas.length === 0,
+      notasContagem: notas.length + ' de ' + anotacoes[cargo].length,
+      fases,
+      prompt: this.state.prompt,
+      onPrompt: (e) => this.setState({ prompt: e.target.value }),
+      chips: rotulos.map((label, i) => ({ label, pick: () => this.setState({ prompt: ideias[i] }) })),
+      tabs,
+      situ: atual,
+      cargos,
+      d,
+      msgs,
+      replyOn: step >= 1,
+      ctaStyle: 'align-self: flex-start; padding: 12px 22px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 16px; font-weight: 700; transition: box-shadow .2s ease; ' + (step === 1 ? 'box-shadow: 0 0 0 5px #FFD3C6;' : ''),
+      replyTyping: step === 0 && this.state.playing,
+      typing,
+      typingStyle: bolha(proxMsg ? proxMsg[0] : 'c') + ' color: #667781; font-style: italic;',
+      status: typing && proxMsg && proxMsg[0] === 'c' ? 'digitando…' : 'online',
+      done: passos[step] === 'fim',
+      playing: this.state.playing,
+      paused: !this.state.playing,
+      playLabel: this.state.playing ? 'Pausar' : 'Reproduzir',
+      toggle: () => this.setState({ playing: !this.state.playing }),
+      restart: () => this.setState({ step: 0, playing: true })
+    };
+  }
+}
+
+</script>
+<script>
+(function(){
+  const tpl = document.getElementById('tpl').content;
+  const root = document.getElementById('root');
+  const comp = new Component({});
+  const HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
+  const WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
+  function look(scope, path){
+    if (path === 'true') return true; if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    let v = scope; for (const k of path.split('.')) { if (v == null) return undefined; v = v[k]; } return v;
+  }
+  function interp(s, scope){ return s.replace(HOLE, (m, p) => { const v = look(scope, p); return v == null ? '' : String(v); }); }
+  function build(parent, node, scope){
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) { parent.appendChild(document.createTextNode(interp(ch.nodeValue, scope))); continue; }
+      if (ch.nodeType !== 1) continue;
+      const tag = ch.tagName.toLowerCase();
+      if (tag === 'sc-for') {
+        const m = (ch.getAttribute('list') || '').match(WHOLE); const list = m ? look(scope, m[1]) : [];
+        const as = ch.getAttribute('as') || 'item';
+        (list || []).forEach((it, i) => { const s = Object.create(scope); s[as] = it; s.$index = i; build(parent, ch, s); });
+        continue;
+      }
+      if (tag === 'sc-if') {
+        const m = (ch.getAttribute('value') || '').match(WHOLE);
+        if (m && look(scope, m[1])) build(parent, ch, scope);
+        continue;
+      }
+      const el = ch.namespaceURI === 'http://www.w3.org/1999/xhtml' ? document.createElement(ch.localName) : document.createElementNS(ch.namespaceURI, ch.localName);
+      for (const a of ch.attributes) {
+        const m = a.value.match(WHOLE);
+        if (/^on[A-Z]/.test(a.name) || /^on[a-z]+$/.test(a.name) && m) {
+          const fn = m ? look(scope, m[1]) : null; if (typeof fn !== 'function') continue;
+          let ev = a.name.slice(2).toLowerCase(); if (ev === 'change' && (tag === 'textarea' || tag === 'input')) ev = 'input';
+          el.addEventListener(ev, fn); continue;
+        }
+        if (a.name === 'value' && (tag === 'textarea' || tag === 'input')) { el.value = interp(a.value, scope); continue; }
+        if (a.name.startsWith('hint-')) continue;
+        el.setAttribute(a.name, interp(a.value, scope));
+      }
+      if (tag === 'textarea') { if (!el.value) el.value = ch.value || ch.textContent; }
+      else build(el, ch, scope);
+      parent.appendChild(el);
+    }
+  }
+  window.__render = function(){
+    const active = document.activeElement && document.activeElement.id;
+    const frag = document.createDocumentFragment();
+    build(frag, tpl, comp.renderVals());
+    root.replaceChildren(frag);
+    if (active) { const e = document.getElementById(active); if (e) { e.focus(); if (e.setSelectionRange && e.value) e.setSelectionRange(e.value.length, e.value.length); } }
+  };
+  window.__render();
+  if (comp.componentDidMount) comp.componentDidMount();
+})();
+</script>
+</body></html>

@@ -1,0 +1,112 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</head><body>
+<template id="tpl">
+
+<div style="width: 1280px; height: 720px; box-sizing: border-box; padding: 34px 72px; background: #0B3038; color: #F1F5F2; font-family: Geist, sans-serif; display: flex; gap: 56px; align-items: center; position: relative; overflow: hidden;">
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px;">
+<span style="font-size: 54px; font-weight: 600; line-height: 1.02; letter-spacing: -0.04em;">Conversa como gente, <span style="color: #FF7A55;">não como robô.</span></span>
+<div style="border: 1px solid #1C4A50; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; max-width: 460px;">
+<span style="font-size: 14px; color: #B4C7C3;">O que a CORA anotou para a entrevista</span>
+<span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; color: #9DB3AF;">Modelo de trabalho</span><span style="font-size: 17px;">Remoto, 1 encontro por mês</span></span>
+<span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; color: #9DB3AF;">Momento</span><span style="font-size: 17px;">Liderança técnica, sem gestão</span></span>
+<span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; color: #9DB3AF;">Disponibilidade</span><span style="font-size: 17px;">30 dias</span></span>
+</div>
+</div>
+
+<div style="width: 340px; flex-shrink: 0; background: #050F11; border-radius: 40px; padding: 10px; box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6);">
+<div style="height: 632px; border-radius: 32px; overflow: hidden; display: flex; flex-direction: column; background: #EFEAE2; color: #111B21;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px; background: #1F5F55; color: #FFFFFF;">
+<span style="width: 34px; height: 34px; border-radius: 50%; background: #FFFFFF; display: flex; align-items: center; justify-content: center;"><img src="coral.png" alt="" width="22" height="23" style="width: 22px; height: 23px; object-fit: contain;"></span>
+<span style="display: flex; flex-direction: column; line-height: 1.2;"><span style="font-size: 15px; font-weight: 600;">CORA · Maré Tech</span><span style="font-size: 12px; color: #CFE6E0;">online</span></span>
+</div>
+<div style="flex: 1; padding: 12px 10px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; font-size: 14px; line-height: 1.4;">
+<span style="align-self: flex-start; max-width: 82%; padding: 6px 9px; border-radius: 0 8px 8px 8px; background: #FFFFFF;">Oi! Vim pelo e-mail. A vaga é remota mesmo?</span>
+<span style="align-self: flex-end; max-width: 82%; padding: 6px 9px; border-radius: 8px 0 8px 8px; background: #D9FDD3;">É sim, com um encontro por mês em Recife. Hoje você prefere liderar tecnicamente ou também gerir pessoas?</span>
+<span style="align-self: flex-start; max-width: 82%; padding: 6px 9px; border-radius: 0 8px 8px 8px; background: #FFFFFF;">Liderar tecnicamente. Consigo começar em 30 dias.</span>
+<span style="align-self: flex-end; max-width: 82%; padding: 6px 9px; border-radius: 8px 0 8px 8px; background: #D9FDD3;">Perfeito. Escolha um horário com a Nara, que conduz a entrevista: agenda.nara.exemplo/014-larissa</span>
+<span style="align-self: flex-start; max-width: 82%; padding: 6px 9px; border-radius: 0 8px 8px 8px; background: #FFFFFF;">Marquei quinta às 14h!</span>
+<span style="align-self: center; margin-top: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #FB3C0D; color: #FFFFFF;">Entrevista marcada com a Nara · qui, 14h</span>
+<span style="align-self: center; font-size: 11px; color: #54656F;">Nara simulada</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px 14px;">
+<span style="flex: 1; height: 38px; border-radius: 19px; background: #FFFFFF; display: flex; align-items: center; padding: 0 14px; font-size: 13px; color: #8696A0;">Mensagem</span>
+<span style="width: 38px; height: 38px; border-radius: 50%; background: #1F5F55;"></span>
+</div>
+</div>
+</div>
+</div>
+</template><div id="root"></div>
+<script>
+class DCLogic { constructor(p){ this.props = p || {}; this.state = {}; }
+  setState(p){ Object.assign(this.state, typeof p === 'function' ? p(this.state) : p); window.__render(); }
+  forceUpdate(){ window.__render(); } }
+</script>
+<script>
+
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+
+</script>
+<script>
+(function(){
+  const tpl = document.getElementById('tpl').content;
+  const root = document.getElementById('root');
+  const comp = new Component({});
+  const HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
+  const WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
+  function look(scope, path){
+    if (path === 'true') return true; if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    let v = scope; for (const k of path.split('.')) { if (v == null) return undefined; v = v[k]; } return v;
+  }
+  function interp(s, scope){ return s.replace(HOLE, (m, p) => { const v = look(scope, p); return v == null ? '' : String(v); }); }
+  function build(parent, node, scope){
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) { parent.appendChild(document.createTextNode(interp(ch.nodeValue, scope))); continue; }
+      if (ch.nodeType !== 1) continue;
+      const tag = ch.tagName.toLowerCase();
+      if (tag === 'sc-for') {
+        const m = (ch.getAttribute('list') || '').match(WHOLE); const list = m ? look(scope, m[1]) : [];
+        const as = ch.getAttribute('as') || 'item';
+        (list || []).forEach((it, i) => { const s = Object.create(scope); s[as] = it; s.$index = i; build(parent, ch, s); });
+        continue;
+      }
+      if (tag === 'sc-if') {
+        const m = (ch.getAttribute('value') || '').match(WHOLE);
+        if (m && look(scope, m[1])) build(parent, ch, scope);
+        continue;
+      }
+      const el = ch.namespaceURI === 'http://www.w3.org/1999/xhtml' ? document.createElement(ch.localName) : document.createElementNS(ch.namespaceURI, ch.localName);
+      for (const a of ch.attributes) {
+        const m = a.value.match(WHOLE);
+        if (/^on[A-Z]/.test(a.name) || /^on[a-z]+$/.test(a.name) && m) {
+          const fn = m ? look(scope, m[1]) : null; if (typeof fn !== 'function') continue;
+          let ev = a.name.slice(2).toLowerCase(); if (ev === 'change' && (tag === 'textarea' || tag === 'input')) ev = 'input';
+          el.addEventListener(ev, fn); continue;
+        }
+        if (a.name === 'value' && (tag === 'textarea' || tag === 'input')) { el.value = interp(a.value, scope); continue; }
+        if (a.name.startsWith('hint-')) continue;
+        el.setAttribute(a.name, interp(a.value, scope));
+      }
+      if (tag === 'textarea') { if (!el.value) el.value = ch.value || ch.textContent; }
+      else build(el, ch, scope);
+      parent.appendChild(el);
+    }
+  }
+  window.__render = function(){
+    const active = document.activeElement && document.activeElement.id;
+    const frag = document.createDocumentFragment();
+    build(frag, tpl, comp.renderVals());
+    root.replaceChildren(frag);
+    if (active) { const e = document.getElementById(active); if (e) { e.focus(); if (e.setSelectionRange && e.value) e.setSelectionRange(e.value.length, e.value.length); } }
+  };
+  window.__render();
+  if (comp.componentDidMount) comp.componentDidMount();
+})();
+</script>
+</body></html>

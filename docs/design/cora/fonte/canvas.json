@@ -1,0 +1,188 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-08T12:00:00Z"
+  },
+  "title": "Landing e vídeo de demo",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 7300,
+      "title": "Landing page · CORA",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Roteiro.dc.html": {
+      "x": 1640,
+      "y": 0,
+      "w": 5360,
+      "h": 760,
+      "title": "Roteiro do vídeo · 2:30"
+    },
+    "Cena1-Abertura.dc.html": {
+      "x": 1640,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 1 · Abertura"
+    },
+    "Cena2-Vaga.dc.html": {
+      "x": 3000,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 2 · Criar vaga e blacklist"
+    },
+    "Cena3-Hunting.dc.html": {
+      "x": 4360,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 3 · Hunting ao vivo"
+    },
+    "Cena4-Resultados.dc.html": {
+      "x": 5720,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 4 · Perfis, nota e situação"
+    },
+    "Cena5-Email.dc.html": {
+      "x": 1640,
+      "y": 1720,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 5 · Aprovação e e-mail"
+    },
+    "Cena6-WhatsApp.dc.html": {
+      "x": 3000,
+      "y": 1720,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 6 · Conversa e link da Nara"
+    },
+    "Cena7-Insights.dc.html": {
+      "x": 4360,
+      "y": 1720,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 7 · Dossiê de insights"
+    },
+    "Cena8-Logo.dc.html": {
+      "x": 5720,
+      "y": 1720,
+      "w": 1280,
+      "h": 720,
+      "title": "Cena 8 · Encerramento"
+    },
+    "App-Catalogo.dc.html": {
+      "x": 1640,
+      "y": 3200,
+      "w": 1440,
+      "h": 990,
+      "title": "App · Catálogo de vagas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "App-CriarVaga.dc.html": {
+      "x": 3160,
+      "y": 3200,
+      "w": 1440,
+      "h": 2240,
+      "title": "App · Criar vaga",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "App-PainelVaga.dc.html": {
+      "x": 4680,
+      "y": 3200,
+      "w": 1440,
+      "h": 1570,
+      "title": "App · Painel da vaga",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "App-Candidato.dc.html": {
+      "x": 6200,
+      "y": 3200,
+      "w": 1440,
+      "h": 2150,
+      "title": "App · Candidato",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "App-Banco.dc.html": {
+      "x": 7720,
+      "y": 3200,
+      "w": 1440,
+      "h": 1160,
+      "title": "App · Banco de talentos",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "App-Empresa.dc.html": {
+      "x": 9240,
+      "y": 3200,
+      "w": 1440,
+      "h": 1920,
+      "title": "App · Perfil da empresa",
+      "expand": "fill"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Roteiro.dc.html",
+    "Cena1-Abertura.dc.html",
+    "Cena2-Vaga.dc.html",
+    "Cena3-Hunting.dc.html",
+    "Cena4-Resultados.dc.html",
+    "Cena5-Email.dc.html",
+    "Cena6-WhatsApp.dc.html",
+    "Cena7-Insights.dc.html",
+    "Cena8-Logo.dc.html",
+    "App-Catalogo.dc.html",
+    "App-CriarVaga.dc.html",
+    "App-PainelVaga.dc.html",
+    "App-Candidato.dc.html",
+    "App-Banco.dc.html",
+    "App-Empresa.dc.html"
+  ],
+  "notes": {
+    "t1": {
+      "x": 0,
+      "y": -300,
+      "text": "Landing page",
+      "kind": "title1",
+      "maxW": 1440
+    },
+    "t2": {
+      "x": 1640,
+      "y": -300,
+      "text": "Vídeo de demonstração",
+      "kind": "title1",
+      "maxW": 5360
+    },
+    "t3": {
+      "x": 1640,
+      "y": 2900,
+      "text": "Telas do app",
+      "kind": "title1",
+      "maxW": 9040
+    },
+    "s1": {
+      "x": 7120,
+      "y": 0,
+      "w": 380,
+      "text": "Direção do vídeo: tela gravada de verdade, cursor visível, zoom suave no ponto da ação, cortes secos e legenda curta em cada cena.",
+      "fill": "orange"
+    }
+  },
+  "designSystems": []
+}

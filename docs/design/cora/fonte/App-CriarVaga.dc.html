@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>CORA · Criar vaga</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F8F5}
+button,input,select,textarea{font:inherit;color:inherit}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #FB3C0D;outline-offset:2px}
+input::placeholder,textarea::placeholder{color:#5E7672}
+.num{font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.btn{transition:background-color .15s ease,border-color .15s ease}
+.btn-primary:hover{background:#C42C08 !important}
+.btn-outline:hover{background:#EEF2EF !important}
+.pill:hover{background:#F1F4F2}
+.pill[aria-current="page"]:hover{background:#EEF2EF}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;align-items:start}
+.show-md{display:none !important}
+@media (max-width: 1100px){.split{grid-template-columns:minmax(0,1fr)}}
+@media (max-width: 860px){.hide-md{display:none !important}.show-md{display:flex !important}}
+@media (max-width: 600px){.hide-sm{display:none !important}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; background: #F7F8F5; color: #0B3038; font-family: Geist, system-ui, sans-serif; font-size: 14px; line-height: 1.5;">
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+<header style="height: 60px; box-sizing: border-box; background: #FFFFFF; border-bottom: 1px solid #E4E9E5; position: sticky; top: 0; z-index: 10;">
+<div style="max-width: 1240px; height: 100%; margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: 20px;">
+<a href="#catalogo" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #0B3038; flex-shrink: 0;"><img src="/_blob/ee2246b172b155521d853cac5cc9c71f" alt="" width="28" height="29" style="width: 28px; height: 29px; object-fit: contain;"><span style="font-size: 18px; font-weight: 600; letter-spacing: -0.03em;">CORA</span></a>
+<nav class="hide-md" aria-label="Principal" style="display: flex; align-items: center; gap: 4px;">
+<a href="#catalogo" class="pill" aria-current="page" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; background: #EEF2EF; color: #0B3038; font-weight: 600;">Vagas</a>
+<a href="#banco" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Banco de talentos</a>
+<a href="#empresa" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Empresa</a>
+</nav>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+<label class="hide-md" style="width: 240px; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-radius: 8px; background: #F1F4F2; color: #526C68;">
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.4 10.4 3.1 3.1"></path></svg>
+<span class="sr-only">Buscar pessoas ou vagas</span>
+<input type="search" placeholder="Buscar pessoas ou vagas" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13px; color: #0B3038;">
+<kbd style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #526C68; padding: 1px 6px; border-radius: 5px; border: 1px solid #DFE6E1; background: #FFFFFF;">⌘K</kbd>
+</label>
+<a href="#criar-vaga" class="btn btn-primary" style="height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Criar vaga</a>
+<button type="button" class="show-md" aria-label="Abrir menu" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; align-items: center; justify-content: center; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"></path></svg></button>
+<button type="button" aria-label="Conta de Ana Ribeiro" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; border: 0; background: #0B3038; color: #FFFFFF; font-size: 12px; font-weight: 600; cursor: pointer;">AR</button>
+</div>
+</div>
+</header>
+
+<main id="criar-vaga" style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 32px 24px 56px; display: flex; flex-direction: column; gap: 24px;">
+
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<nav aria-label="Caminho" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #5E7672;"><a href="#catalogo" style="color: #5E7672; text-decoration: none;">Vagas</a><span aria-hidden="true">/</span><span aria-current="page" style="color: #0B3038;">Nova vaga</span></nav>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.15;">Criar vaga</h1>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #F1D58A; background: #FFF1CC; color: #855A0E; font-size: 12px; font-weight: 600;">Rascunho · vaga 014</span>
+</div>
+<p style="margin: 0; color: #526C68; font-size: 15px; max-width: 640px;">Descreva a vaga como falaria a um recrutador. A CORA propõe os critérios, e nada é buscado antes da sua aprovação.</p>
+</div>
+</div>
+</div>
+
+<div class="split">
+<div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+
+<section aria-labelledby="sec-sobre" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 22px 24px; display: flex; flex-direction: column; gap: 18px;">
+<h2 id="sec-sobre" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Sobre a oportunidade</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Título da vaga<input type="text" value="Pessoa Desenvolvedora Backend Sênior" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Área<input type="text" value="Tecnologia" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Localização<input type="text" value="Remoto, encontro mensal em Recife" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Modelo de trabalho<select style="height: 40px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"><option selected>Remoto</option><option>Híbrido</option><option>Presencial</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Senioridade<select style="height: 40px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"><option>Júnior</option><option>Pleno</option><option selected>Sênior</option><option>Especialista</option></select></label>
+</div>
+</section>
+
+<section aria-labelledby="sec-descricao" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h2 id="sec-descricao" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Descrição em linguagem natural</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68;">Diga o que é obrigatório e o que é diferencial. Na dúvida, a CORA pergunta em vez de inventar.</p>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;"><span class="sr-only">Descrição da vaga</span>
+<textarea rows="5" style="box-sizing: border-box; width: 100%; padding: 12px 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; line-height: 1.6; color: #0B3038; resize: vertical;">Backend sênior para o time de pagamentos. Obrigatório: pelo menos 5 anos com backend, Go ou Python em produção e experiência com filas e mensageria. Valorizamos Kafka, AWS, liderança técnica sem gestão de pessoas e observabilidade. Remoto, com um encontro por mês em Recife. Queremos 5 pessoas interessadas em 7 dias.</textarea>
+</label>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 12px; color: #5E7672;">Proposta gerada às 10h42 · <span style="font-family: 'Geist Mono', monospace;">rastro r-014-proposta-2c9e</span></span>
+<button type="button" class="btn btn-outline" style="height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5"></path></svg>Pedir nova proposta</button>
+</div>
+</section>
+
+<section aria-labelledby="sec-criterios" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="padding: 22px 24px 16px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px;">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+<h2 id="sec-criterios" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Critérios propostos pela CORA</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68; max-width: 560px;">Eliminatórios são checados por regra em código, nunca pelo modelo. Desejáveis só mudam a nota. Atributos sensíveis, como idade, gênero e origem, nunca viram critério.</p>
+</div>
+<span class="num" style="{{contadorStyle}}">{{contador}}</span>
+</div>
+
+<div style="padding: 10px 24px; border-top: 1px solid #EDF1EE; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 13px; font-weight: 600;">Eliminatórios</div>
+<sc-for list="{{eliminatorios}}" as="c" hint-placeholder-count="3">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 24px; border-bottom: 1px solid #F1F4F2;">
+<span style="font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: #2C4F55; padding: 2px 6px; border-radius: 5px; background: #EEF2EF;">{{c.id}}</span>
+<span style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 14px; font-weight: 500;">{{c.nome}}</span>
+<span style="font-size: 12px; color: #5E7672;">Da descrição: “{{c.origem}}” · regra <span style="font-family: 'Geist Mono', monospace;">{{c.regra}}</span></span>
+</span>
+<button type="button" aria-pressed="{{c.pressed}}" onClick="{{c.toggle}}" style="{{c.btnStyle}}"><sc-if value="{{c.aprovado}}" hint-placeholder-val="{{true}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"></path></svg></sc-if>{{c.btnLabel}}</button>
+<button type="button" class="btn btn-outline" aria-label="{{c.editarLabel}}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #526C68; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3 13 5.5 6 12.5H3.5V10Z"></path></svg></button>
+</div>
+</sc-for>
+
+<div style="padding: 10px 24px; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 12px;"><span>Desejáveis</span><span style="font-weight: 500; color: #526C68;">peso de 1 a 5</span></div>
+<sc-for list="{{desejaveis}}" as="c" hint-placeholder-count="4">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 24px; border-bottom: 1px solid #F1F4F2;">
+<span style="font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: #2C4F55; padding: 2px 6px; border-radius: 5px; background: #EEF2EF;">{{c.id}}</span>
+<span style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 14px; font-weight: 500;">{{c.nome}}</span>
+<span style="font-size: 12px; color: #5E7672;">Da descrição: “{{c.origem}}”</span>
+</span>
+<label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #526C68;">Peso<input type="number" min="1" max="5" value="{{c.peso}}" style="width: 56px; height: 32px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<button type="button" aria-pressed="{{c.pressed}}" onClick="{{c.toggle}}" style="{{c.btnStyle}}"><sc-if value="{{c.aprovado}}" hint-placeholder-val="{{true}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"></path></svg></sc-if>{{c.btnLabel}}</button>
+</div>
+</sc-for>
+<div style="padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; color: #526C68;">
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-size: 12px; font-weight: 600;">Fora da proposta</span>
+<span>“Encontro mensal em Recife” virou informação da vaga, não critério: morar perto não pode eliminar ninguém numa vaga remota.</span>
+</div>
+</section>
+
+<section aria-labelledby="sec-meta" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 22px 24px; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h2 id="sec-meta" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Meta e limites de contato</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68;">A busca para quando a meta é atingida ou o prazo acaba. Limites de contato também ficam em código.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Pessoas entregues à Nara<input type="number" min="1" value="5" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Prazo em dias<input type="number" min="1" value="7" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Tentativas de contato por pessoa<input type="number" min="1" max="3" value="2" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 10px; border: 1px solid #DFE6E1; background: #F7F8F5;">
+<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#2C4F55" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px;"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 600;">O primeiro lote de convites passa por você</span><span style="font-size: 13px; color: #526C68;">A CORA monta o lote com as melhores pessoas autorizadas e espera sua aprovação antes de enviar qualquer mensagem.</span></span>
+</div>
+</section>
+
+<section aria-labelledby="sec-blacklist" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="padding: 22px 24px 16px; display: flex; flex-direction: column; gap: 4px;">
+<h2 id="sec-blacklist" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Blacklist desta vaga</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68;">Quem trabalha hoje nestas empresas não é coletado nem abordado. O filtro roda antes de qualquer análise.</p>
+</div>
+<div style="overflow-x: auto;">
+<div role="table" aria-label="Empresas bloqueadas nesta vaga" style="min-width: 560px;">
+<div role="row" style="display: grid; grid-template-columns: 1.5fr 1fr 0.7fr 1.1fr; gap: 12px; padding: 10px 24px; border-top: 1px solid #EDF1EE; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 12px; font-weight: 500; color: #5E7672;"><span role="columnheader">Empresa</span><span role="columnheader">Contrato</span><span role="columnheader">Até</span><span role="columnheader">Origem</span></div>
+<div role="row" style="display: grid; grid-template-columns: 1.5fr 1fr 0.7fr 1.1fr; gap: 12px; padding: 13px 24px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span role="cell" style="font-weight: 500;">Vértice Pagamentos</span><span role="cell"><span style="display: inline-flex; height: 22px; align-items: center; padding: 0 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-size: 12px; font-weight: 600;">Não aliciamento</span></span><span role="cell" class="num" style="color: #526C68;">03/2027</span><span role="cell" style="font-size: 13px; color: #526C68;">Perfil da empresa</span></div>
+<div role="row" style="display: grid; grid-template-columns: 1.5fr 1fr 0.7fr 1.1fr; gap: 12px; padding: 13px 24px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span role="cell" style="font-weight: 500;">Lumen Saúde</span><span role="cell"><span style="display: inline-flex; height: 22px; align-items: center; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;">Fidelidade</span></span><span role="cell" class="num" style="color: #526C68;">11/2026</span><span role="cell" style="font-size: 13px; color: #526C68;">Perfil da empresa</span></div>
+<div role="row" style="display: grid; grid-template-columns: 1.5fr 1fr 0.7fr 1.1fr; gap: 12px; padding: 13px 24px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span role="cell" style="font-weight: 500;">Orla Logística</span><span role="cell"><span style="display: inline-flex; height: 22px; align-items: center; padding: 0 8px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #A43826; font-size: 12px; font-weight: 600;">Não aliciamento</span></span><span role="cell" class="num" style="color: #526C68;">08/2027</span><span role="cell" style="font-size: 13px; color: #526C68;">Perfil da empresa</span></div>
+</div>
+</div>
+<div style="padding: 16px 24px 20px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;">
+<label style="flex: 2 1 200px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Adicionar só para esta vaga<input type="text" placeholder="Nome da empresa" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<label style="flex: 1 1 150px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Contrato<select style="height: 40px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"><option>Não aliciamento</option><option>Fidelidade</option></select></label>
+<label style="flex: 1 1 110px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #2C4F55;">Válido até<input type="text" placeholder="MM/AAAA" style="height: 40px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; font-size: 14px; color: #0B3038;"></label>
+<button type="button" class="btn btn-outline" style="height: 40px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Adicionar</button>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-radius: 12px; border: 1px solid #DFE6E1; background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,48,56,0.06);">
+<span style="font-size: 13px; color: #526C68;">{{rodape}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<button type="button" class="btn btn-outline" style="height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;">Salvar rascunho</button>
+<sc-if value="{{pronto}}" hint-placeholder-val="{{false}}">
+<button type="button" class="btn btn-primary" style="height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer;">Aprovar critérios e iniciar busca</button>
+</sc-if>
+<sc-if value="{{faltando}}" hint-placeholder-val="{{true}}">
+<button type="button" class="btn btn-primary" onClick="{{aprovarTodos}}" style="height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer;">Aprovar todos os critérios</button>
+</sc-if>
+</div>
+</div>
+
+</div>
+
+<aside aria-label="Resumo da vaga" style="display: flex; flex-direction: column; gap: 16px; min-width: 0;">
+<section aria-labelledby="sec-depois" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+<h2 id="sec-depois" style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em;">Depois da sua aprovação</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 13px; color: #2C4F55;">
+<li style="display: flex; gap: 10px;"><span class="num" style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #EEF2EF; color: #0B3038; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">1</span><span>Busca no banco da Maré Tech e no LinkedIn, pela Bright Data, já sem as empresas da blacklist.</span></li>
+<li style="display: flex; gap: 10px;"><span class="num" style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #EEF2EF; color: #0B3038; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">2</span><span>Analisa cada perfil com nota por critério, evidência e fonte.</span></li>
+<li style="display: flex; gap: 10px;"><span class="num" style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #EEF2EF; color: #0B3038; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">3</span><span>Pede autorização a quem ainda não deu. Sem autorização, sem contato.</span></li>
+<li style="display: flex; gap: 10px;"><span class="num" style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #EEF2EF; color: #0B3038; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">4</span><span>Você aprova o primeiro lote de convites.</span></li>
+<li style="display: flex; gap: 10px;"><span class="num" style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #EEF2EF; color: #0B3038; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;">5</span><span>Quem aceita vai para a Nara com o dossiê. A Nara agenda e entrevista; a CORA não agenda nem decide.</span></li>
+</ol>
+</section>
+<section aria-labelledby="sec-custo" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+<h2 id="sec-custo" style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em;">Custo e rastro</h2>
+<dl style="margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; font-size: 13px;">
+<dt style="color: #526C68;">Estimativa da busca</dt><dd class="num" style="margin: 0; font-weight: 600;">R$ 40,00</dd>
+<dt style="color: #526C68;">Limite de gasto</dt><dd class="num" style="margin: 0; font-weight: 600;">R$ 60,00</dd>
+<dt style="color: #526C68;">Por pessoa analisada</dt><dd class="num" style="margin: 0; font-weight: 600;">cerca de R$ 0,42</dd>
+<dt style="color: #526C68;">Modelo</dt><dd style="margin: 0; font-family: 'Geist Mono', monospace; font-size: 12px;">GLM-5.2</dd>
+</dl>
+<p style="margin: 0; font-size: 12px; color: #5E7672;">Toda chamada de modelo e ferramenta fica no rastro da vaga. Se o gasto passar do limite, a busca pausa.</p>
+</section>
+</aside>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2240}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { aprovados: { 'E-01': true, 'E-02': true, 'E-03': false, 'D-01': true, 'D-02': false, 'D-03': true, 'D-04': false } };
+  }
+  alternar(id) {
+    const a = Object.assign({}, this.state.aprovados);
+    a[id] = !a[id];
+    this.setState({ aprovados: a });
+  }
+  item(c) {
+    const ok = !!this.state.aprovados[c.id];
+    const base = 'height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; ';
+    return Object.assign({}, c, {
+      aprovado: ok,
+      pressed: ok ? 'true' : 'false',
+      btnLabel: ok ? 'Aprovado' : 'Aprovar',
+      editarLabel: 'Editar critério ' + c.id,
+      btnStyle: base + (ok ? 'border: 1px solid #CDE6D5; background: #E3F3E8; color: #2F6E52;' : 'border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038;'),
+      toggle: () => this.alternar(c.id)
+    });
+  }
+  renderVals() {
+    const elim = [
+      { id: 'E-01', nome: 'Pelo menos 5 anos com backend', origem: 'pelo menos 5 anos com backend', regra: 'anos_backend >= 5' },
+      { id: 'E-02', nome: 'Go ou Python em produção', origem: 'Go ou Python em produção', regra: 'linguagem in [go, python]' },
+      { id: 'E-03', nome: 'Filas e mensageria', origem: 'experiência com filas e mensageria', regra: 'filas_mensageria = sim' }
+    ];
+    const desej = [
+      { id: 'D-01', nome: 'Kafka', origem: 'Valorizamos Kafka', peso: '3' },
+      { id: 'D-02', nome: 'AWS', origem: 'AWS', peso: '2' },
+      { id: 'D-03', nome: 'Liderança técnica', origem: 'liderança técnica sem gestão de pessoas', peso: '3' },
+      { id: 'D-04', nome: 'Observabilidade', origem: 'observabilidade', peso: '1' }
+    ];
+    const total = elim.length + desej.length;
+    const feitos = Object.keys(this.state.aprovados).filter((k) => this.state.aprovados[k]).length;
+    const pronto = feitos === total;
+    const base = 'display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid ';
+    return {
+      eliminatorios: elim.map((c) => this.item(c)),
+      desejaveis: desej.map((c) => this.item(c)),
+      contador: feitos + ' de ' + total + ' aprovados',
+      contadorStyle: base + (pronto ? '#CDE6D5; background: #E3F3E8; color: #2F6E52;' : '#F1D58A; background: #FFF1CC; color: #855A0E;'),
+      rodape: pronto ? 'Tudo aprovado. A busca começa assim que você confirmar.' : 'Faltam ' + (total - feitos) + ' critérios. A busca só começa com todos aprovados.',
+      pronto,
+      faltando: !pronto,
+      aprovarTodos: () => {
+        const a = {};
+        elim.concat(desej).forEach((c) => { a[c.id] = true; });
+        this.setState({ aprovados: a });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
