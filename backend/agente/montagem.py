@@ -65,6 +65,8 @@ from backend.nara_simulada.servico import NaraSimulada
 logger = logging.getLogger(__name__)
 
 LIMITE_ANALISES_POR_RODADA = 20
+FUNIL_POR_VAGA = 10
+TETO_DO_FUNIL = 50
 COM_MODELO = "AGENTE_COM_MODELO"
 NARA_MCP_URL = "NARA_MCP_URL"
 BUSCA_REAL = "AGENTE_BUSCA_REAL"
@@ -120,8 +122,20 @@ def _com_competencias(consultas: list[str], vaga: Vaga) -> list[str]:
     return resultado
 
 
-def priorizador_do_funil(limite: int = LIMITE_ANALISES_POR_RODADA) -> Priorizador:
-    """Aplica `funil.priorizar` com a regra determinística de requisitos do agente."""
+def tamanho_do_funil(meta_candidatos: int) -> int:
+    """Quantas pessoas a rodada analisa: 10 por vaga a preencher, entre 20 e 50.
+
+    O agente indica as melhores notas do funil, não as primeiras analisadas. O teto segura o
+    gasto com o modelo.
+    """
+    return max(LIMITE_ANALISES_POR_RODADA, min(TETO_DO_FUNIL, FUNIL_POR_VAGA * meta_candidatos))
+
+
+def priorizador_do_funil(limite: int | None = None) -> Priorizador:
+    """Aplica `funil.priorizar` com a regra determinística de requisitos do agente.
+
+    Sem `limite`, o tamanho da rodada acompanha a meta da vaga (`tamanho_do_funil`).
+    """
 
     def priorizador(
         vaga: Vaga, candidatos: list[Candidato], hoje: date, registrar_corte: RegistrarCorte
@@ -129,7 +143,7 @@ def priorizador_do_funil(limite: int = LIMITE_ANALISES_POR_RODADA) -> Priorizado
         return priorizar(
             vaga,
             candidatos,
-            limite,
+            tamanho_do_funil(vaga.meta_candidatos) if limite is None else limite,
             hoje=hoje,
             avaliar_requisitos=avaliar_requisitos,
             registrar_corte=registrar_corte,
