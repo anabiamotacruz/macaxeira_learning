@@ -20,6 +20,8 @@ import {
   obterDecisao,
   obterDocumentoDeEntrega,
   obterMetricas,
+  obterProgresso,
+  type ProgressoBusca,
   obterSugestaoDeAjuste,
   obterResumo,
   obterVaga,
@@ -479,6 +481,8 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
   const [sugestao, setSugestao] = useState<SugestaoAjuste | null>(null);
   const [aba, setAba] = useState<Aba>("quadro");
   const [atualizadoEm, setAtualizadoEm] = useState("");
+  const [progresso, setProgresso] = useState<ProgressoBusca | null>(null);
+  const [progressoEm, setProgressoEm] = useState("");
   const cacheDecisoes = useRef<Record<string, Decisao>>({});
   const ocupado = useRef(false);
 
@@ -535,6 +539,26 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
       window.clearInterval(intervalo);
     };
   }, [atualizar]);
+
+  const estadoAtivo = ATIVOS.has(resumo?.estado ?? "");
+  useEffect(() => {
+    if (!estadoAtivo) return;
+    let vivo = true;
+    const buscar = () =>
+      obterProgresso(vagaId)
+        .then((dados) => {
+          if (!vivo) return;
+          setProgresso(dados);
+          setProgressoEm(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+        })
+        .catch(() => undefined);
+    void buscar();
+    const intervalo = window.setInterval(() => void buscar(), 4000);
+    return () => {
+      vivo = false;
+      window.clearInterval(intervalo);
+    };
+  }, [vagaId, estadoAtivo]);
 
   async function avisarResultados() {
     setAvisando(true);
@@ -631,6 +655,29 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
 
   return (
     <div className="flex flex-col gap-[22px]">
+      {estadoAtivo && progresso && (
+        <section aria-label="Progresso da busca" className={`flex flex-col gap-2 ${cartao} p-4`}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="m-0 text-[15px] font-semibold">Coletando perfis</h2>
+            <span className="text-[12px] text-cora-placeholder">atualizado às {progressoEm}</span>
+          </div>
+          <div
+            aria-valuemax={Math.max(progresso.funil, 1)}
+            aria-valuemin={0}
+            aria-valuenow={Math.min(progresso.coletados, Math.max(progresso.funil, 1))}
+            className="h-2 w-full overflow-hidden rounded-full bg-[#f1ece8]"
+            role="progressbar"
+          >
+            <div
+              className="h-full rounded-full bg-[#fb3c0d] transition-all duration-500"
+              style={{ width: `${Math.min(100, progresso.funil > 0 ? (progresso.coletados / progresso.funil) * 100 : 0)}%` }}
+            />
+          </div>
+          <p className="m-0 text-[13px] text-cora-muted">
+            Consulta {progresso.consultas_feitas} de {progresso.consultas_total} · {progresso.coletados} de {progresso.funil} perfis · última fonte: {progresso.ultima_fonte ?? "—"}
+          </p>
+        </section>
+      )}
       <div className="flex flex-col gap-2.5">
         <nav aria-label="Caminho" className="flex items-center gap-1.5 text-[13px] text-cora-placeholder">
           <Link className="text-cora-placeholder no-underline hover:text-cora-primary" href="/vagas">Vagas</Link>
