@@ -47,6 +47,8 @@ OFFSET_MAXIMO = 9
 MAX_PALAVRAS_CONSULTA = 75
 """Limite de `q` na API, junto de 600 caracteres, que `ConsultaProvedor` já não deixa chegar."""
 EXCLUSAO_NA_BUSCA = "-site:linkedin.com"
+SITE_PERFIS_LINKEDIN = "site:linkedin.com/in"
+"""Só no modo de perfis do LinkedIn: a Brave devolve os links, e a página nunca é aberta aqui."""
 _TOKEN_INVALIDO = "SUBSCRIPTION_TOKEN_INVALID"
 _CODIGO_SEGURO = re.compile(r"[A-Z0-9_]{1,64}")
 _MARCACAO = re.compile(r"</?[a-zA-Z][^<>]*>")
@@ -110,17 +112,42 @@ class ProvedorBrave:
     def custo_maximo(self, consulta: ConsultaProvedor) -> float:
         return self._custo
 
+    @property
+    def custo_requisicao_usd(self) -> float:
+        return self._custo
+
     @rastreado(ETAPA_BRAVE)
     def consultar(self, consulta: ConsultaProvedor) -> RespostaProvedor:
+        resultados = self.resultados_da_busca(consulta)
+        if resultados is None:
+            return RespostaProvedor()
+        return RespostaProvedor(
+            itens=[item for item in map(self._item, resultados) if item],
+            custo_usd=self._custo,
+        )
+
+    def resultados_da_busca(
+        self, consulta: ConsultaProvedor, *, perfis_linkedin: bool = False
+    ) -> list[Any] | None:
+        """Resultados crus de uma página, já cobrada. `None` quando a página passa da última.
+
+        No modo normal, a consulta exclui o LinkedIn. Com `perfis_linkedin`, ela pede só perfis do
+        LinkedIn, sem a exclusão: os links servem de identificador para quem extrai o perfil, e
+        nenhum deles vira `ItemColetado.url`. O texto do recrutador continua sem poder citar o
+        LinkedIn, nos dois modos.
+        """
         if consulta.texto is None:
             raise ErroProvedor(MotivoTroca.CONSULTA_NAO_SUPORTADA)
         validar_texto_de_busca(consulta.texto)
-        texto = f"{consulta.texto} {EXCLUSAO_NA_BUSCA}"
+        if perfis_linkedin:
+            texto = f"{SITE_PERFIS_LINKEDIN} {consulta.texto}"
+        else:
+            texto = f"{consulta.texto} {EXCLUSAO_NA_BUSCA}"
         if len(texto.split()) > MAX_PALAVRAS_CONSULTA:
             raise ErroProvedor(MotivoTroca.CONSULTA_INVALIDA)
         offset = consulta.pagina - 1
         if offset > OFFSET_MAXIMO:
-            return RespostaProvedor()
+            return None
         resposta = self._transporte.enviar(
             PedidoHttp(
                 metodo="POST",
@@ -141,10 +168,7 @@ class ProvedorBrave:
             )
         )
         self._conferir_status(resposta)
-        return RespostaProvedor(
-            itens=[item for item in map(self._item, self._resultados(resposta)) if item],
-            custo_usd=self._custo,
-        )
+        return self._resultados(resposta)
 
     @staticmethod
     def _conferir_status(resposta: RespostaHttp) -> None:

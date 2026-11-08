@@ -1,6 +1,12 @@
 """Liga a cadeia pelo ambiente: cada provedor com chave entra, nesta ordem.
 
-0. LinkdAPI, a primeira quando há `LINK_API_KEY` (decisão do dono do produto em 8/11/2026). As
+00. LinkedIn pela Brave (`linkedin_brave`), o primeiro quando há `BRAVE_API_KEY` e pelo menos uma
+    de `ENVO_API_KEY` ou `LINK_API_KEY` (decisão do usuário em 8/11/2026). A Brave acha os links
+    dos perfis, e a EnvoAPI extrai o perfil completo; se ela falhar, as chaves da LinkdAPI, na
+    ordem. `LINKEDIN_PERFIS_POR_PAGINA` (padrão 10) limita os perfis pedidos por página. Se a
+    página (1 busca mais os perfis) não couber no orçamento de execução, o teto é reduzido ao que
+    cabe e o estado avisa; se nem um perfil couber, o provedor fica fora.
+0. LinkdAPI, logo depois do `linkedin_brave`, com `LINK_API_KEY` (decisão de 8/11/2026). As
    chaves de reserva `LINK_API_KEY_2`, `LINK_API_KEY_3`… entram logo depois, uma instância por
    chave (`linkdapi#N`): sem crédito ou recusada, a cadeia passa para a seguinte. A leitura para no
    primeiro número ausente, e chave em branco não conta. `LINKDAPI_LOCAL` e
@@ -31,6 +37,7 @@ from backend.fontes.provedores.brave import ProvedorBrave
 from backend.fontes.provedores.bright_data import ProvedorBrightData
 from backend.fontes.provedores.cadeia import CadeiaProvedores, ModoDados, VerificadorSupressao
 from backend.fontes.provedores.controles import OrcamentoProvedores
+from backend.fontes.provedores.envoapi import ExtratorPerfilEnvo
 from backend.fontes.provedores.fonte import FonteProvedores, SituacaoFontes
 from backend.fontes.provedores.linkdapi import (
     LOCAL_PADRAO,
@@ -38,6 +45,11 @@ from backend.fontes.provedores.linkdapi import (
     ProvedorLinkdApi,
     validar_local,
     validar_perfis_por_pagina,
+)
+from backend.fontes.provedores.linkedin_por_brave import NOME as NOME_LINKEDIN_BRAVE
+from backend.fontes.provedores.linkedin_por_brave import (
+    ExtratorPerfil,
+    ProvedorLinkedinPorBrave,
 )
 from backend.fontes.provedores.modelos import ProvedorDados
 from backend.fontes.provedores.people_data_labs import (
@@ -69,6 +81,8 @@ LINK_API_KEY = "LINK_API_KEY"
 LINK_API_KEY_2 = "LINK_API_KEY_2"
 LINKDAPI_LOCAL = "LINKDAPI_LOCAL"
 LINKDAPI_PERFIS_POR_PAGINA = "LINKDAPI_PERFIS_POR_PAGINA"
+ENVO_API_KEY = "ENVO_API_KEY"
+LINKEDIN_PERFIS_POR_PAGINA = "LINKEDIN_PERFIS_POR_PAGINA"
 MAXIMO_CHAVES_LINKDAPI = 20
 PDL_MIN_LIKELIHOOD = "PDL_MIN_LIKELIHOOD"
 PDL_PAIS = "PDL_PAIS"
@@ -81,6 +95,8 @@ NOMES_DE_AMBIENTE = (
     LINK_API_KEY_2,
     LINKDAPI_LOCAL,
     LINKDAPI_PERFIS_POR_PAGINA,
+    ENVO_API_KEY,
+    LINKEDIN_PERFIS_POR_PAGINA,
     BRAVE_API_KEY,
     BRIGHTDATA_API_TOKEN,
     BRIGHTDATA_ZONA_WEB,
@@ -171,6 +187,51 @@ def _provedores_linkdapi(
         )
         for numero, chave in chaves
     ]
+
+
+def _provedor_linkedin_brave(
+    ambiente: Mapping[str, str],
+    brave: ProvedorBrave | None,
+    linkdapi: list[ProvedorLinkdApi],
+    transporte: Transporte,
+    relogio: Callable[[], datetime],
+    limite_execucao_usd: float,
+    avisos: list[str],
+) -> ProvedorLinkedinPorBrave | None:
+    """EnvoAPI primeiro, depois as chaves da LinkdAPI. O teto de perfis cabe no orçamento."""
+    if brave is None:
+        return None
+    extratores: list[ExtratorPerfil] = []
+    chave_envo = _valor(ambiente, ENVO_API_KEY)
+    if chave_envo is not None:
+        extratores.append(ExtratorPerfilEnvo(chave_envo, transporte))
+    extratores.extend(linkdapi)
+    if not extratores:
+        return None
+    try:
+        perfis = validar_perfis_por_pagina(
+            int(_valor(ambiente, LINKEDIN_PERFIS_POR_PAGINA) or PERFIS_POR_PAGINA_PADRAO)
+        )
+    except ValueError as erro:
+        raise ValueError(f"{LINKEDIN_PERFIS_POR_PAGINA} inválido: {erro}") from None
+    preco = max(extrator.custo_por_perfil_usd for extrator in extratores)
+    cabem = math.floor((limite_execucao_usd - brave.custo_requisicao_usd) / preco + 1e-9)
+    if perfis > cabem:
+        if cabem < 1:
+            avisos.append(
+                f"{NOME_LINKEDIN_BRAVE} fora do orçamento: nem um perfil cabe em "
+                f"{ORCAMENTO_EXECUCAO}; fica fora da cadeia"
+            )
+            return None
+        avisos.append(
+            f"{LINKEDIN_PERFIS_POR_PAGINA} reduzido de {perfis} para {cabem}: "
+            f"é o que cabe em {ORCAMENTO_EXECUCAO}"
+        )
+        perfis = cabem
+    if perfis == 0:
+        avisos.append(f"{LINKEDIN_PERFIS_POR_PAGINA} é 0: {NOME_LINKEDIN_BRAVE} desligado")
+        return None
+    return ProvedorLinkedinPorBrave(brave, extratores, perfis_por_pagina=perfis, relogio=relogio)
 
 
 def _zona_da_serp(ambiente: Mapping[str, str], avisos: list[str]) -> str | None:
@@ -291,10 +352,17 @@ def montar_fonte_externa(
         )
     ):
         saida = transporte or TransporteHttp()
-        provedores.extend(_provedores_linkdapi(ambiente, saida, relogio))
+        linkdapi = _provedores_linkdapi(ambiente, saida, relogio)
+        brave = _provedor_brave(ambiente, saida, relogio)
+        linkedin_brave = _provedor_linkedin_brave(
+            ambiente, brave, linkdapi, saida, relogio, limite_execucao, avisos
+        )
+        if linkedin_brave is not None:
+            provedores.append(linkedin_brave)
+        provedores.extend(linkdapi)
         for provedor in (
             _provedor_pdl_busca(ambiente, saida, relogio, limite_execucao, avisos),
-            _provedor_brave(ambiente, saida, relogio),
+            brave,
             _provedor_bright_data(ambiente, saida, relogio, resolver, avisos),
             _provedor_pdl(ambiente, saida, relogio),
         ):
