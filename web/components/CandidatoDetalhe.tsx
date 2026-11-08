@@ -1,66 +1,89 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import {
   analisesIniciais,
   decisoesIniciais,
   resultadosNaraIniciais,
-  vagasIniciais,
 } from "../lib/dados";
-import { ApiError, listarConvites, modoReservaAtivo, obterDecisaoCandidato, responderConvite } from "../lib/api";
-import type { Candidato, Convite, Decisao, TipoDecisao, TipoResposta } from "../lib/tipos";
+import {
+  ApiError,
+  listarConvitesDaVaga,
+  modoReservaAtivo,
+  notaDaDecisao,
+  obterDecisaoCandidato,
+  responderConvite,
+  type ConviteDaVaga,
+} from "../lib/api";
+import type { Candidato, Decisao, TipoDecisao, TipoResposta } from "../lib/tipos";
 import { Sidebar } from "./Sidebar";
 import { SimuladoBadge } from "./SimuladoBadge";
 
 const REVISOR = "revisor.demo";
 
-export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { candidato: Candidato; vagaId?: string }) {
-  const vaga = vagasIniciais[0];
+export function CandidatoDetalhe({ candidato, vagaId }: { candidato: Candidato; vagaId: string }) {
+  const reserva = modoReservaAtivo();
+  // Dados locais só no modo reserva (NEXT_PUBLIC_MODO_RESERVA=true); fora dele, tudo vem da API.
   const [decisao, setDecisao] = useState<Decisao | undefined>(
-    candidato ? decisoesIniciais.find((item) => item.candidato_id === candidato.id) : undefined,
+    reserva ? decisoesIniciais.find((item) => item.candidato_id === candidato.id) : undefined,
   );
-  const resultado = resultadosNaraIniciais.find(
-    (item) => item.candidato_id === candidato?.id,
-  );
+  const resultadoReserva = reserva
+    ? resultadosNaraIniciais.find((item) => item.candidato_id === candidato.id)
+    : undefined;
+  const analise = reserva ? analisesIniciais.find((item) => item.candidato_id === candidato.id) : undefined;
   const [decisaoApi, setDecisaoApi] = useState<Decisao>();
-  const [convites, setConvites] = useState<Convite[]>([]);
+  const [convites, setConvites] = useState<ConviteDaVaga[]>([]);
   const [erroApi, setErroApi] = useState("");
-  const [carregandoApi, setCarregandoApi] = useState(!modoReservaAtivo());
+  const [carregandoApi, setCarregandoApi] = useState(!reserva);
   const [respostaEnviada, setRespostaEnviada] = useState("");
   const [exemploFixo, setExemploFixo] = useState(false);
   const chavesResposta = useRef(new Map<string, string>());
 
   useEffect(() => {
-    if (modoReservaAtivo()) return;
+    if (reserva) return;
     let ativo = true;
-    Promise.all([
-      obterDecisaoCandidato(candidato.id, vagaId),
-      listarConvites(vagaId),
-    ])
-      .then(([decisaoResposta, convitesResposta]) => {
+    const decisaoDaApi = obterDecisaoCandidato(candidato.id, vagaId)
+      .then((resposta) => {
         if (!ativo) return;
-        setDecisaoApi(decisaoResposta.decisao);
-        setConvites(convitesResposta.itens);
-        setExemploFixo(decisaoResposta.exemplo_fixo === true);
+        setDecisaoApi(resposta.decisao);
+        setExemploFixo(resposta.exemplo_fixo === true);
       })
       .catch((erro) => {
-        if (ativo) setErroApi(erro instanceof ApiError ? erro.message : "Não foi possível carregar decisão e convites.");
-      })
-      .finally(() => {
-        if (ativo) setCarregandoApi(false);
+        // 404: a pessoa ainda não tem decisão nesta vaga. Não é falha da tela.
+        if (ativo && !(erro instanceof ApiError && erro.status === 404)) {
+          setErroApi(erro instanceof ApiError ? erro.message : "Não foi possível carregar a decisão.");
+        }
       });
+    const convitesDaApi = listarConvitesDaVaga(vagaId)
+      .then((itens) => {
+        if (ativo) setConvites(itens.filter((convite) => convite.candidato_id === candidato.id));
+      })
+      .catch((erro) => {
+        if (ativo) setErroApi(erro instanceof ApiError ? erro.message : "Não foi possível carregar os convites.");
+      });
+    void Promise.all([decisaoDaApi, convitesDaApi]).finally(() => {
+      if (ativo) setCarregandoApi(false);
+    });
     return () => {
       ativo = false;
     };
-  }, [candidato, vagaId]);
+  }, [reserva, candidato, vagaId]);
 
-  const analise = analisesIniciais.find((item) => item.candidato_id === candidato.id);
   const decisaoExibida = decisaoApi || decisao;
+  const nota = decisaoExibida ? notaDaDecisao(decisaoExibida) : null;
+  const retorno = convites.find((convite) => convite.retorno)?.retorno ?? null;
+  const resultado = resultadoReserva
+    ? { aprovado: resultadoReserva.aprovado, notas: resultadoReserva.notas }
+    : retorno
+      ? { aprovado: retorno.aprovado, notas: {} as Record<string, number> }
+      : undefined;
+  const conviteEnviado = reserva ? decisao?.tipo === "indicar" : convites.length > 0;
 
   function registrarDecisao(tipo: TipoDecisao) {
     setDecisao({
-      vaga_id: vaga.id,
+      vaga_id: vagaId,
       candidato_id: candidato.id,
       tipo,
       regra: "decisao_humana_revisor_demo",
@@ -150,7 +173,9 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
           <section className="rounded-xl border border-[#dfe7e2] bg-white p-6 shadow-[0_1px_2px_rgba(11,48,56,.06)]">
             <h2 className="text-xl font-semibold">Análise</h2>
             {!analise ? (
-              <p className="mt-3 text-[#718784]">Ainda não analisado.</p>
+              <p className="mt-3 text-[#718784]">
+                {decisaoExibida ? "A explicação, a nota e as evidências estão na decisão abaixo." : "Ainda não analisado."}
+              </p>
             ) : (
               <div className="mt-4 grid gap-5">
                 <div>
@@ -186,9 +211,10 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
           <section className="rounded-xl border border-[#dfe7e2] bg-white p-6 shadow-[0_1px_2px_rgba(11,48,56,.06)]">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold">Decisão da pessoa revisora</h2>
+                <h2 className="text-xl font-semibold">Decisão vigente</h2>
                 <p className="mt-1 text-sm text-[#718784]">
-                  Decisão final humana, nunca automática. Responsável: {REVISOR}.
+                  Vaga: {vagaId}
+                  {decisaoExibida ? ` · Responsável: ${decisaoExibida.responsavel}` : ""}
                 </p>
               </div>
               <SimuladoBadge />
@@ -200,6 +226,7 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
                 <p className="font-semibold">Resultado: {decisaoExibida.tipo}</p>
                 <p className="mt-1 text-[#2c4f55]">{decisaoExibida.motivo}</p>
                 <p className="mt-3 text-sm text-[#718784]">Regra aplicada: {decisaoExibida.regra}</p>
+                {nota !== null && <p className="mt-1 text-sm text-[#718784]">Nota: {nota.toFixed(2)}</p>}
                 <ul className="mt-3 space-y-2">
                   {decisaoExibida.evidencias.map((evidencia) => (
                     <li className="rounded bg-white p-3 text-sm" key={`${evidencia.criterio}-${evidencia.trecho}`}>
@@ -209,8 +236,13 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
                 </ul>
               </div>
             ) : (
-              <p className="mt-4 text-[#718784]">Ainda não há decisão humana registrada.</p>
+              <p className="mt-4 text-[#718784]">Ainda não há decisão registrada nesta vaga.</p>
             )}
+            {!reserva ? (
+              <Link className="mt-5 inline-flex rounded-lg bg-[#0b3038] px-4 py-2 font-semibold text-white" href={`/vagas/${encodeURIComponent(vagaId)}`}>
+                Revisar no painel da vaga
+              </Link>
+            ) : (
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 className="rounded-lg bg-[#dc3209] px-4 py-2 font-semibold text-white"
@@ -227,12 +259,13 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
                 Descartar
               </button>
             </div>
+            )}
           </section>
 
-          {!modoReservaAtivo() && (
+          {!reserva && (
             <section className="rounded-xl border border-[#dfe7e2] bg-white p-6 shadow-[0_1px_2px_rgba(11,48,56,.06)]">
               <h2 className="text-xl font-semibold">Convites</h2>
-              {convites.length === 0 ? <p className="mt-3 text-[#718784]">Nenhum convite disponível para este candidato.</p> : convites.filter((convite) => convite.candidato_id === candidato.id).map((convite) => (
+              {convites.length === 0 ? <p className="mt-3 text-[#718784]">Nenhum convite disponível para este candidato.</p> : convites.map((convite) => (
                 <div className="mt-4 rounded-lg bg-[#f7f8f5] p-4" key={convite.id}>
                   <p className="text-sm text-[#2c4f55]">{convite.mensagem}</p>
                   <button className="mt-3 rounded-lg bg-[#0b3038] px-4 py-2 font-semibold text-white" onClick={async () => {
@@ -266,9 +299,9 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
             </div>
             <ol className="mt-5 grid gap-3 md:grid-cols-5">
               {[
-                ["Analisado", Boolean(analise)],
-                ["Aprovado pela pessoa revisora para avançar", decisao?.tipo === "indicar"],
-                ["Convite com link da Nara", decisao?.tipo === "indicar"],
+                ["Analisado", Boolean(analise || decisaoApi)],
+                ["Indicado para avançar", decisaoExibida?.tipo === "indicar"],
+                ["Convite com link da Nara", conviteEnviado],
                 ["Entrevista na Nara (simulada)", Boolean(resultado)],
                 [
                   resultado
@@ -292,7 +325,7 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
                 </li>
               ))}
             </ol>
-            {decisao?.tipo === "indicar" && (
+            {conviteEnviado && (
               <p className="mt-5 rounded-lg bg-white p-4 text-[#2c4f55]">
                 Contexto entregue à Nara (simulada).
               </p>
@@ -304,7 +337,7 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
                   <SimuladoBadge />
                 </div>
                 <p className="mt-3 text-sm text-[#526c68]">
-                  Vaga: {resultado.vaga_id} · Candidato: {resultado.candidato_id}
+                  Vaga: {vagaId} · Candidato: {candidato.id}
                 </p>
                 <p className="mt-2 text-[#2c4f55]">
                   Resultado: {resultado.aprovado ? "passou" : "não passou"}

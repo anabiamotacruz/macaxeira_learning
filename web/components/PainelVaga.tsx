@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -174,8 +175,9 @@ function FormMandato({ vaga, aoAssinar }: { vaga: Vaga; aoAssinar: () => void })
   );
 }
 
-function CartaoCandidato({ item, decisao, children, cor }: {
+function CartaoCandidato({ item, decisao, children, cor, vagaId }: {
   item: Item;
+  vagaId: string;
   decisao?: Decisao;
   children?: React.ReactNode;
   cor: string;
@@ -184,7 +186,11 @@ function CartaoCandidato({ item, decisao, children, cor }: {
   return (
     <article className={`${cartao} border-l-4`} style={{ borderLeftColor: cor }}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-semibold text-[#113b43]">{item.candidato.nome}</h3>
+        <h3 className="font-semibold text-[#113b43]">
+          <Link className="hover:text-[#fb3c0d] hover:underline" href={`/candidatos/${encodeURIComponent(item.candidato.id)}?vaga=${encodeURIComponent(vagaId)}`}>
+            {item.candidato.nome}
+          </Link>
+        </h3>
         <SimuladoBadge simulado={item.candidato.simulado} />
       </div>
       {decisao && (
@@ -561,7 +567,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
             {indicados.length ? (
               <div className="grid gap-3">
                 {indicados.map((item) => (
-                  <CartaoCandidato cor="#2f9e6e" decisao={decisoes[item.candidato.id]} item={item} key={item.candidato.id} />
+                  <CartaoCandidato vagaId={vagaId} cor="#2f9e6e" decisao={decisoes[item.candidato.id]} item={item} key={item.candidato.id} />
                 ))}
               </div>
             ) : (
@@ -578,7 +584,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
             {fila.length ? (
               <div className="grid gap-3">
                 {fila.map((item) => (
-                  <CartaoCandidato cor="#e0a100" decisao={decisoes[item.candidato.id]} item={item} key={item.candidato.id}>
+                  <CartaoCandidato vagaId={vagaId} cor="#e0a100" decisao={decisoes[item.candidato.id]} item={item} key={item.candidato.id}>
                     <RevisaoRh aoMudar={() => void atualizar()} item={item} responsavel={responsavel} vagaId={vagaId} />
                   </CartaoCandidato>
                 ))}

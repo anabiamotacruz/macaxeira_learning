@@ -47,7 +47,7 @@ export function VagaCandidatos({ vagaId }: { vagaId: string }) {
   return (
     <section className="grid gap-4">
       {itens.map(({ candidato, decisao }) => (
-        <Link className="rounded-xl border border-[#dfe7e2] bg-white p-5 transition hover:border-[#fb3c0d]" href={`/vagas/${encodeURIComponent(vagaId)}/candidatos/${encodeURIComponent(candidato.id)}`} key={candidato.id}>
+        <Link className="rounded-xl border border-[#dfe7e2] bg-white p-5 transition hover:border-[#fb3c0d]" href={`/candidatos/${encodeURIComponent(candidato.id)}?vaga=${encodeURIComponent(vagaId)}`} key={candidato.id}>
           <div className="flex items-start justify-between gap-3">
             <h2 className="text-lg font-semibold text-[#113b43]">{candidato.nome}</h2>
             <SimuladoBadge simulado={simulado && candidato.simulado} exemplo_fixo={exemploFixo} />

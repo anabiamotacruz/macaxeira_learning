@@ -6,67 +6,71 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Sidebar } from "../components/Sidebar";
 import { SimuladoBadge } from "../components/SimuladoBadge";
-import { ApiError, listarVagas, modoReservaAtivo } from "../lib/api";
-import { vagasIniciais } from "../lib/dados";
-import type { Vaga } from "../lib/tipos";
+import { ApiError, listarVagas, modoReservaAtivo, type ItemVagaCatalogo } from "../lib/api";
+import type { EstadoVaga } from "../lib/tipos";
 
 const REVISOR = "revisor.demo";
 
-type VagaExibida = Vaga & {
-  codigo: string;
-  area: string;
-  local: string;
-  modelo: string;
+type Status = "Buscando" | "Rascunho" | "Concluída" | "Pausada";
+
+type VagaExibida = ItemVagaCatalogo & {
   progresso: string;
-  pessoas: string;
-  criada: string;
   percentual: number;
-  status: "Buscando" | "Rascunho" | "Concluída";
+  status: Status;
 };
 
-const vagaBase = vagasIniciais[0];
-const vagasDaReferencia: VagaExibida[] = [
-  { ...vagaBase, id: "vaga-014", codigo: "014", titulo: "Pessoa Desenvolvedora Backend Sênior", area: "Tecnologia", local: "Remoto", modelo: "Encontro mensal em Recife", progresso: "1 de 5 entregues à Nara", pessoas: "23", criada: "07/11/2026", percentual: 20, status: "Buscando", aprovada: true },
-  { ...vagaBase, id: "vaga-013", codigo: "013", titulo: "Product Designer Pleno", area: "Produto", local: "Recife, PE", modelo: "Híbrido, 2 dias no escritório", progresso: "2 de 4 entregues à Nara", pessoas: "17", criada: "05/11/2026", percentual: 50, status: "Buscando", aprovada: true },
-  { ...vagaBase, id: "vaga-015", codigo: "015", titulo: "Pessoa Engenheira de Plataforma", area: "Tecnologia", local: "Remoto", modelo: "Remoto", progresso: "Critérios aguardam sua aprovação", pessoas: "–", criada: "08/11/2026", percentual: 0, status: "Rascunho", aprovada: false },
-  { ...vagaBase, id: "vaga-012", codigo: "012", titulo: "Analista de Dados Pleno", area: "Dados", local: "Remoto", modelo: "Remoto", progresso: "3 de 3 entregues à Nara", pessoas: "31", criada: "21/10/2026", percentual: 100, status: "Concluída", aprovada: true },
-  { ...vagaBase, id: "vaga-011", codigo: "011", titulo: "Analista de People Ops", area: "Pessoas", local: "Recife, PE", modelo: "Presencial", progresso: "2 de 2 entregues à Nara", pessoas: "12", criada: "02/10/2026", percentual: 100, status: "Concluída", aprovada: true },
+// Só aparecem com NEXT_PUBLIC_MODO_RESERVA=true, identificadas como dados locais de reserva.
+const vagasDeReserva: ItemVagaCatalogo[] = [
+  { id: "vaga-014", titulo: "Pessoa Desenvolvedora Backend Sênior", estado: "buscando", meta_candidatos: 5, analisados: 23, indicados: 1, descartados: 9, gasto_usd: 0.42 },
+  { id: "vaga-013", titulo: "Product Designer Pleno", estado: "decidindo", meta_candidatos: 4, analisados: 17, indicados: 2, descartados: 6, gasto_usd: 0.31 },
+  { id: "vaga-015", titulo: "Pessoa Engenheira de Plataforma", estado: "aguardando_mandato", meta_candidatos: 3, analisados: 0, indicados: 0, descartados: 0, gasto_usd: 0 },
+  { id: "vaga-012", titulo: "Analista de Dados Pleno", estado: "concluida", meta_candidatos: 3, analisados: 31, indicados: 3, descartados: 12, gasto_usd: 0.57 },
 ];
 
-function statusDaVaga(vaga: Vaga) {
-  if ("status" in vaga) {
-    const exibida = vaga as VagaExibida;
-    return exibida.status === "Buscando"
-      ? { label: exibida.status, className: "bg-[#eef2ef] text-[#2c4f55]" }
-      : exibida.status === "Concluída"
-        ? { label: exibida.status, className: "bg-[#e3f3e8] text-[#2f6e52]" }
-        : { label: exibida.status, className: "bg-[#fff1cc] text-[#855a0e]" };
-  }
-  if (vaga.id === "vaga-referencia-buscando") {
-    return { label: "Buscando", className: "bg-[#fff1cc] text-[#a06b13]" };
-  }
-  return vaga.aprovada
-    ? { label: "Concluída", className: "bg-[#e3f3e8] text-[#377b5d]" }
-    : { label: "Rascunho", className: "bg-[#edf0ef] text-[#788887]" };
+function statusDoEstado(estado: EstadoVaga): Status {
+  if (estado === "concluida") return "Concluída";
+  if (estado === "pausada") return "Pausada";
+  if (estado === "rascunho" || estado === "aguardando_mandato") return "Rascunho";
+  return "Buscando";
 }
 
+function exibir(item: ItemVagaCatalogo): VagaExibida {
+  const percentual = item.meta_candidatos > 0 ? Math.min(100, Math.round((item.indicados / item.meta_candidatos) * 100)) : 0;
+  return {
+    ...item,
+    percentual,
+    progresso: `${item.indicados} de ${item.meta_candidatos} indicados`,
+    status: statusDoEstado(item.estado),
+  };
+}
+
+const classesDoStatus: Record<Status, string> = {
+  Buscando: "bg-[#eef2ef] text-[#2c4f55]",
+  Concluída: "bg-[#e3f3e8] text-[#2f6e52]",
+  Rascunho: "bg-[#fff1cc] text-[#855a0e]",
+  Pausada: "bg-[#edf0ef] text-[#788887]",
+};
+
+const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" });
+
 export default function Home() {
-  const [vagas, setVagas] = useState<VagaExibida[]>(vagasDaReferencia);
-  const [carregando, setCarregando] = useState(false);
+  const reserva = modoReservaAtivo();
+  const [vagas, setVagas] = useState<VagaExibida[]>(() => (reserva ? vagasDeReserva.map(exibir) : []));
+  const [carregando, setCarregando] = useState(!reserva);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState<"todas" | "buscando" | "concluida" | "rascunho">("todas");
 
   useEffect(() => {
+    if (reserva) return;
     let ativo = true;
     async function carregar() {
       try {
-        const respostas = await listarVagas();
-        if (!ativo) return;
-        if (respostas.length > 0) setVagas(respostas.map((resposta) => ({ ...vagasDaReferencia[0], ...resposta.vaga, codigo: "API", area: "Tecnologia", local: "Não informado", modelo: "Não informado", progresso: "Em andamento", pessoas: "—", criada: "Hoje", percentual: 0, status: resposta.vaga.aprovada ? "Concluída" : "Rascunho" })));
+        const resposta = await listarVagas();
+        if (ativo) setVagas(resposta.itens.map(exibir));
       } catch (erroApi) {
-        if (ativo && !(erroApi instanceof ApiError && erroApi.status === 0)) setErro(erroApi instanceof ApiError ? erroApi.message : "Não foi possível carregar as vagas.");
+        if (ativo) setErro(erroApi instanceof ApiError ? erroApi.message : "Não foi possível carregar as vagas.");
       } finally {
         if (ativo) setCarregando(false);
       }
@@ -75,13 +79,27 @@ export default function Home() {
     return () => {
       ativo = false;
     };
-  }, []);
+  }, [reserva]);
+
+  const contagem = useMemo(() => {
+    const por = (status: Status) => vagas.filter((vaga) => vaga.status === status).length;
+    const buscando = vagas.filter((vaga) => vaga.status === "Buscando");
+    return {
+      buscando: por("Buscando"),
+      concluidas: por("Concluída"),
+      rascunhos: por("Rascunho"),
+      analisados: buscando.reduce((soma, vaga) => soma + vaga.analisados, 0),
+      indicados: buscando.reduce((soma, vaga) => soma + vaga.indicados, 0),
+      meta: buscando.reduce((soma, vaga) => soma + vaga.meta_candidatos, 0),
+      gasto: vagas.reduce((soma, vaga) => soma + vaga.gasto_usd, 0),
+    };
+  }, [vagas]);
 
   const vagasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return vagas.filter((vaga) => {
       const combinaStatus = filtroStatus === "todas" || (filtroStatus === "buscando" ? vaga.status === "Buscando" : filtroStatus === "rascunho" ? vaga.status === "Rascunho" : vaga.status === "Concluída");
-      return combinaStatus && (!termo || vaga.titulo.toLowerCase().includes(termo) || vaga.descricao.toLowerCase().includes(termo));
+      return combinaStatus && (!termo || vaga.titulo.toLowerCase().includes(termo) || vaga.id.toLowerCase().includes(termo));
     });
   }, [busca, filtroStatus, vagas]);
 
@@ -90,7 +108,7 @@ export default function Home() {
       <Sidebar active="catalogo" count={vagas.length} />
 
       <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-5 py-8 pb-14 sm:px-6">
-          {modoReservaAtivo() && (
+          {reserva && (
             <p className="mb-5 rounded-lg border border-[#f1c36a] bg-[#fff7df] px-4 py-3 text-sm text-[#805d16]">
               Dados locais de reserva
             </p>
@@ -114,16 +132,16 @@ export default function Home() {
           </header>
 
           <section aria-label="Resumo" className="grid gap-3 md:grid-cols-4">
-            <Metric label="Vagas buscando" value="2" caption="1 rascunho aguarda aprovação dos critérios" />
-            <Metric label="Perfis encontrados" value="40" caption="nas vagas buscando, cada um com a origem" />
-            <Metric label="Aguardando autorização" value="5" caption="só são abordadas depois de autorizar" />
-            <Metric label="Entregues à Nara" value="3 de 9" caption="soma das metas das vagas buscando" />
+            <Metric label="Vagas buscando" value={String(contagem.buscando)} caption={`${contagem.rascunhos} rascunho(s) aguardam o mandato`} />
+            <Metric label="Perfis analisados" value={String(contagem.analisados)} caption="nas vagas buscando, cada um com a origem" />
+            <Metric label="Indicados" value={`${contagem.indicados} de ${contagem.meta}`} caption="soma das metas das vagas buscando" />
+            <Metric label="Gasto com modelos" value={moeda.format(contagem.gasto)} caption="soma de todas as vagas da empresa" />
           </section>
 
           <section className="overflow-hidden rounded-xl border border-[#dfe7e2] bg-white shadow-[0_1px_2px_rgba(29,55,47,.02)]">
             <div className="flex flex-wrap items-center gap-3 border-b border-[#e8eeea] p-4">
               <div className="flex flex-wrap gap-0.5 rounded-[9px] bg-[#eaf0ec] p-[3px]" role="tablist" aria-label="Filtrar por status">
-                {([["todas", "Todas", 5], ["buscando", "Buscando", 2], ["concluida", "Concluídas", 2], ["rascunho", "Rascunhos", 1]] as const).map(([valor, label, total]) => (
+                {([["todas", "Todas", vagas.length], ["buscando", "Buscando", contagem.buscando], ["concluida", "Concluídas", contagem.concluidas], ["rascunho", "Rascunhos", contagem.rascunhos]] as const).map(([valor, label, total]) => (
                   <button aria-selected={filtroStatus === valor} className={`rounded-md px-3 py-1.5 text-xs ${filtroStatus === valor ? "bg-white font-semibold text-[#0b3038] shadow-sm" : "font-medium text-[#526c68]"}`} key={valor} onClick={() => setFiltroStatus(valor)} role="tab" type="button">{label} <span className="ml-1">{total}</span></button>
                 ))}
               </div>
@@ -148,16 +166,15 @@ export default function Home() {
             </div>
             {filtroAberto && (
               <div className="border-b border-[#e8eeea] bg-[#fbfcfa] px-4 py-3 text-xs text-[#718784]">
-                Filtro visual ativo: digite o título ou a descrição da vaga.
+                Filtro visual ativo: digite o título ou o código da vaga.
               </div>
             )}
-            <div className="hidden min-w-[980px] grid-cols-[minmax(280px,2.4fr)_1.3fr_1fr_1.5fr_.7fr_.8fr_36px] gap-4 border-b border-[#edf1ee] bg-[#fcfdfc] px-4 py-3 text-[10px] font-semibold uppercase tracking-wide text-[#80908d] md:grid">
+            <div className="hidden min-w-[980px] grid-cols-[minmax(280px,2.4fr)_1fr_1.5fr_.8fr_.8fr_36px] gap-4 border-b border-[#edf1ee] bg-[#fcfdfc] px-4 py-3 text-[10px] font-semibold uppercase tracking-wide text-[#80908d] md:grid">
               <span>Vaga</span>
-              <span>Local e modelo</span>
               <span>Status</span>
               <span>Progresso da meta</span>
-              <span>Pessoas</span>
-              <span>Criada em</span>
+              <span>Analisados</span>
+              <span>Gasto</span>
               <span />
             </div>
             {carregando ? (
@@ -166,29 +183,23 @@ export default function Home() {
               <p className="p-10 text-center text-sm text-[#81908d]">Nenhuma vaga encontrada.</p>
             ) : (
               vagasFiltradas.map((vaga) => {
-                const status = statusDaVaga(vaga);
                 return (
-                  <article className="grid gap-3 border-b border-[#edf1ee] px-4 py-4 last:border-b-0 md:grid-cols-[minmax(280px,2.4fr)_1.3fr_1fr_1.5fr_.7fr_.8fr_36px] md:items-center md:gap-4" key={vaga.id}>
+                  <article className="grid gap-3 border-b border-[#edf1ee] px-4 py-4 last:border-b-0 md:grid-cols-[minmax(280px,2.4fr)_1fr_1.5fr_.8fr_.8fr_36px] md:items-center md:gap-4" key={vaga.id}>
                     <div className="flex items-center gap-3">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#eaf4ef] text-[#83a39b]">
                         <BriefcaseBusiness aria-hidden="true" size={16} />
                       </span>
                       <div>
                         <h2 className="text-sm font-semibold text-[#113b43]"><Link className="hover:text-[#fb3c0d]" href={`/vagas/${encodeURIComponent(vaga.id)}`}>{vaga.titulo}</Link></h2>
-                        <p className="mt-1 text-xs text-[#82918e]"><span className="font-mono">vaga {(vaga as VagaExibida).codigo}</span> · {(vaga as VagaExibida).area}</p>
+                        <p className="mt-1 text-xs text-[#82918e]"><span className="font-mono">{vaga.id}</span> · {vaga.descartados} descartados</p>
                       </div>
                     </div>
-                    <div className="text-xs text-[#58716d]">
-                      <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-[#9aa7a4] md:hidden">Local</span>
-                      <p>{(vaga as VagaExibida).local}</p>
-                      <p className="mt-1 text-[10px] text-[#9aa7a4]">{(vaga as VagaExibida).modelo}</p>
-                    </div>
-                    <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-semibold ${status.className}`}>
-                      <span className="mr-1">•</span>{status.label}
+                    <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-semibold ${classesDoStatus[vaga.status]}`}>
+                      <span className="mr-1">•</span>{vaga.status}
                     </span>
-                    <div className="flex flex-col gap-1.5 text-xs text-[#58716d]"><span className="h-1.5 rounded-full bg-[#edf1ee]"><span className="block h-full rounded-full bg-[#fb3c0d]" style={{ width: `${(vaga as VagaExibida).percentual}%` }} /></span><span>{(vaga as VagaExibida).progresso}</span></div>
-                    <p className="text-xs text-[#58716d]">{(vaga as VagaExibida).pessoas}</p>
-                    <p className="text-xs text-[#8b9996]">{(vaga as VagaExibida).criada}</p>
+                    <div className="flex flex-col gap-1.5 text-xs text-[#58716d]"><span className="h-1.5 rounded-full bg-[#edf1ee]"><span className="block h-full rounded-full bg-[#fb3c0d]" style={{ width: `${vaga.percentual}%` }} /></span><span>{vaga.progresso}</span></div>
+                    <p className="text-xs text-[#58716d]">{vaga.analisados}</p>
+                    <p className="text-xs text-[#8b9996]">{moeda.format(vaga.gasto_usd)}</p>
                     <Link aria-label={`Ver candidatos de ${vaga.titulo}`} className="hidden md:block" href={`/vagas/${encodeURIComponent(vaga.id)}/candidatos`}>
                       <ChevronRight aria-hidden="true" size={17} />
                     </Link>

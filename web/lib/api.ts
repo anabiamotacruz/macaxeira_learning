@@ -4,6 +4,7 @@ import type {
   Decisao,
   EstadoVaga,
   EventoFluxo,
+  TipoDecisao,
   TipoResposta,
   Vaga,
 } from "./tipos";
@@ -49,8 +50,28 @@ export type ApiRespostaResponse = ApiEnvelope & {
   tipo: TipoResposta;
 };
 
-export type ApiVagaListItem = ApiVagaResponse & {
-  fonte: "api" | "reserva";
+/** Item de `GET /vagas`: o mínimo de cada vaga para o catálogo, tirado do resumo da vaga. */
+export type ItemVagaCatalogo = {
+  id: string;
+  titulo: string;
+  estado: EstadoVaga;
+  meta_candidatos: number;
+  analisados: number;
+  indicados: number;
+  descartados: number;
+  gasto_usd: number;
+};
+
+export type ApiVagasResponse = ApiEnvelope & { itens: ItemVagaCatalogo[] };
+
+/** Pessoa do banco de talentos, montada a partir das vagas da empresa, sem repetição. */
+export type PessoaDoBanco = {
+  candidato: Candidato;
+  vagaId: string;
+  vagaTitulo: string;
+  decisao: TipoDecisao | null;
+  nota: number | null;
+  simulado: boolean;
 };
 
 export class ApiError extends Error {
@@ -116,13 +137,77 @@ export function modoReservaAtivo(): boolean {
   return RESERVA_ATIVA;
 }
 
-export function listarIdsLocais(): string[] {
-  return idsSalvos();
+/** Vagas da empresa da sessão, das mais novas para as mais antigas. */
+export async function listarVagas(): Promise<ApiVagasResponse> {
+  return request<ApiVagasResponse>("/vagas");
 }
 
-export async function listarVagas(): Promise<ApiVagaListItem[]> {
-  if (RESERVA_ATIVA) return [];
-  return Promise.all(idsSalvos().map(async (id) => ({ ...(await obterVaga(id)), fonte: "api" as const })));
+/** A nota que a regra gravou na decisão, quando houver. */
+export function notaDaDecisao(decisao: Decisao): number | null {
+  const bruta = decisao.entrada?.nota;
+  if (bruta === undefined || bruta === "") return null;
+  const nota = Number(bruta);
+  return Number.isFinite(nota) ? nota : null;
+}
+
+/** Candidatos de uma vaga, até o limite máximo da API por página. */
+async function todosOsCandidatos(vagaId: string): Promise<ApiCandidatosResponse["itens"]> {
+  const itens: ApiCandidatosResponse["itens"] = [];
+  for (let pagina = 1; ; pagina += 1) {
+    const resposta = await listarCandidatos(vagaId, pagina, 100);
+    itens.push(...resposta.itens);
+    if (resposta.itens.length === 0 || pagina * 100 >= resposta.total) return itens;
+  }
+}
+
+/**
+ * Banco de talentos: as pessoas das vagas da empresa, sem repetir.
+ * As vagas vêm das mais novas para as mais antigas, então vale a decisão da vaga mais recente.
+ */
+export async function listarPessoasDoBanco(): Promise<PessoaDoBanco[]> {
+  const { itens: vagas } = await listarVagas();
+  const porVaga = await Promise.all(
+    vagas.map(async (vaga) => ({ vaga, itens: await todosOsCandidatos(vaga.id) })),
+  );
+  const pessoas = new Map<string, PessoaDoBanco>();
+  for (const { vaga, itens } of porVaga) {
+    for (const item of itens) {
+      if (pessoas.has(item.candidato.id)) continue;
+      pessoas.set(item.candidato.id, {
+        candidato: item.candidato,
+        vagaId: vaga.id,
+        vagaTitulo: vaga.titulo,
+        decisao: item.decisao,
+        nota: null,
+        simulado: item.candidato.simulado,
+      });
+    }
+  }
+  await Promise.all(
+    [...pessoas.values()]
+      .filter((pessoa) => pessoa.decisao !== null)
+      .map(async (pessoa) => {
+        try {
+          pessoa.nota = notaDaDecisao((await obterDecisao(pessoa.candidato.id, pessoa.vagaId)).decisao);
+        } catch {
+          // Sem a decisão detalhada, a pessoa continua na lista, só sem a nota.
+        }
+      }),
+  );
+  return [...pessoas.values()];
+}
+
+/** Acha o candidato e a vaga. Sem `vagaId`, usa a primeira vaga em que a pessoa aparece. */
+export async function localizarCandidato(
+  candidatoId: string,
+  vagaId?: string,
+): Promise<{ candidato: Candidato; vagaId: string } | null> {
+  const vagas = vagaId ? [vagaId] : (await listarVagas()).itens.map((vaga) => vaga.id);
+  for (const id of vagas) {
+    const item = (await todosOsCandidatos(id)).find(({ candidato }) => candidato.id === candidatoId);
+    if (item) return { candidato: item.candidato, vagaId: id };
+  }
+  return null;
 }
 
 export async function obterVaga(id: string): Promise<ApiVagaResponse> {
