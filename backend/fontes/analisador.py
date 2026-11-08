@@ -1,7 +1,9 @@
 """Analisa um candidato diante da vaga (T2.3). O modelo interpreta; o código confere.
 
 Requisito eliminatório vem de `backend/agente/regras.py`. Do modelo ficam só nota, trecho e
-perguntas, e cada afirmação precisa de um trecho literal do texto pseudonimizado. Atributos,
+perguntas. Todo trecho precisa ser literal do texto pseudonimizado, mas a nota fica mesmo sem
+trecho: como recrutador, o modelo dá nota a toda competência, e a falta de trecho direto já está
+na nota. Competência que volta sem nota é pedida de novo, uma vez. Atributos,
 histórico e descrição da vaga não são enviados: datas revelam períodos sem trabalho, e o texto
 livre da vaga pode citar gênero ou outro tema sensível.
 """
@@ -23,8 +25,9 @@ from backend.agente.regras import (
     classificar_evidencia,
     verificar_requisitos,
 )
+from backend.contratos.erros import RespostaInvalida
 from backend.contratos.interfaces import ClienteModelo
-from backend.contratos.modelos import Analise, Candidato, Evidencia, Vaga
+from backend.contratos.modelos import Analise, Candidato, EstadoBanco, Evidencia, Vaga
 from backend.fontes.anonimizador import (
     PerfilPseudonimizado,
     Pseudonimizador,
@@ -32,7 +35,7 @@ from backend.fontes.anonimizador import (
     termos_preservados_da_vaga,
 )
 from backend.fontes.consultas import tem_termo_sensivel
-from backend.fontes.prompts import SISTEMA_ANALISE, USUARIO_ANALISE
+from backend.fontes.prompts import SISTEMA_ANALISE, USUARIO_ANALISE, USUARIO_NOTAS_FALTANTES
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,9 @@ ALERTA_INSTRUCAO = (
     "instrucao_no_perfil: o perfil traz texto dirigido ao avaliador; ele foi retirado da análise."
 )
 """Texto fixo: o alerta não repete o texto do candidato, que pode ir a outro modelo ou sistema."""
+
+CONFIRMAR_PERFIL_DESATUALIZADO = "Confirmar com a pessoa: perfil desatualizado"
+"""A autorização vale e a análise segue: o pacote avisa que o perfil precisa ser confirmado."""
 
 FIM_DE_FRASE = re.compile(r"(?<=[.!?])\s+|\n+")
 _RACE_CONDITION = re.compile(r"\brace conditions?\b")
@@ -273,7 +279,12 @@ class AnalisadorPorModelo:
                 resposta = self._perguntar(vaga, perfil)
 
         evidencias = self._evidencias(vaga, candidato, perfil, resposta)
-        notas = self._notas(vaga, resposta, evidencias)
+        notas = self._notas(vaga, resposta)
+        faltantes = [c.nome for c in vaga.competencias if c.nome not in notas]
+        if faltantes:
+            notas, evidencias = self._completar_notas(
+                vaga, candidato, perfil, faltantes, notas, evidencias
+            )
         return Analise(
             empresa_id=vaga.empresa_id,
             vaga_id=vaga.id,
@@ -300,6 +311,42 @@ class AnalisadorPorModelo:
         usuario = USUARIO_ANALISE.format(vaga=descrever_vaga(vaga), perfil=como_dado(perfil.texto))
         return self._cliente.completar(SISTEMA_ANALISE, usuario, RespostaAnalise, ETAPA_ANALISE)
 
+    def _completar_notas(
+        self,
+        vaga: Vaga,
+        candidato: Candidato,
+        perfil: PerfilPreparado,
+        faltantes: list[str],
+        notas: dict[str, float],
+        evidencias: list[Evidencia],
+    ) -> tuple[dict[str, float], list[Evidencia]]:
+        """Pede de novo, uma vez, só as notas que faltaram. Do novo pedido fica só nota e trecho
+        dessas competências: o resto da primeira análise não muda. Resposta inválida mantém a
+        primeira análise, e a regra de decisão trata a competência que segue sem nota.
+        """
+        usuario = USUARIO_NOTAS_FALTANTES.format(
+            vaga=descrever_vaga(vaga),
+            perfil=como_dado(perfil.texto),
+            competencias=como_dado("\n".join(f"- {nome}" for nome in faltantes)),
+        )
+        try:
+            resposta = self._cliente.completar(
+                SISTEMA_ANALISE, usuario, RespostaAnalise, ETAPA_ANALISE
+            )
+        except RespostaInvalida:
+            logger.info("novo pedido de notas voltou inválido: %s", candidato.id)
+            return notas, evidencias
+        novas = self._notas(vaga, resposta)
+        completas = notas | {nome: novas[nome] for nome in faltantes if nome in novas}
+        citadas = [
+            e
+            for e in self._evidencias(vaga, candidato, perfil, resposta)
+            if e.criterio in faltantes
+        ]
+        vistas = {(e.criterio, normalizar(e.trecho)) for e in evidencias}
+        extras = [e for e in citadas if (e.criterio, normalizar(e.trecho)) not in vistas]
+        return completas, [*evidencias, *extras]
+
     @staticmethod
     def _evidencias(
         vaga: Vaga, candidato: Candidato, perfil: PerfilPreparado, resposta: RespostaAnalise
@@ -318,18 +365,20 @@ class AnalisadorPorModelo:
         return list(aceitas.values())
 
     @staticmethod
-    def _notas(
-        vaga: Vaga, resposta: RespostaAnalise, evidencias: list[Evidencia]
-    ) -> dict[str, float]:
-        """Nota sem trecho sai, e não vira zero: falta de informação não reduz a nota."""
-        com_evidencia = {e.criterio for e in evidencias}
+    def _notas(vaga: Vaga, resposta: RespostaAnalise) -> dict[str, float]:
+        """Toda nota que o modelo deu a uma competência da vaga, com ou sem trecho, em [0, 1].
+
+        Competência sem nota fica de fora, e não vira zero: quem decide o que fazer é a regra.
+        """
         informadas = {
-            normalizar(nome): nota for nome, nota in resposta.notas.items() if nota is not None
+            normalizar(nome): min(1.0, max(0.0, nota))
+            for nome, nota in resposta.notas.items()
+            if nota is not None
         }
         return {
             c.nome: informadas[normalizar(c.nome)]
             for c in vaga.competencias
-            if c.nome in com_evidencia and normalizar(c.nome) in informadas
+            if normalizar(c.nome) in informadas
         }
 
     @staticmethod
@@ -345,17 +394,20 @@ class AnalisadorPorModelo:
             elif requisito.id not in com_evidencia:
                 lacunas.append(f"Perfil sem trecho sobre o requisito: {requisito.descricao}")
         for competencia in vaga.competencias:
-            if competencia.nome not in com_evidencia:
-                lacunas.append(f"Perfil sem trecho sobre a competência: {competencia.nome}")
-            elif competencia.nome not in notas:
+            if competencia.nome not in notas:
                 lacunas.append(f"Competência sem nota: {competencia.nome}")
+            elif competencia.nome not in com_evidencia:
+                lacunas.append(f"Perfil sem trecho sobre a competência: {competencia.nome}")
         return lacunas
 
     @staticmethod
     def _confirmacoes(vaga: Vaga, candidato: Candidato) -> list[str]:
         status = avaliar_requisitos(vaga, candidato)
-        return [
+        confirmacoes = [
             f"Confirmar com a pessoa: {r.descricao}"
             for r in vaga.requisitos
             if status[r.id] is StatusRequisito.SEM_DADO
         ]
+        if candidato.estado == EstadoBanco.DESATUALIZADO:
+            confirmacoes.append(CONFIRMAR_PERFIL_DESATUALIZADO)
+        return confirmacoes

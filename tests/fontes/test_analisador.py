@@ -8,10 +8,18 @@ from pydantic import BaseModel
 from backend.agente.regras import TipoEvidencia, classificar_evidencia
 from backend.contratos.erros import LimiteGastoAtingido, ModeloIndisponivel, RespostaInvalida
 from backend.contratos.interfaces import Analisador
-from backend.contratos.modelos import Candidato, Competencia, Experiencia, Requisito, Vaga
+from backend.contratos.modelos import (
+    Candidato,
+    Competencia,
+    EstadoBanco,
+    Experiencia,
+    Requisito,
+    Vaga,
+)
 from backend.contratos.simulacoes import ClienteModeloSimulado, candidato_simulado
 from backend.fontes.analisador import (
     ALERTA_INSTRUCAO,
+    CONFIRMAR_PERFIL_DESATUALIZADO,
     ETAPA_ANALISE,
     AnalisadorPorModelo,
 )
@@ -115,6 +123,7 @@ def test_evidencias_citam_trecho_do_perfil():
 
 
 def test_remove_afirmacao_sem_trecho():
+    """O trecho inventado sai. A nota fica: a falta de trecho direto já está nela."""
     analisador, _ = _analisador(
         notas={COMPETENCIA_A: 0.9, COMPETENCIA_B: 0.6},
         evidencias=[
@@ -126,9 +135,88 @@ def test_remove_afirmacao_sem_trecho():
     analise = analisador.analisar(_vaga(), _candidato())
 
     assert [e.criterio for e in analise.evidencias] == [COMPETENCIA_B]
-    assert COMPETENCIA_A not in analise.notas
-    assert analise.notas[COMPETENCIA_B] == 0.6
-    assert any(COMPETENCIA_A in lacuna for lacuna in analise.lacunas)
+    assert analise.notas == {COMPETENCIA_A: 0.9, COMPETENCIA_B: 0.6}
+    assert f"Perfil sem trecho sobre a competência: {COMPETENCIA_A}" in analise.lacunas
+
+
+def test_nota_sem_trecho_e_mantida():
+    """Como recrutador, o modelo dá nota a toda competência, mesmo sem trecho para citar."""
+    analisador, cliente = _analisador(
+        notas={COMPETENCIA_A: 0.8, COMPETENCIA_B: 0.15},
+        evidencias=[{"criterio": COMPETENCIA_A, "trecho": TRECHO_A}],
+    )
+
+    analise = analisador.analisar(_vaga(), _candidato())
+
+    assert analise.notas == {COMPETENCIA_A: 0.8, COMPETENCIA_B: 0.15}
+    assert f"Perfil sem trecho sobre a competência: {COMPETENCIA_B}" in analise.lacunas
+    assert not any("sem nota" in lacuna for lacuna in analise.lacunas)
+    assert len(cliente.chamadas) == 1
+
+
+def test_nota_inferida_cita_a_experiencia_proxima():
+    analisador, _ = _analisador(
+        notas={COMPETENCIA_A: 0.8, COMPETENCIA_B: 0.5},
+        evidencias=[
+            {"criterio": COMPETENCIA_A, "trecho": TRECHO_A},
+            {"criterio": COMPETENCIA_B, "trecho": TRECHO_PRODUCAO},
+        ],
+    )
+
+    analise = analisador.analisar(_vaga(), _candidato())
+
+    assert analise.notas[COMPETENCIA_B] == 0.5
+    assert (COMPETENCIA_B, TRECHO_PRODUCAO) in {(e.criterio, e.trecho) for e in analise.evidencias}
+
+
+def test_pede_de_novo_so_as_notas_que_faltaram():
+    primeira = _resposta(notas={COMPETENCIA_A: 0.8})
+    segunda = _resposta(
+        notas={COMPETENCIA_A: 0.1, COMPETENCIA_B: 0.5},
+        evidencias=[{"criterio": COMPETENCIA_B, "trecho": TRECHO_B}],
+        lacunas=["Não informa AWS"],
+    )
+    cliente = _ClienteEmSequencia([primeira, segunda])
+
+    analise = AnalisadorPorModelo(cliente).analisar(_vaga(), _candidato())
+
+    assert len(cliente.chamadas) == 2
+    pedido = cliente.chamadas[1]["usuario"]
+    assert "<competencias_sem_nota>" in pedido
+    assert f"- {COMPETENCIA_B}" in pedido
+    assert f"- {COMPETENCIA_A}" not in pedido.rsplit("<competencias_sem_nota>", 1)[1]
+    assert cliente.chamadas[1]["etapa"] == ETAPA_ANALISE
+    assert analise.notas == {COMPETENCIA_A: 0.8, COMPETENCIA_B: 0.5}
+    assert (COMPETENCIA_B, TRECHO_B) in {(e.criterio, e.trecho) for e in analise.evidencias}
+    assert "Não informa AWS" not in analise.lacunas
+
+
+def test_pede_de_novo_uma_vez_so_e_a_competencia_fica_sem_nota():
+    analisador, cliente = _analisador(notas={COMPETENCIA_A: 0.8})
+
+    analise = analisador.analisar(_vaga(), _candidato())
+
+    assert len(cliente.chamadas) == 2
+    assert analise.notas == {COMPETENCIA_A: 0.8}
+    assert f"Competência sem nota: {COMPETENCIA_B}" in analise.lacunas
+
+
+def test_resposta_invalida_no_novo_pedido_mantem_a_primeira_analise():
+    cliente = _ClienteEmSequencia([_resposta(notas={COMPETENCIA_A: 0.8}), {"notas": "alta"}])
+
+    analise = AnalisadorPorModelo(cliente).analisar(_vaga(), _candidato())
+
+    assert analise.notas == {COMPETENCIA_A: 0.8}
+    assert f"Competência sem nota: {COMPETENCIA_B}" in analise.lacunas
+
+
+def test_perfil_desatualizado_vira_confirmacao_no_pacote():
+    analisador, _ = _analisador()
+
+    analise = analisador.analisar(_vaga(), _candidato(estado=EstadoBanco.DESATUALIZADO))
+
+    assert CONFIRMAR_PERFIL_DESATUALIZADO in analise.pontos_a_aprofundar
+    assert analise.notas == {COMPETENCIA_A: 0.8, COMPETENCIA_B: 0.6}
 
 
 def test_trecho_parcial_de_palavra_nao_confere():
@@ -492,9 +580,9 @@ def test_competencia_sem_informacao_fica_sem_nota_e_nao_com_zero():
 
     analise = analisador.analisar(_vaga(), _candidato())
 
-    assert analise.notas == {}
-    for competencia in (COMPETENCIA_A, COMPETENCIA_B):
-        assert any(competencia in lacuna for lacuna in analise.lacunas)
+    assert analise.notas == {COMPETENCIA_A: 0.0}
+    assert f"Competência sem nota: {COMPETENCIA_B}" in analise.lacunas
+    assert f"Perfil sem trecho sobre a competência: {COMPETENCIA_A}" in analise.lacunas
 
 
 def test_negativa_explicita_com_trecho_mantem_nota_baixa():
