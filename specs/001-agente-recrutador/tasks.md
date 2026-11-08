@@ -119,11 +119,13 @@ O mandato assinado substituiu `aprovar_vaga()` e `aprovar_lote()` (D-1): o agent
 
 **Produz:** `com_tentativas(funcao, tentativas: int, espera: float, tempo_limite: float)` e `DisjuntorFonte`, para parar temporariamente uma fonte com falhas seguidas.
 
-- [ ] Testar `test_repete_erro_temporario_com_espera`.
-- [ ] Testar `test_nao_repete_erro_permanente`.
-- [ ] Testar `test_tempo_limite_gera_erro_claro`.
-- [ ] Testar `test_disjuntor_abre_e_fecha`.
-- [ ] Implementar e aplicar nas chamadas de modelo e fontes.
+- [x] Testar `test_repete_erro_temporario_com_espera`.
+- [x] Testar `test_nao_repete_erro_permanente`.
+- [x] Testar `test_tempo_limite_gera_erro_claro`.
+- [x] Testar `test_disjuntor_abre_e_fecha`.
+- [x] Implementar e aplicar nas chamadas de modelo e fontes.
+
+Nas fontes e no destino, o fluxo usa `Resiliencia` (tentativas e disjuntor). Nas chamadas de modelo, a repetição fica no próprio `ClienteFeatherless`: o SDK repete erro temporário com tempo limite, e o cliente troca para `MODELO_ALTERNATIVO` quando o modelo falha (`test_modelo_indisponivel_usa_alternativa`).
 
 ### T1.11 (onda 2): auditoria
 
