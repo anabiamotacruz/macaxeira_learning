@@ -20,6 +20,7 @@ from backend.agente.fluxo import (
     FluxoVaga,
     Priorizador,
     ProvedorConsultas,
+    RegistroConvite,
     Reidentificador,
     concorrencia_do_ambiente,
     consulta_pelo_titulo,
@@ -252,7 +253,7 @@ class ServicoVagas:
     def registrar_resposta(
         self, empresa_id: str, vaga_id: str, resposta: RespostaCandidato
     ) -> None:
-        """Aplica a resposta da pessoa. A rota que a recebe é da T1.4d e ainda não existe.
+        """Aplica a resposta da pessoa, recebida por `POST /convites/{id}/resposta`.
 
         Opt-out não espera a execução em curso: enquanto ela anda, novos contatos sairiam.
         """
@@ -262,6 +263,9 @@ class ServicoVagas:
             return
         with self._exclusivo(empresa_id, vaga_id):
             fluxo.registrar_resposta(resposta)
+
+    def convites(self, empresa_id: str, vaga_id: str) -> list[RegistroConvite]:
+        return self._fluxo(empresa_id, vaga_id).convites()
 
     def entregar(self, empresa_id: str, vaga_id: str) -> tuple[list[str], list[str]]:
         """Entrega quem o fluxo já libera. Devolve quem foi entregue e quem ficou pendente."""

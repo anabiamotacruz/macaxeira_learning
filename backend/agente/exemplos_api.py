@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from backend.contratos.modelos import (
     Candidato,
     Competencia,
+    Convite,
     Decisao,
     DestinoPessoa,
     EstadoBanco,
@@ -23,6 +24,7 @@ from backend.contratos.modelos import (
     ResumoExecucao,
     SaidaPersonalizada,
     TaxaMedida,
+    TipoConvite,
     TipoDecisao,
     TipoErro,
     Vaga,
@@ -291,4 +293,22 @@ PEDIDO_DESTINO = {
     "destino": DESTINO_EXEMPLO.value,
     "responsavel": PESSOA_RESPONSAVEL,
     "chave_idempotencia": "exemplo-destino-1",
+}
+
+CONVITE = Convite(
+    id=f"convite:{VAGA_EXEMPLO}:{CANDIDATOS[0].id}:1",
+    empresa_id=EMPRESA_EXEMPLO,
+    tipo=TipoConvite.VAGA,
+    canal="simulado",
+    vaga_id=VAGA_EXEMPLO,
+    candidato_id=CANDIDATOS[0].id,
+    mensagem="[SIMULAÇÃO] Convite fictício para a vaga de exemplo.",
+    chave_idempotencia=f"convite:{EMPRESA_EXEMPLO}:{VAGA_EXEMPLO}:{CANDIDATOS[0].id}:1",
+    simulado=True,
+)
+PEDIDO_RESPOSTA = {
+    "vaga_id": VAGA_EXEMPLO,
+    "tipo": "aceite",
+    "texto": "",
+    "chave_idempotencia": "exemplo-resposta-1",
 }
