@@ -279,6 +279,7 @@ class ItemSugestaoGarden(Contrato):
     """Quem estava no Talent Garden de outra vaga. O convite especial só sai com o RH."""
 
     candidato_id: Texto
+    nome: str
     vaga_origem_id: Texto
     vaga_origem_titulo: str
     motivo: str
@@ -927,6 +928,7 @@ def listar_talent_garden(
             itens=[
                 ItemSugestaoGarden(
                     candidato_id=exemplos.CONVITE.candidato_id,
+                    nome="Pessoa Fictícia",
                     vaga_origem_id="vaga-anterior",
                     vaga_origem_titulo="Software Engineer",
                     motivo="nao_agora",
