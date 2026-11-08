@@ -188,11 +188,20 @@ def test_nota_no_meio_vai_para_uma_pessoa() -> None:
     assert decisao.score.faixa == FaixaScore.MEDIA
 
 
-def test_sem_limiar_nada_e_aprovado_sozinho() -> None:
+def test_sem_limiar_usa_o_padrao_da_faixa_verde() -> None:
     vaga = vaga_teste()
-    decisao = decidir_teste(vaga=vaga, mandato=mandato_teste(vaga, limiar_verde=None))
-    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
-    assert decisao.regra == "limiar_nao_definido"
+    mandato = mandato_teste(vaga, limiar_verde=None)
+    decisao = decidir_teste(vaga=vaga, mandato=mandato)
+    assert decisao.destino == DestinoDecisao.APROVAR
+    assert decisao.entrada["limiar_verde"] == "0.7"
+    assert decisao.entrada["limiar_origem"] == "padrao"
+    assert decisao.score.selo == SeloCalibracao.NAO_CALIBRADO
+    media = decidir_teste(
+        vaga=vaga,
+        analise=analise_teste(vaga, notas={"backend": 0.6, "dados": 0.6}),
+        mandato=mandato,
+    )
+    assert media.regra == "faixa_media"
 
 
 # Portões duros
@@ -214,7 +223,7 @@ def test_sem_dado_com_trecho_e_declarada_aceita_continua_sem_aprovar() -> None:
     assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
 
 
-def test_requisito_so_com_evidencia_declarada_nao_passa_sem_a_politica() -> None:
+def test_requisito_confirmado_pelo_codigo_aprova_com_qualquer_politica() -> None:
     candidato = candidato_teste(fonte="curriculo")
     vaga = vaga_teste()
     evidencias = [
@@ -223,9 +232,7 @@ def test_requisito_so_com_evidencia_declarada_nao_passa_sem_a_politica() -> None
         Evidencia(criterio="dados", trecho=TRECHO_DADOS, fonte="curriculo"),
     ]
     analise = analise_teste(vaga, evidencias=evidencias)
-    assert (
-        decidir_teste(candidato=candidato, analise=analise).destino == DestinoDecisao.REVISAO_HUMANA
-    )
+    assert decidir_teste(candidato=candidato, analise=analise).destino == DestinoDecisao.APROVAR
     aceita = decidir_teste(
         vaga=vaga,
         candidato=candidato,
@@ -235,22 +242,28 @@ def test_requisito_so_com_evidencia_declarada_nao_passa_sem_a_politica() -> None
     assert aceita.destino == DestinoDecisao.APROVAR
 
 
-def test_analise_que_nao_confirma_requisito_e_portao() -> None:
+def test_requisito_confirmado_pelo_codigo_nao_depende_da_analise() -> None:
     vaga = vaga_teste()
     decisao = decidir_teste(analise=analise_teste(vaga, requisitos_ok={"r1": False}))
-    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
-    assert "requisito_nao_confirmado:r1" in decisao.portoes
+    assert decisao.destino == DestinoDecisao.APROVAR
+    assert decisao.portoes == []
 
 
-def test_instrucao_detectada_e_portao_duro() -> None:
+def test_instrucao_detectada_limita_as_notas_e_fica_registrada() -> None:
+    """Como na faixa verde: decide pela nota, com teto de 0.8 por competência, e registra."""
     vaga = vaga_teste()
     alerta = "instrucao_no_perfil: o perfil traz texto dirigido ao avaliador."
-    decisao = decidir_teste(analise=analise_teste(vaga, alertas=[alerta]))
-    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
-    assert "instrucao_detectada" in decisao.portoes
+    analise = analise_teste(vaga, notas={"backend": 1.0, "dados": 1.0}, alertas=[alerta])
+    decisao = decidir_teste(analise=analise)
+    assert decisao.destino == DestinoDecisao.APROVAR
+    assert decisao.portoes == []
+    assert decisao.alertas == ["instrucao_detectada"]
+    assert decisao.score.nota_geral == pytest.approx(0.8)
+    antiga = decidir(vaga, candidato_teste(), analise, mandato_teste(vaga), HOJE, AGORA, "r")
+    assert float(antiga.entrada["nota"]) == pytest.approx(decisao.score.nota_geral)
 
 
-def test_trecho_inexistente_em_requisito_e_portao_duro() -> None:
+def test_trecho_inexistente_em_requisito_nao_decide() -> None:
     vaga = vaga_teste()
     evidencias = [
         Evidencia(criterio="r1", trecho="Trecho que não existe", fonte="rede_simulada"),
@@ -259,35 +272,49 @@ def test_trecho_inexistente_em_requisito_e_portao_duro() -> None:
         Evidencia(criterio="dados", trecho=TRECHO_DADOS, fonte="rede_simulada"),
     ]
     decisao = decidir_teste(analise=analise_teste(vaga, evidencias=evidencias))
+    assert decisao.destino == DestinoDecisao.APROVAR
+    assert "trecho_inexistente_em_requisito:r1" not in decisao.portoes
+
+
+def test_revisao_invalida_e_portao() -> None:
+    vaga = vaga_teste()
+    analise = analise_teste(vaga, ressalvas_revisor=["revisor_resposta_invalida"])
+    decisao = decidir_teste(analise=analise)
     assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
-    assert "trecho_inexistente_em_requisito:r1" in decisao.portoes
+    assert "ressalva_grave:revisor" in decisao.portoes
 
 
 @pytest.mark.parametrize(
-    ("ressalva", "grave"),
+    "ressalva",
     [
-        ('r1: exagero concreto. Trecho: "Cinco anos com Python"', True),
-        ("revisor_ressalva_sem_trecho", True),
-        ("revisor_resposta_invalida", True),
-        ("texto livre que o código não entende", True),
-        ("nota_sem_evidencia: r1", True),
-        ('backend: exagero concreto. Trecho: "Liderou APIs"', False),
-        ("nota_sem_evidencia: backend", False),
+        'r1: exagero concreto. Trecho: "Cinco anos com Python"',
+        "revisor_ressalva_sem_trecho",
+        "texto livre que o código não entende",
+        "nota_sem_evidencia: r1",
     ],
 )
-def test_ressalva_grave_e_portao_e_leve_so_reduz(ressalva: str, grave: bool) -> None:
+def test_ressalva_sem_competencia_nao_muda_a_decisao(ressalva: str) -> None:
     vaga = vaga_teste()
-    limpa = decidir_teste()
     decisao = decidir_teste(analise=analise_teste(vaga, ressalvas_revisor=[ressalva]))
-    if grave:
-        assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
-        assert any(p.startswith("ressalva_grave") for p in decisao.portoes)
-    else:
-        assert decisao.destino == DestinoDecisao.APROVAR
-        assert decisao.portoes == []
-        assert decisao.score.nota_geral == pytest.approx(
-            limpa.score.nota_geral - REDUCAO_SINAL_EXTERNO
-        )
+    assert decisao.destino == DestinoDecisao.APROVAR
+    assert decisao.portoes == []
+    assert decisao.score.nota_geral == pytest.approx(decidir_teste().score.nota_geral)
+
+
+@pytest.mark.parametrize(
+    "ressalva", ['backend: exagero concreto. Trecho: "Liderou APIs"', "nota_sem_evidencia: backend"]
+)
+def test_ressalva_limita_a_nota_da_competencia_como_na_faixa_verde(ressalva: str) -> None:
+    vaga = vaga_teste()
+    analise = analise_teste(vaga, ressalvas_revisor=[ressalva])
+    decisao = decidir_teste(analise=analise)
+    backend = next(c for c in decisao.score.criterios if c.criterio == "backend")
+    assert backend.nota == pytest.approx(0.9)
+    assert backend.nota_considerada == pytest.approx(0.5)
+    assert decisao.score.nota_geral == pytest.approx((2 * 0.5 + 0.9) / 3, abs=1e-5)
+    assert decisao.portoes == []
+    antiga = decidir(vaga, candidato_teste(), analise, mandato_teste(vaga), HOJE, AGORA, "r")
+    assert float(antiga.entrada["nota"]) == pytest.approx(decisao.score.nota_geral, abs=1e-5)
 
 
 def test_recusa_por_requisito_vem_antes_do_portao_de_instrucao() -> None:
@@ -343,27 +370,30 @@ def test_competencia_sem_evidencia_vale_nivel_minimo_sem_anular_a_nota() -> None
     ]
     analise = analise_teste(vaga, notas={"backend": 0.9}, evidencias=evidencias)
     decisao = decidir_teste(analise=analise)
-    assert decisao.score.nota_geral == pytest.approx(0.6)
+    assert decisao.score.nota_geral == pytest.approx((2 * 0.9 + 0.15) / 3)
     dados = next(c for c in decisao.score.criterios if c.criterio == "dados")
     assert dados.qualidade == QualidadeDado.SEM_DADO
-    assert dados.nota_considerada == 0
+    assert dados.nota_considerada == pytest.approx(0.15)
     assert any(lacuna.criterio == "dados" for lacuna in decisao.lacunas)
 
 
-def test_nota_dada_sem_evidencia_nao_conta() -> None:
+def test_nota_dada_sem_evidencia_fica_limitada() -> None:
+    """A nota fica, mas sem trecho do perfil não passa de 0.5, como na faixa verde."""
     vaga = vaga_teste()
     evidencias = [Evidencia(criterio="r1", trecho=TRECHO_REQ, fonte="rede_simulada")]
     analise = analise_teste(vaga, evidencias=evidencias)
     decisao = decidir_teste(analise=analise)
-    assert decisao.score.nota_geral == 0
-    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
+    assert decisao.score.nota_geral == pytest.approx(0.5)
+    assert decisao.destino != DestinoDecisao.APROVAR
+    antiga = decidir(vaga, candidato_teste(), analise, mandato_teste(vaga), HOJE, AGORA, "r")
+    assert float(antiga.entrada["nota"]) == pytest.approx(decisao.score.nota_geral)
 
 
-def test_nota_invalida_do_modelo_vira_nivel_minimo() -> None:
+def test_nota_invalida_do_modelo_entra_com_o_minimo_da_escala() -> None:
     vaga = vaga_teste()
     analise = analise_teste(vaga, notas={"backend": float("nan"), "dados": 7.0})
     decisao = decidir_teste(analise=analise)
-    assert decisao.score.nota_geral == 0
+    assert decisao.score.nota_geral == pytest.approx(0.15)
     assert all(c.nota is None for c in decisao.score.criterios)
 
 
@@ -597,10 +627,25 @@ def test_a_lapidar_exige_evidencia_nas_competencias() -> None:
 def test_portao_de_integridade_impede_a_lapidar() -> None:
     vaga = _vaga_com_desenvolvivel()
     analise = analise_teste(
-        vaga, requisitos_ok={"r1": True, "r2": False}, alertas=["instrucao_no_perfil: x"]
+        vaga,
+        requisitos_ok={"r1": True, "r2": False},
+        ressalvas_revisor=["revisor_resposta_invalida"],
     )
     decisao = decidir_teste(vaga, candidato_teste(), analise, mandato_teste(vaga))
     assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
+
+
+def test_instrucao_na_proposta_a_lapidar_limita_a_nota_e_fica_registrada() -> None:
+    vaga = _vaga_com_desenvolvivel()
+    analise = analise_teste(
+        vaga,
+        requisitos_ok={"r1": True, "r2": False},
+        notas={"backend": 1.0, "dados": 1.0},
+        alertas=["instrucao_no_perfil: x"],
+    )
+    decisao = decidir_teste(vaga, candidato_teste(), analise, mandato_teste(vaga))
+    assert decisao.alertas == ["instrucao_detectada"]
+    assert decisao.score.nota_geral == pytest.approx(0.8)
 
 
 def _proposta_a_lapidar():
@@ -670,12 +715,22 @@ def test_indisponivel_com_requisito_nao_atendido_continua_recusado() -> None:
     assert decisao.destino == DestinoDecisao.RECUSAR
 
 
-def test_indisponivel_com_instrucao_vai_para_uma_pessoa() -> None:
+def test_indisponivel_com_revisao_invalida_vai_para_uma_pessoa() -> None:
+    vaga = vaga_teste()
+    decisao = decidir_teste(
+        analise=analise_teste(vaga, ressalvas_revisor=["revisor_resposta_invalida"]),
+        indisponibilidade=_fato(),
+    )
+    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
+
+
+def test_indisponivel_com_instrucao_registra_o_alerta() -> None:
     vaga = vaga_teste()
     decisao = decidir_teste(
         analise=analise_teste(vaga, alertas=["instrucao_no_perfil: x"]), indisponibilidade=_fato()
     )
-    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
+    assert decisao.alertas == ["instrucao_detectada"]
+    assert all((c.nota_considerada or 0) <= 0.8 for c in decisao.score.criterios)
 
 
 # Entrada no garden
@@ -793,6 +848,7 @@ def test_reavalia_so_o_criterio_afetado() -> None:
 
 
 def test_resposta_declarada_em_requisito_sem_a_politica_vai_para_uma_pessoa() -> None:
+    """Na pré-triagem, o atributo vem da própria pessoa: a política de evidência ainda vale."""
     vaga = vaga_teste()
     candidato = candidato_teste(atributos={})
     mandato = mandato_teste(vaga)
@@ -837,12 +893,13 @@ def test_reavaliacao_de_competencia_usa_o_nivel_e_nao_passa_de_direta() -> None:
     assert any(e.criterio == "dados" and e.fonte == "pre_triagem" for e in nova.evidencias)
 
 
-def test_portoes_de_integridade_sobrevivem_a_reavaliacao() -> None:
+def test_alerta_de_instrucao_sobrevive_a_reavaliacao() -> None:
     vaga = vaga_teste()
     mandato = mandato_teste(vaga)
-    anterior = decidir_teste(
-        vaga, candidato_teste(), analise_teste(vaga, alertas=["instrucao_no_perfil: x"]), mandato
+    analise = analise_teste(
+        vaga, notas={"backend": 1.0, "dados": 1.0}, alertas=["instrucao_no_perfil: x"]
     )
+    anterior = decidir_teste(vaga, candidato_teste(), analise, mandato)
     nova = reavaliar_criterios(
         anterior,
         vaga,
@@ -852,6 +909,25 @@ def test_portoes_de_integridade_sobrevivem_a_reavaliacao() -> None:
         HOJE,
         AGORA,
         "r2",
+    )
+    assert nova.alertas == ["instrucao_detectada"]
+    assert all((c.nota_considerada or 0) <= 0.8 for c in nova.score.criterios if c.peso > 0)
+
+
+def test_instrucao_na_pre_triagem_continua_portao_na_reavaliacao() -> None:
+    vaga = vaga_teste()
+    mandato = mandato_teste(vaga)
+    anterior = decidir_teste(vaga, candidato_teste(), analise_teste(vaga), mandato)
+    nova = reavaliar_criterios(
+        anterior,
+        vaga,
+        candidato_teste(),
+        mandato,
+        [],
+        HOJE,
+        AGORA,
+        "r2",
+        portoes_extras=["instrucao_detectada"],
     )
     assert nova.destino == DestinoDecisao.REVISAO_HUMANA
     assert "instrucao_detectada" in nova.portoes
@@ -868,7 +944,8 @@ def test_trecho_inexistente_some_quando_a_pessoa_responde_o_requisito() -> None:
     anterior = decidir_teste(
         vaga, candidato_teste(), analise_teste(vaga, evidencias=evidencias), mandato
     )
-    assert f"{PORTAO_TRECHO_INEXISTENTE}:r1" in anterior.portoes
+    assert f"{PORTAO_TRECHO_INEXISTENTE}:r1" not in anterior.portoes
+    assert anterior.destino == DestinoDecisao.APROVAR
     nova = reavaliar_criterios(
         anterior, vaga, candidato_teste(), mandato, [_novo("r1", "Uso Python")], HOJE, AGORA, "r2"
     )
