@@ -181,6 +181,7 @@ CONSULTA_TODO_O_BANCO = ""
 LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
+AVISO_AGENDAMENTO_SIMULADO = "Mensagem simulada: o agendamento acontece num destino simulado."
 REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
 RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
 REGRA_REVERSAO = "reversao_humana"
@@ -1913,15 +1914,14 @@ class FluxoVaga:
     def _novo_convite(
         self, progresso: ProgressoFluxo, candidato_id: str, tentativa: int
     ) -> RegistroConvite:
-        """Grava o convite antes do envio. Pessoa bloqueada não tem nem o link pedido ao destino."""
+        """Grava o convite antes do envio. O link de agendamento só é pedido depois do aceite."""
         candidato = progresso.candidato(candidato_id)
         atual = self._candidato_atual(candidato, progresso)
         hoje = self._relogio().date()
+        link = None
         if pode_contatar(atual, tentativa - 1, self.vaga, hoje):
-            link = self._link_de_agendamento(candidato_id)
             estado = EstadoConvite.A_ENVIAR
         else:
-            link = None
             estado = EstadoConvite.ENCERRADO
         identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
         mensagem = self._texto_do_convite(progresso, atual, link, estado)
@@ -2096,6 +2096,44 @@ class FluxoVaga:
             self._evento(etapa, mensagem, candidato_id)
         elif tipo == TipoResposta.SILENCIO:
             self._preparar_reenvio(candidato_id, registro.tentativa)
+        elif tipo == TipoResposta.ACEITE:
+            self._enviar_link_apos_aceite(registro)
+
+    def _enviar_link_apos_aceite(self, registro: RegistroConvite) -> None:
+        """Com o aceite, pede o link ao destino e manda numa segunda mensagem. Quem marca é ele."""
+        candidato_id = registro.convite.candidato_id
+        link = self._link_de_agendamento(candidato_id)
+        if link is None:
+            return
+
+        def guardar(progresso: ProgressoFluxo) -> None:
+            alvo = next(r for r in progresso.convites if r.convite.id == registro.convite.id)
+            alvo.convite = alvo.convite.model_copy(update={"link_agendamento": link})
+
+        self._mudar(guardar)
+        texto = (
+            f"Que bom que você aceitou! Para escolher o horário da entrevista da vaga de "
+            f"{self.vaga.titulo}, use este link: {link}"
+        )
+        if registro.convite.simulado:
+            texto = f"{texto}\n\n{AVISO_AGENDAMENTO_SIMULADO}"
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:agendamento",
+                "mensagem": texto,
+                "link_agendamento": link,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:agendamento",
+            }
+        )
+        enviada = self._acao_idempotente(
+            mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+        )
+        texto_evento = (
+            "link de agendamento enviado depois do aceite"
+            if enviada
+            else "link de agendamento não saiu"
+        )
+        self._evento("agendamento", texto_evento, candidato_id)
 
     @staticmethod
     def _convite_aberto(

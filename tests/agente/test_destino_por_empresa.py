@@ -142,11 +142,14 @@ def test_demo_entrega_e_le_o_resultado_pela_nara_mcp(tmp_path, monkeypatch):
             headers=SESSAO,
             json={"vaga_id": vaga, "tipo": "aceite", "chave_idempotencia": "a1"},
         )
+        depois = cliente.get(f"/vagas/{vaga}/convites", headers=SESSAO).json()["itens"]
         retornos = cliente.post(
             f"/vagas/{vaga}/retornos", headers=SESSAO, json={"chave_idempotencia": "r1"}
         ).json()["itens"]
 
-    assert convite["link_destino"].startswith("https://nara.simulada.local/")
+    assert convite["link_destino"] is None
+    aceito = next(c for c in depois if c["id"] == convite["id"])
+    assert aceito["link_destino"].startswith("https://nara.simulada.local/")
     [pacote] = nara.entregues("empresa-mcp")
     assert pacote.candidato_id == convite["candidato_id"]
     assert [r["candidato_id"] for r in retornos] == [convite["candidato_id"]]

@@ -387,8 +387,16 @@ def _dois_candidatos() -> list[Candidato]:
     return [candidato_exemplo("c1"), candidato_exemplo("c2")]
 
 
+_MENSAGENS_DERIVADAS = (":duvida:", ":retorno", ":agendamento")
+
+
 def _convites_por_candidato(m: Montagem) -> dict[str, str]:
-    return {c.candidato_id: c.id for c in m.mensageiro.enviados.values()}
+    """Só o convite: a resposta à dúvida, o retorno e o link do aceite são outras mensagens."""
+    return {
+        c.candidato_id: c.id
+        for c in m.mensageiro.enviados.values()
+        if not any(marca in c.id for marca in _MENSAGENS_DERIVADAS)
+    }
 
 
 def _responder(fluxo: FluxoVaga, m: Montagem, candidato_id: str, tipo: TipoResposta) -> None:
@@ -602,14 +610,80 @@ def test_destino_sem_agenda_nem_resultado_nao_trava(tmp_path: Path) -> None:
     assert len(m.destino.entregues) == 2
 
 
-def test_link_do_destino_vai_no_convite(tmp_path: Path) -> None:
+def test_convite_nao_leva_link_antes_do_aceite(tmp_path: Path) -> None:
     m = Montagem(tmp_path, _dois_candidatos())
 
     _assinar_fluxo(m.fluxo())
 
-    convite = next(iter(m.mensageiro.enviados.values()))
-    assert convite.link_agendamento.startswith(ClienteNaraSimulado.BASE_LINK)
-    assert convite.simulado is True
+    assert m.mensageiro.enviados
+    assert all(c.link_agendamento is None for c in m.mensageiro.enviados.values())
+    assert all(
+        ClienteNaraSimulado.BASE_LINK not in c.mensagem for c in m.mensageiro.enviados.values()
+    )
+
+
+def _com_link(m: Montagem) -> list:
+    return [c for c in m.mensageiro.enviados.values() if c.link_agendamento]
+
+
+def test_aceite_envia_o_link_do_destino_numa_segunda_mensagem(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+
+    [mensagem] = _com_link(m)
+    assert mensagem.candidato_id == "c1"
+    assert mensagem.link_agendamento.startswith(ClienteNaraSimulado.BASE_LINK)
+    assert mensagem.link_agendamento in mensagem.mensagem
+    assert mensagem.simulado is True
+    assert any(e.etapa == "agendamento" for e in fluxo.eventos)
+
+
+def test_link_do_aceite_fica_no_registro_do_convite(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+
+    links = {r.convite.candidato_id: r.convite.link_agendamento for r in fluxo.convites()}
+    assert links["c1"].startswith(ClienteNaraSimulado.BASE_LINK)
+    assert links["c2"] is None
+
+
+def test_aceite_repetido_nao_reenvia_o_link(tmp_path: Path) -> None:
+    m = Montagem(tmp_path, _dois_candidatos())
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    _responder(fluxo, m, "c1", TipoResposta.ACEITE)
+    m.fluxo()
+
+    assert len(_com_link(m)) == 1
+
+
+def test_recusa_nao_pede_link_ao_destino(tmp_path: Path) -> None:
+    class Nara(ClienteNaraSimulado):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pedidos: list[str] = []
+
+        def link_agendamento(self, vaga_id: str, candidato_id: str) -> str | None:
+            self.pedidos.append(candidato_id)
+            return super().link_agendamento(vaga_id, candidato_id)
+
+    nara = Nara()
+    m = Montagem(tmp_path, _dois_candidatos(), destino=nara)
+    fluxo = m.fluxo()
+    _assinar_fluxo(fluxo)
+
+    _responder(fluxo, m, "c1", TipoResposta.RECUSA)
+
+    assert nara.pedidos == []
+    assert _com_link(m) == []
 
 
 def test_pacote_identifica_simulacao_e_nao_leva_nome_nem_inferencia(tmp_path: Path) -> None:
@@ -2976,9 +3050,7 @@ def test_quem_ficou_na_reserva_volta_na_ampliacao(tmp_path: Path) -> None:
             return [c for c in candidatos if c.id == "c1"]
         return [c for c in candidatos if c.id == "c2"]
 
-    banco = _banco_com(
-        _sem_nenhum_termo_da_consulta("c1"), _sem_nenhum_termo_da_consulta("c2")
-    )
+    banco = _banco_com(_sem_nenhum_termo_da_consulta("c1"), _sem_nenhum_termo_da_consulta("c2"))
     m = Montagem(tmp_path, [], banco=banco, fontes=[], priorizador=priorizador)
 
     _assinar_fluxo(m.fluxo(), max_ampliacoes=1, max_indicacoes=1)
