@@ -186,6 +186,61 @@ interpretada incorretamente pelo modelo. A sanitização compartilha os limites
 conhecidos documentados na T2.3. A integração do fluxo com T1.1/T1.3/T1.11 ainda
 precisa ser validada quando essas tarefas estiverem disponíveis.
 
+## T2.2 — rede de talentos simulada
+
+`RedeSimulada(candidatos, hoje=..., por_pagina=20, falhas_restantes=0,
+limite_chamadas=None)` implementa `FonteCandidatos.buscar`. É uma fonte local em
+memória, sem HTTP, scraping, modelo ou custo externo. Rejeita registros sem
+`simulado=True`; os resultados têm `fonte="rede_simulada"` e preservam `origem`.
+
+Cada busca exige empresa e página válida, aplica autorização vigente, estado
+ativo/desatualizado e opt-out antes de paginar por id. Consulta vazia lista os
+perfis buscáveis; as palavras de uma consulta são combinadas com E. Consultas
+alternativas devem ser executadas separadamente pelo chamador. A comparação é
+lexical, sem equivalência semântica: normaliza caixa e acentos, preserva C++, C#,
+.NET e versões. Nome, contato e atributos arbitrários não participam da busca;
+apenas o texto do perfil e uma lista explícita de atributos profissionais.
+Critérios sensíveis reconhecidos são recusados. Currículo é dado, nunca executado.
+
+`remover_duplicatas(candidatos)` agrupa por `(empresa_id, id)`, mantendo cópias
+independentes. Não associa ids distintos por nome ou e-mail. Usa o conteúdo mais
+recente (desempate por fonte/origem) e mantém restrições conservadoras de todas
+as cópias: opt-out de qualquer origem bloqueia; autorização exige todas as cópias;
+validade é a menor, e ausência prevalece; estado é o mais restritivo. Campos
+estruturados ausentes ou conflitantes são omitidos, para exigir esclarecimento.
+
+A fonte deduplica seu conjunto completo antes de filtrar/paginar, evitando repetir
+pessoas entre páginas ou esconder um opt-out em uma cópia. Para fontes diferentes,
+o chamador precisa reunir os registros antes de deduplicar. Isso não substitui a
+lista central de supressão: um opt-out filtrado por outra fonte não é observável
+nos resultados e deve continuar bloqueado pelas regras centrais de contato.
+
+Controles de falha:
+
+- `falhas_restantes`: primeiras chamadas válidas falham com `FonteIndisponivel`;
+  repetir a mesma página após a falha não avança a paginação.
+- `limite_chamadas`: total de tentativas válidas por instância; inclui falhas
+  injetadas, páginas vazias e chamadas de qualquer empresa. `None` é ilimitado.
+  Ao atingir o limite, gera erro, nunca lista vazia que pareça fim dos resultados.
+- Entradas inválidas não consomem tentativas. Contador e consumo de falhas ficam
+  protegidos por trava; consulta não altera o conjunto interno de perfis.
+
+Os controles podem ser ajustados pelo teste; não há espera, reset temporal ou
+retentativa automática. O fluxo decide a política de retomada. A data é injetada:
+atualize `hoje` ao simular passagem do tempo ou crie outra instância. Entradas são
+copiadas no construtor; alterações posteriores no banco não atualizam a fonte.
+
+Cada sucesso, falha e limite registra empresa, página, regra, quantidade e selo
+simulado em logging, sem texto de consulta/currículo. Rastro central da ferramenta
+ainda depende da integração com o fluxo/auditoria da frente 1.
+
+Validação: testes de contrato, paginação, filtros, duplicatas, conflitos,
+autorização, nomes/gênero, linguagens técnicas, falhas, limites e cópias. Avaliações
+locais recuperam todas as identidades autorizadas dos 250 registros legados, com
+páginas de sete pessoas, incluindo uma falha transitória antes da primeira página.
+Isso verifica recuperação e segurança mecânicas; não mede precisão semântica ou
+qualidade do modelo, nem usa a prova v3 para ajustar comportamento.
+
 ## T2.9 — revisão da leitura e extração de documentos
 
 A implementação integrada em `documentos.py` aceita texto, PDF e imagens, mantém
