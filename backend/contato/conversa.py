@@ -168,10 +168,10 @@ def responder_duvida(vaga: Vaga, texto: str, cliente_modelo: ClienteModelo) -> s
     """Resposta baseada só no material da vaga, ou None para uma pessoa responder."""
     if not texto.strip():
         return None
-    if contem_instrucao(texto):
-        logger.warning("alerta: instrução numa dúvida sobre a vaga %s", vaga.id)
-        return None
     material = material_da_vaga(vaga)
+    instrucao = contem_instrucao(texto)
+    if instrucao:
+        logger.warning("alerta: instrução numa dúvida sobre a vaga %s", vaga.id)
     try:
         resposta = cliente_modelo.completar(
             SISTEMA_DUVIDA,
@@ -183,6 +183,6 @@ def responder_duvida(vaga: Vaga, texto: str, cliente_modelo: ClienteModelo) -> s
     except (ModeloIndisponivel, RespostaInvalida) as erro:
         logger.warning("dúvida da vaga %s encaminhada a uma pessoa: %s", vaga.id, erro)
         return None
-    if not _resposta_fundamentada(duvida, material):
+    if instrucao or not _resposta_fundamentada(duvida, material):
         return None
     return duvida.resposta.strip()

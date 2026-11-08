@@ -14,6 +14,7 @@ from datetime import date, timedelta
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.contato.conversa import contem_instrucao
 from backend.contato.mensageiro import chave_convite
 from backend.contato.prompts import (
     MARCADOR_NOME,
@@ -115,8 +116,19 @@ def pode_recontatar(
 # Mensagem
 
 
+def _motivo_contaminado(motivo: str) -> bool:
+    return bool(contem_instrucao(motivo) or _ENDERECO.search(motivo.lower()))
+
+
 def _abertura_padrao(motivo: str, nome_empresa: str, vaga: Vaga | None) -> str:
-    texto = f"Olá, {MARCADOR_NOME}! A {nome_empresa} lembrou de você: {motivo.strip().rstrip('.')}."
+    if _motivo_contaminado(motivo):
+        logger.warning("alerta: instrução no motivo do recontato, abertura sem o trecho")
+        texto = f"Olá, {MARCADOR_NOME}! A {nome_empresa} lembrou de você."
+    else:
+        texto = (
+            f"Olá, {MARCADOR_NOME}! A {nome_empresa} lembrou de você: "
+            f"{motivo.strip().rstrip('.')}."
+        )
     if vaga is not None and vaga.titulo.lower() not in texto.lower():
         texto += f" A vaga é de {vaga.titulo}."
     return texto

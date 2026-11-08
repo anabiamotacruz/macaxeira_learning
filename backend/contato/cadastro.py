@@ -188,9 +188,9 @@ def tratar_resposta_cadastro(
 
 def extrair_atualizacao(texto: str, cliente_modelo: ClienteModelo) -> dict[str, str]:
     """Campos de perfil citados pela pessoa. Cada valor precisa estar no texto."""
-    if contem_instrucao(texto):
+    instrucao = contem_instrucao(texto)
+    if instrucao:
         logger.warning("alerta: instrução na mensagem de atualização, nada foi extraído")
-        return {}
     texto = texto[:LIMITE_TEXTO]
     try:
         resposta = cliente_modelo.completar(
@@ -202,6 +202,8 @@ def extrair_atualizacao(texto: str, cliente_modelo: ClienteModelo) -> dict[str, 
         extraida = AtualizacaoExtraida.model_validate(resposta.model_dump())
     except (ModeloIndisponivel, RespostaInvalida) as erro:
         logger.warning("atualização não extraída: %s", erro)
+        return {}
+    if instrucao:
         return {}
 
     normalizado = _normalizar(texto)
