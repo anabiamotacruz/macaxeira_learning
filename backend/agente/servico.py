@@ -211,6 +211,12 @@ class ServicoVagas:
     def vagas(self, empresa_id: str) -> list[Vaga]:
         return self.repositorio.listar_vagas(empresa_id)
 
+    def catalogo(self, empresa_id: str) -> list[tuple[Vaga, ResumoExecucao]]:
+        """Vagas da empresa com o resumo de cada uma, das mais novas para as mais antigas."""
+        return [
+            (vaga, self.resumo(empresa_id, vaga.id)) for vaga in reversed(self.vagas(empresa_id))
+        ]
+
     def criar_vaga(self, empresa_id: str, dados: dict[str, Any]) -> FluxoVaga:
         """Grava a vaga e a deixa à espera do mandato. Critério sensível não entra.
 
