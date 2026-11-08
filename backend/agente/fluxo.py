@@ -2155,7 +2155,12 @@ class FluxoVaga:
         return self._progresso().candidato(candidato_id)
 
     def convidar_do_garden(
-        self, candidato: Candidato, responsavel: str, canal: str, vaga_origem: str
+        self,
+        candidato: Candidato,
+        responsavel: str,
+        canal: str,
+        vaga_origem: str,
+        motivo: str = GARDEN_NAO_AGORA,
     ) -> RegistroConvite:
         """Convite especial a quem estava no Talent Garden. Só uma pessoa do RH autoriza.
 
@@ -2170,9 +2175,14 @@ class FluxoVaga:
         anteriores = [r for r in progresso.convites if r.convite.candidato_id == candidato.id]
         if anteriores:
             return anteriores[-1]
+        if motivo == GARDEN_NAO_AGORA:
+            contexto = (
+                f"desde a vaga de {vaga_origem}, quando nos disse que aquele não era o momento"
+            )
+        else:
+            contexto = f"desde a vaga de {vaga_origem}, em que o seu perfil chamou a nossa atenção"
         texto = (
-            f"Olá! Você estava no Talent Garden desta empresa desde a vaga de {vaga_origem}, "
-            f"quando nos disse que aquele não era o momento. Surgiu a vaga de "
+            f"Olá! Você estava no Talent Garden desta empresa {contexto}. Surgiu a vaga de "
             f"{self.vaga.titulo} e lembramos de você. Se quiser conversar, responda SIM. "
             "Para não ser mais contatado, responda SAIR."
         )

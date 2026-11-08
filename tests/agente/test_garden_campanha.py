@@ -84,6 +84,7 @@ def test_campanha_nova_sugere_quem_esta_no_garden_de_outra_vaga(cliente: TestCli
         assert item["candidato_id"] not in ja_convidados
         assert item["vaga_origem_id"] == origem
         assert item["vaga_origem_titulo"]
+        assert item["nome"]
         assert item["motivo"] in (GARDEN_NAO_AGORA, GARDEN_ALEM_DO_ENCAMINHAMENTO)
         assert item["canal"] == "email"
     nao_agora = [i for i in sugestoes if i["motivo"] == GARDEN_NAO_AGORA]
@@ -174,3 +175,17 @@ def test_outra_empresa_nao_ve_as_sugestoes(cliente: TestClient) -> None:
     )
 
     assert alheia.status_code == 404
+
+
+def test_texto_do_convite_especial_segue_o_motivo(cliente: TestClient) -> None:
+    _garden_na_primeira_vaga(cliente)
+    nova = _vaga(cliente, 1)
+    sugestoes = _sugestoes(cliente, nova)
+    alem = [i for i in sugestoes if i["motivo"] == GARDEN_ALEM_DO_ENCAMINHAMENTO]
+    if not alem:
+        pytest.skip("a base desta rodada não deixou ninguém além do encaminhamento")
+
+    [convite] = _convidar(cliente, nova, [alem[0]["candidato_id"]]).json()["itens"]
+
+    assert "não era o momento" not in convite["mensagem"]
+    assert "chamou a nossa atenção" in convite["mensagem"]

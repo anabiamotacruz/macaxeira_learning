@@ -1777,6 +1777,7 @@
                   "itens": [
                     {
                       "candidato_id": "candidato-exemplo-1",
+                      "nome": "Pessoa Fictícia",
                       "vaga_origem_id": "vaga-anterior",
                       "vaga_origem_titulo": "Software Engineer",
                       "motivo": "nao_agora",
@@ -4251,6 +4252,10 @@
             "minLength": 1,
             "title": "Candidato Id"
           },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
           "vaga_origem_id": {
             "type": "string",
             "minLength": 1,
@@ -4282,6 +4287,7 @@
         "type": "object",
         "required": [
           "candidato_id",
+          "nome",
           "vaga_origem_id",
           "vaga_origem_titulo",
           "motivo",

@@ -105,6 +105,7 @@ class SugestaoGarden:
     """Pessoa do Talent Garden de outra vaga da empresa, para o RH decidir se convida."""
 
     candidato_id: str
+    nome: str
     vaga_origem_id: str
     vaga_origem_titulo: str
     motivo: str
@@ -332,6 +333,7 @@ class ServicoVagas:
                     continue
                 sugestoes[item.candidato_id] = SugestaoGarden(
                     candidato_id=item.candidato_id,
+                    nome=origem.pessoa(item.candidato_id).nome,
                     vaga_origem_id=vaga.id,
                     vaga_origem_titulo=vaga.titulo,
                     motivo=item.motivo,
@@ -365,6 +367,7 @@ class ServicoVagas:
                         responsavel,
                         sugestao.canal,
                         sugestao.vaga_origem_titulo,
+                        sugestao.motivo,
                     )
                 )
         return registros
