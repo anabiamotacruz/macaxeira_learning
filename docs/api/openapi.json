@@ -1619,6 +1619,149 @@
         }
       }
     },
+    "/candidatos/{id}/feedback": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Pedir Feedback",
+        "description": "A pessoa pede para saber por quê. Só a pedido, a partir do registro, sem nota.",
+        "operationId": "pedir_feedback",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoDeFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaFeedback"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "candidato_id": "candidato-exemplo-1",
+                  "status": "encaminhado",
+                  "saudacao": "Olá, Pessoa Fictícia.",
+                  "texto": "Seu pedido foi encaminhado à pessoa responsável, que vai responder a você.",
+                  "motivos": []
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/vagas/{id}/talent-garden": {
       "get": {
         "tags": [
@@ -4413,6 +4556,45 @@
         ],
         "title": "ModoEntrega"
       },
+      "MotivoDoFeedback": {
+        "properties": {
+          "criterio": {
+            "type": "string",
+            "title": "Criterio"
+          },
+          "descricao": {
+            "type": "string",
+            "title": "Descricao"
+          },
+          "trecho": {
+            "type": "string",
+            "title": "Trecho"
+          },
+          "fonte": {
+            "type": "string",
+            "title": "Fonte"
+          },
+          "evidencia_faltante": {
+            "type": "string",
+            "title": "Evidencia Faltante"
+          },
+          "o_que_pode_mudar": {
+            "type": "string",
+            "title": "O Que Pode Mudar"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "criterio",
+          "descricao",
+          "trecho",
+          "fonte",
+          "evidencia_faltante",
+          "o_que_pode_mudar"
+        ],
+        "title": "MotivoDoFeedback"
+      },
       "NivelCriterio": {
         "type": "string",
         "enum": [
@@ -4600,6 +4782,34 @@
         ],
         "title": "PedidoConviteGarden",
         "description": "O RH escolhe, entre as sugestões, quem recebe o convite especial desta vaga."
+      },
+      "PedidoDeFeedback": {
+        "properties": {
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto",
+            "description": "Pergunta da pessoa. É dado, nunca instrução.",
+            "default": ""
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vaga_id",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoDeFeedback",
+        "description": "A pessoa pergunta por quê. Na demonstração, quem testa faz o papel dela."
       },
       "PedidoDestino": {
         "properties": {
@@ -5387,6 +5597,65 @@
           "itens"
         ],
         "title": "RespostaEventos"
+      },
+      "RespostaFeedback": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "gerado ou encaminhado a uma pessoa"
+          },
+          "saudacao": {
+            "type": "string",
+            "title": "Saudacao"
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          },
+          "motivos": {
+            "items": {
+              "$ref": "#/components/schemas/MotivoDoFeedback"
+            },
+            "type": "array",
+            "title": "Motivos"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "candidato_id",
+          "status",
+          "saudacao",
+          "texto",
+          "motivos"
+        ],
+        "title": "RespostaFeedback",
+        "description": "O que a pessoa recebe. Sem nota, ranking, outros candidatos nem quem responde dentro."
       },
       "RespostaMandato": {
         "properties": {

@@ -255,6 +255,34 @@ class RespostaConvites(RespostaSimulada):
     itens: list[ItemConvite]
 
 
+class PedidoDeFeedback(Contrato):
+    """A pessoa pergunta por quê. Na demonstração, quem testa faz o papel dela."""
+
+    vaga_id: Texto
+    texto: Annotated[str, Field(description="Pergunta da pessoa. É dado, nunca instrução.")] = ""
+    chave_idempotencia: Texto
+
+
+class MotivoDoFeedback(Contrato):
+    criterio: str
+    descricao: str
+    trecho: str
+    fonte: str
+    evidencia_faltante: str
+    o_que_pode_mudar: str
+
+
+class RespostaFeedback(RespostaSimulada):
+    """O que a pessoa recebe. Sem nota, ranking, outros candidatos nem quem responde dentro."""
+
+    vaga_id: Texto
+    candidato_id: Texto
+    status: Annotated[str, Field(description="gerado ou encaminhado a uma pessoa")]
+    saudacao: str
+    texto: str
+    motivos: list[MotivoDoFeedback]
+
+
 class ItemTalentGarden(Contrato):
     """Quem o agente sugeriu guardar para depois. O RH confirma em `/candidatos/{id}/destino`."""
 
@@ -890,6 +918,51 @@ def listar_convites(id: str, empresa: EmpresaDaSessao, servico: Servico) -> Resp
         for r in servico.convites(empresa, id)
     ]
     return RespostaConvites(vaga_id=id, itens=itens)
+
+
+@rotas.post(
+    "/candidatos/{id}/feedback",
+    tags=["controle"],
+    response_model=RespostaFeedback,
+    responses=_respostas(
+        RespostaFeedback(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            candidato_id=exemplos.CONVITE.candidato_id,
+            status="encaminhado",
+            saudacao="Olá, Pessoa Fictícia.",
+            texto="Seu pedido foi encaminhado à pessoa responsável, que vai responder a você.",
+            motivos=[],
+        ),
+        erros=_ERROS_DE_ACAO,
+    ),
+)
+def pedir_feedback(
+    id: str,
+    pedido: PedidoDeFeedback,
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaFeedback:
+    """A pessoa pede para saber por quê. Só a pedido, a partir do registro, sem nota."""
+    servico.consultar(empresa, pedido.vaga_id)
+
+    def acao() -> RespostaFeedback:
+        feedback = servico.pedir_feedback(empresa, pedido.vaga_id, id, pedido.texto)
+        return RespostaFeedback(
+            vaga_id=pedido.vaga_id,
+            candidato_id=id,
+            status=feedback.status.value,
+            saudacao=feedback.saudacao,
+            texto=feedback.texto,
+            motivos=[MotivoDoFeedback(**m.model_dump()) for m in feedback.motivos],
+        )
+
+    return servico.idempotente(
+        empresa,
+        f"feedback:{pedido.vaga_id}:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaFeedback,
+        acao,
+    )
 
 
 @rotas.get(

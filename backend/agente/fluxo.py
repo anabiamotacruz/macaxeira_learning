@@ -38,6 +38,8 @@ from backend.agente.auditoria import (
     decisoes_vigentes,
     rastreado,
 )
+from backend.agente.decisao_final import classificar_destino
+from backend.agente.feedback import FeedbackNegado, responder_pedido_de_feedback
 from backend.agente.interpretacao import NAO_AGORA, eh_nao_agora, interpretar_mensagem
 from backend.agente.mandato import (
     Mandato,
@@ -98,6 +100,7 @@ from backend.contratos.modelos import (
     EventoFluxo,
     Evidencia,
     PacoteContexto,
+    PedidoFeedback,
     RespostaCandidato,
     ResultadoEntrevista,
     TipoConvite,
@@ -2132,6 +2135,61 @@ class FluxoVaga:
             self._preparar_reenvio(candidato_id, registro.tentativa)
         elif tipo == TipoResposta.ACEITE:
             self._enviar_link_apos_aceite(registro)
+
+    def pedir_feedback(self, candidato_id: str, texto: str, canal: str = CANAL_CONVITE):
+        """A pessoa pergunta por quê. Responde a partir da decisão e do retorno da entrevista.
+
+        Só a pedido, sem nota nem ranking. Contestação, motivo sensível ou falta de trecho vão
+        para uma pessoa. O texto do pedido é dado e não vai ao diário.
+        """
+        progresso = self._progresso()
+        candidato = progresso.candidato(candidato_id)
+        analise = progresso.analises.get(candidato_id)
+        vigente = self._decisao_vigente(candidato_id)
+        mandato = self.mandato
+        if analise is None or mandato is None:
+            raise AcaoRecusada("sem análise registrada para esta pessoa nesta vaga")
+        agora = self._relogio()
+        try:
+            decisao = classificar_destino(
+                self.vaga, candidato, analise, mandato, agora.date(), agora, vigente.rastro_id
+            )
+        except ValueError as erro:
+            raise AcaoRecusada(f"decisão indisponível para feedback: {erro}") from None
+        registro = next(
+            (r for r in reversed(progresso.convites) if r.convite.candidato_id == candidato_id),
+            None,
+        )
+        resultado = None
+        if registro is not None and registro.retorno is not None:
+            resultado = ResultadoEntrevista(
+                empresa_id=self.vaga.empresa_id,
+                vaga_id=self.vaga.id,
+                candidato_id=candidato_id,
+                notas={},
+                aprovado=registro.retorno.aprovado,
+                simulado=registro.retorno.simulado,
+            )
+        pedido = PedidoFeedback(
+            empresa_id=self.vaga.empresa_id,
+            vaga_id=self.vaga.id,
+            candidato_id=candidato_id,
+            canal=canal,
+            pedido_em=agora,
+            texto=texto,
+        )
+        try:
+            return responder_pedido_de_feedback(
+                pedido,
+                self.vaga,
+                candidato.nome,
+                registrar=self._repo.registrar_evento,
+                agora=agora,
+                decisao=decisao,
+                resultado=resultado,
+            )
+        except FeedbackNegado as erro:
+            raise AcaoRecusada(str(erro)) from None
 
     def _interpretar(self, texto: str) -> TipoResposta | str | None:
         """Falha do interpretador nunca decide: a mensagem continua dúvida."""

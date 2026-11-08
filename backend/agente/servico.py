@@ -57,6 +57,7 @@ from backend.contratos.modelos import (
     DestinoPessoa,
     EstadoVaga,
     EventoFluxo,
+    FeedbackCandidato,
     Mandato,
     PropostaAjuste,
     RespostaCandidato,
@@ -313,6 +314,11 @@ class ServicoVagas:
 
     def convites(self, empresa_id: str, vaga_id: str) -> list[RegistroConvite]:
         return self._fluxo(empresa_id, vaga_id).convites()
+
+    def pedir_feedback(
+        self, empresa_id: str, vaga_id: str, candidato_id: str, texto: str
+    ) -> FeedbackCandidato:
+        return self._fluxo(empresa_id, vaga_id).pedir_feedback(candidato_id, texto)
 
     def talent_garden(self, empresa_id: str, vaga_id: str) -> list[ItemGarden]:
         return self._fluxo(empresa_id, vaga_id).talent_garden()
