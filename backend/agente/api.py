@@ -33,6 +33,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.agente import exemplos_api as exemplos
 from backend.agente.auditoria import DecisoesAutomaticasPausadas
 from backend.agente.configuracao import PerguntaVaga
+from backend.agente.feedback import FeedbackNegado
 from backend.agente.fluxo import (
     AcaoRecusada,
     DuvidaConvite,
@@ -65,13 +66,16 @@ from backend.contratos.modelos import (
     DestinoPessoa,
     EstadoVaga,
     EventoFluxo,
+    FeedbackCandidato,
     Mandato,
+    MotivoFeedback,
     Politica,
     PropostaAjuste,
     Requisito,
     RespostaCandidato,
     ResumoExecucao,
     SaidaPersonalizada,
+    StatusFeedback,
     TaxaMedida,
     Texto,
     TipoDecisao,
@@ -221,6 +225,20 @@ class PedidoResposta(Contrato):
     chave_idempotencia: Texto
 
 
+class PedidoFeedbackApi(Contrato):
+    """Pedido de feedback da pessoa, trazido pelo canal. Só existe feedback a pedido."""
+
+    vaga_id: Texto
+    canal: Annotated[Texto, Field(description="Canal por onde a pessoa pediu.")]
+    texto: Annotated[
+        str, Field(description="Texto da pessoa. É dado, nunca instrução, e não vai aos eventos.")
+    ] = ""
+    contestacao: Annotated[
+        bool, Field(description="A pessoa contesta o resultado: o pedido vai para uma pessoa.")
+    ] = False
+    chave_idempotencia: Texto
+
+
 class ItemConvite(Contrato):
     """O convite como o painel mostra. O agente não agenda: o link é do agente de destino."""
 
@@ -292,6 +310,40 @@ RETORNO_EXEMPLO = RetornoEntrevista(
     enviado=True,
     simulado=True,
     momento=exemplos.MOMENTO,
+)
+
+
+class RespostaFeedback(RespostaSimulada):
+    """`responsavel` e `encaminhado_por` orientam o canal e não são mostrados à pessoa."""
+
+    vaga_id: Texto
+    candidato_id: Texto
+    feedback: FeedbackCandidato
+
+
+FEEDBACK_EXEMPLO = RespostaFeedback(
+    vaga_id=exemplos.VAGA_EXEMPLO,
+    candidato_id=exemplos.CANDIDATOS[2].id,
+    feedback=FeedbackCandidato(
+        status=StatusFeedback.GERADO,
+        saudacao="Olá, Pessoa Fictícia.",
+        texto=(
+            "Sobre a vaga Pessoa Desenvolvedora (fictícia), estes critérios não foram atendidos:\n"
+            '- Experiência com Python. Registro: "oito anos de Java em sistemas internos". '
+            "O registro mostra que este requisito não foi atendido. "
+            "Atender a este requisito poderia mudar o resultado."
+        ),
+        motivos=[
+            MotivoFeedback(
+                criterio="python",
+                descricao="Experiência com Python",
+                trecho="oito anos de Java em sistemas internos",
+                fonte="rede_simulada",
+                evidencia_faltante="O registro mostra que este requisito não foi atendido.",
+                o_que_pode_mudar="Atender a este requisito poderia mudar o resultado.",
+            )
+        ],
+    ),
 )
 
 
@@ -1130,6 +1182,42 @@ def registrar_destino(
 
 
 @rotas.post(
+    "/candidatos/{id}/feedback",
+    tags=["candidatos"],
+    response_model=RespostaFeedback,
+    responses=_respostas(FEEDBACK_EXEMPLO, erros=_ERROS_DE_ACAO),
+)
+def responder_feedback(
+    id: str,
+    pedido: Annotated[
+        PedidoFeedbackApi, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_FEEDBACK))
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaFeedback:
+    """Responde ao pedido de feedback pela decisão registrada, ou o encaminha a uma pessoa.
+
+    Cada motivo cita um critério e um trecho do registro. Não traz nota, faixa, ranking nem outras
+    pessoas. Repetir com a mesma chave devolve a mesma resposta, sem gerar outra.
+    """
+    servico.consultar(empresa, pedido.vaga_id)
+
+    def acao() -> RespostaFeedback:
+        feedback = servico.responder_feedback(
+            empresa, pedido.vaga_id, id, pedido.canal, pedido.texto, pedido.contestacao
+        )
+        return RespostaFeedback(vaga_id=pedido.vaga_id, candidato_id=id, feedback=feedback)
+
+    return servico.idempotente(
+        empresa,
+        f"feedback:{pedido.vaga_id}:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaFeedback,
+        acao,
+    )
+
+
+@rotas.post(
     "/convites/{id}/resposta",
     tags=["controle"],
     response_model=RespostaRegistroResposta,
@@ -1211,6 +1299,11 @@ _ERROS_DE_DOMINIO: dict[type[ErroContrato], tuple[int, str, str]] = {
     ),
     VagaInexistente: (404, "vaga_nao_encontrada", "Vaga não encontrada nesta empresa."),
     CandidatoInexistente: (
+        404,
+        "candidato_nao_encontrado",
+        "Candidato não encontrado nesta empresa.",
+    ),
+    FeedbackNegado: (
         404,
         "candidato_nao_encontrado",
         "Candidato não encontrado nesta empresa.",

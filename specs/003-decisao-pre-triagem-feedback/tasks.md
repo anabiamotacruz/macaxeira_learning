@@ -187,7 +187,7 @@ description: "Tarefas da decisão, pré-triagem e feedback"
 
 - [ ] T060 [US5] F1: separar a causa do resultado da orientação, para que competência não apareça como motivo de recusa por requisito, em `backend/agente/feedback.py`, com teste em `tests/agente/test_feedback.py`
 - [ ] T061 [US5] C: restringir `PedidoFeedback.canal` a e-mail e WhatsApp, em `backend/contratos/modelos.py`, com teste em `tests/contratos/test_destino_e_pre_triagem.py`
-- [ ] T062 [US5] F1: receber o pedido, buscar a decisão no registro e responder de forma idempotente, em `backend/agente/servico.py` e `backend/agente/api.py`, com testes em `tests/agente/test_api.py`
+- [X] T062 [US5] F1: receber o pedido, buscar a decisão no registro e responder de forma idempotente, em `backend/agente/servico.py` e `backend/agente/api.py`, com testes em `tests/agente/test_api_feedback.py`. Rota `POST /candidatos/{id}/feedback`. A decisão final vem de `Decisao.entrada["decisao_final"]`; registro sem ela vai à pessoa responsável com `decisao_sem_lacunas_registradas`
 - [ ] T063 [US5] F3: reconhecer o pedido de feedback na conversa, verificar a pessoa pelo convite e chamar T062, em `backend/contato/conversa.py`, com testes em `tests/contato/test_conversa.py`
 - [ ] T064 [US5] F3: entregar o texto só depois de consultar supressão e janela de 24 horas, em `backend/contato/mensageiro.py`, com testes em `tests/contato/test_mensageiro.py`
 - [ ] T065 [P] [US5] F4: mostrar os pedidos encaminhados à pessoa responsável em `web/app/candidatos/[id]/page.tsx`, consumindo a API
