@@ -299,7 +299,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
     ["Autorizou o contato", candidato.autorizou_contato],
     ["Indicada para contato", decisao?.tipo === "indicar"],
     ["Convite com link da Nara", Boolean(conviteAtual) || (!usaApi && decisao?.tipo === "indicar")],
-    ["Aceitou e foi entregue à Nara", Boolean(pacote) || conviteAtual?.estado === "aceito"],
+    ["Aceitou e foi entregue ao recrutador", Boolean(pacote) || conviteAtual?.estado === "aceito"],
     [
       resultado ? `Entrevista na Nara: ${resultado.aprovado ? "passou" : "não passou"}` : conviteAtual?.retorno ? `Retorno: ${conviteAtual.retorno.aprovado ? "aprovada" : "não aprovada"}` : "Resultado da entrevista (Nara)",
       Boolean(resultado || conviteAtual?.retorno),
@@ -395,7 +395,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
                         <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-x-3.5 border-b border-cora-subtle px-[22px] py-3" key={r.id}>
                           <span className="font-mono text-xs text-cora-ink-2">E-{String(i + 1).padStart(2, "0")}</span>
                           <span className="font-medium">{r.descricao}</span>
-                          {r.situacao === "atende" ? <Selo tom="ok">Atende</Selo> : r.situacao ? <Selo tom="coral">Não atende</Selo> : <Selo tom="neutral">Sem dado</Selo>}
+                          {r.situacao === "atende" ? <Selo tom="ok">Atende</Selo> : r.situacao && r.situacao !== "sem_dado" ? <Selo tom="coral">Não atende</Selo> : <Selo tom="neutral">Sem dado</Selo>}
                         </div>
                       ))}
                       <div className="flex justify-between border-b border-[#EDF1EE] bg-cora-row px-[22px] py-[9px] text-[13px] font-semibold">
@@ -441,7 +441,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
                   <h2 className="sr-only" id="sec-lacunas">Lacunas e pontos a aprofundar</h2>
                   <div className="flex flex-col gap-2.5">
                     <span className="text-[15px] font-semibold">Lacunas</span>
-                    {lacunas.length ? <ul className="m-0 flex flex-col gap-1.5 pl-[18px] text-cora-ink-2">{lacunas.map((l) => <li key={l}>{l}</li>)}</ul> : <p className="m-0 text-[13px] text-cora-muted">{usaApi && !pacote ? "Aparecem quando a pessoa é entregue à Nara." : "Nenhuma lacuna registrada."}</p>}
+                    {lacunas.length ? <ul className="m-0 flex flex-col gap-1.5 pl-[18px] text-cora-ink-2">{lacunas.map((l) => <li key={l}>{l}</li>)}</ul> : <p className="m-0 text-[13px] text-cora-muted">{usaApi && !pacote ? "Aparecem quando a pessoa é entregue ao recrutador." : "Nenhuma lacuna registrada."}</p>}
                   </div>
                   <div className="flex flex-col gap-2.5">
                     <span className="text-[15px] font-semibold">Para a Nara aprofundar</span>
