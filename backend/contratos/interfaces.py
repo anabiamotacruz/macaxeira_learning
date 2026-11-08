@@ -22,6 +22,14 @@ class FonteCandidatos(Protocol):
 
 @runtime_checkable
 class BancoTalentos(FonteCandidatos, Protocol):
+    def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
+        """Perfis aptos da empresa, por página. Consulta vazia devolve todos eles."""
+        ...
+
+    def obter(self, empresa_id: str, candidato_id: str) -> Candidato | None:
+        """O estado atual da pessoa. `None` para quem não está no banco ou foi removido."""
+        ...
+
     def importar(self, empresa_id: str, registros: list[dict]) -> list[Candidato]: ...
 
     def registrar_autorizacao(
@@ -49,7 +57,12 @@ class Revisor(Protocol):
 
 @runtime_checkable
 class Mensageiro(Protocol):
-    def enviar(self, convite: Convite) -> bool: ...
+    def enviar(self, convite: Convite) -> bool:
+        """Envia o convite. Precisa descartar a repetição pela `chave_idempotencia`.
+
+        O fluxo evita chamar duas vezes, mas uma queda no meio do envio obriga a repetir.
+        """
+        ...
 
 
 @runtime_checkable

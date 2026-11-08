@@ -11,6 +11,7 @@ import re
 from pydantic import BaseModel
 
 from backend.contato.prompts import (
+    AVISO_SIMULACAO,
     MARCADOR_LINK,
     MARCADOR_NOME,
     PALAVRA_SAIDA,
@@ -72,10 +73,11 @@ def _fits(analise: Analise, nome: str) -> list[tuple[str, str]]:
 
 
 def _criterios_atendidos(vaga: Vaga, analise: Analise) -> list[str]:
+    """Critérios com evidência ou requisito cumprido, pela descrição e sem repetir."""
     descricoes = {r.id: r.descricao for r in vaga.requisitos}
-    criterios = [e.criterio for e in analise.evidencias if e.trecho.strip()]
-    criterios += [descricoes.get(rid, rid) for rid, ok in analise.requisitos_ok.items() if ok]
-    return list(dict.fromkeys(criterios))
+    ids = [e.criterio for e in analise.evidencias if e.trecho.strip()]
+    ids += [rid for rid, ok in analise.requisitos_ok.items() if ok]
+    return list(dict.fromkeys(descricoes.get(i, i) for i in ids))
 
 
 def mensagem_padrao(vaga: Vaga, analise: Analise, tem_link: bool) -> str:
@@ -89,6 +91,14 @@ def mensagem_padrao(vaga: Vaga, analise: Analise, tem_link: bool) -> str:
     return (
         f"Olá, {MARCADOR_NOME}! Temos uma vaga de {vaga.titulo}.{motivo} {proximo} "
         f"Se não quiser mais receber mensagens, responda {PALAVRA_SAIDA}."
+    )
+
+
+def rodape(candidato: Candidato) -> str:
+    """Origem do contato e aviso de simulação, montados pelo código e nunca pelo modelo."""
+    return (
+        f"Encontramos seu perfil em: {candidato.fonte} ({candidato.origem}). "
+        f"{AVISO_SIMULACAO}"
     )
 
 
@@ -158,6 +168,7 @@ def criar_convite(
     if link_agendamento:
         texto = texto.replace(MARCADOR_LINK, link_agendamento)
     texto = texto.replace(MARCADOR_NOME, candidato.nome)
+    texto = f"{texto} {rodape(candidato)}"
 
     chave = chave_convite(vaga.empresa_id, vaga.id, candidato.id, TipoConvite.VAGA, tentativa)
     return Convite(
