@@ -6,7 +6,8 @@ com os mesmos dados sintéticos. `montar_servico` escolhe: o modelo só entra co
 `AGENTE_COM_MODELO=1` e a chave do provedor no ambiente. Com `NARA_MCP_URL`, a entrega, o link e
 o resultado da entrevista passam pelo servidor MCP da Nara simulada, um conector por empresa.
 Com `AGENTE_BUSCA_REAL=1`, a busca também usa as fontes externas da Frente 2 (Brave, Bright Data e
-PDL, cada uma só com a sua chave); quem vem delas chega sem autorização e o funil o segura.
+PDL, cada uma só com a sua chave); quem vem delas chega sem autorização, é analisado como os
+demais e só recebe convite pelo e-mail que a própria pessoa publicou (`agente/contato_publicado`).
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """

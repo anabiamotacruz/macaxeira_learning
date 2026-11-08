@@ -38,6 +38,11 @@ from backend.agente.auditoria import (
     decisoes_vigentes,
     rastreado,
 )
+from backend.agente.contato_publicado import (
+    contato_publicado,
+    mensagem_pelo_contato_publicado,
+    motivo_sem_contato,
+)
 from backend.agente.mandato import (
     Mandato,
     MandatoInvalido,
@@ -65,9 +70,11 @@ from backend.agente.regras import (
     decisao_de_corte,
     decisao_por_novos_requisitos,
     decisao_sem_analise,
+    externo_sem_autorizacao,
     nao_priorizada,
     parece_instrucao,
     pode_contatar,
+    pode_contatar_pelo_publicado,
     separar_palavras,
     validar_criterios,
 )
@@ -1883,6 +1890,9 @@ class FluxoVaga:
         registros = [r for r in progresso.convites if r.convite.candidato_id == candidato_id]
         ultimo = registros[-1] if registros else None
         with self._contexto(progresso, candidato_id):
+            if ultimo is None or ultimo.estado == EstadoConvite.CANCELADO:
+                if self._sem_contato_publicado(progresso, candidato_id):
+                    return
             if ultimo is None:
                 registro = self._novo_convite(progresso, candidato_id, tentativa=1)
             elif ultimo.estado == EstadoConvite.CANCELADO:
@@ -1894,16 +1904,51 @@ class FluxoVaga:
             if registro.estado == EstadoConvite.A_ENVIAR:
                 self._enviar(progresso, registro)
 
+    def _sem_contato_publicado(self, progresso: ProgressoFluxo, candidato_id: str) -> bool:
+        """Quem nunca autorizou e não publicou e-mail fica indicada, sem convite por outro meio.
+
+        O motivo vai uma vez para os eventos da vaga, com a pessoa. Não há fila manual aqui: a de
+        `backend/contato/canal.py` é só de memória e não chega à API do agente.
+        """
+        atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+        if not externo_sem_autorizacao(atual) or contato_publicado(atual) is not None:
+            return False
+        mensagem = (
+            f"sem convite: {motivo_sem_contato(atual).value}; a pessoa segue indicada e não é "
+            "contatada por outro meio"
+        )
+        if not any(e.candidato_id == candidato_id and e.mensagem == mensagem for e in self.eventos):
+            self._evento("convite", mensagem, candidato_id)
+        return True
+
+    def _pode_contatar(self, candidato: Candidato, tentativas: int) -> bool:
+        """Autorização ativa, ou o e-mail que a própria pessoa publicou, se ela nunca autorizou."""
+        if pode_contatar(candidato, tentativas, self.vaga, self._relogio().date()):
+            return True
+        publicado = contato_publicado(candidato) is not None
+        return pode_contatar_pelo_publicado(
+            candidato, tentativas, self.vaga, tem_contato_publicado=publicado
+        )
+
     def _texto_do_convite(
         self,
         progresso: ProgressoFluxo,
         candidato: Candidato,
         link: str | None,
         estado: EstadoConvite,
+        tentativa: int = 1,
     ) -> str:
-        """Texto do redator, quando houver; se ele falhar, o texto fixo segue sem parar o fluxo."""
+        """Texto do redator, quando houver; se ele falhar, o texto fixo segue sem parar o fluxo.
+
+        Quem nunca autorizou recebe o texto fixo do contato publicado, com origem e saída.
+        """
         fixo = f"Temos uma vaga de {self.vaga.titulo} que combina com o seu perfil."
         analise = progresso.analises.get(candidato.id)
+        contato = contato_publicado(candidato) if externo_sem_autorizacao(candidato) else None
+        if contato is not None and estado == EstadoConvite.A_ENVIAR:
+            return mensagem_pelo_contato_publicado(
+                self.vaga, candidato, analise, contato, link, tentativa
+            )
         if self._redator_convite is None or analise is None or estado != EstadoConvite.A_ENVIAR:
             return fixo
         try:
@@ -1918,15 +1963,16 @@ class FluxoVaga:
         """Grava o convite antes do envio. Pessoa bloqueada não tem nem o link pedido ao destino."""
         candidato = progresso.candidato(candidato_id)
         atual = self._candidato_atual(candidato, progresso)
-        hoje = self._relogio().date()
-        if pode_contatar(atual, tentativa - 1, self.vaga, hoje):
+        if self._pode_contatar(atual, tentativa - 1):
             link = self._link_de_agendamento(candidato_id)
             estado = EstadoConvite.A_ENVIAR
         else:
             link = None
             estado = EstadoConvite.ENCERRADO
         identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
-        mensagem = self._texto_do_convite(progresso, atual, link, estado)
+        mensagem = self._texto_do_convite(progresso, atual, link, estado, tentativa)
+        # O e-mail de quem nunca autorizou sai pelo mensageiro simulado: é simulação e diz isso.
+        simulado = candidato.simulado or externo_sem_autorizacao(atual)
         convite = Convite(
             id=f"convite:{identificador}",
             empresa_id=self.vaga.empresa_id,
@@ -1937,7 +1983,7 @@ class FluxoVaga:
             mensagem=mensagem,
             link_agendamento=link,
             chave_idempotencia=f"convite:{self.vaga.empresa_id}:{identificador}",
-            simulado=candidato.simulado,
+            simulado=simulado,
         )
         registro = RegistroConvite(convite=convite, tentativa=tentativa, estado=estado)
 
@@ -1999,8 +2045,7 @@ class FluxoVaga:
         """Confere a situação da pessoa imediatamente antes do envio."""
         candidato = progresso.candidato(registro.convite.candidato_id)
         atual = self._candidato_atual(candidato, progresso)
-        hoje = self._relogio().date()
-        if not pode_contatar(atual, registro.tentativa - 1, self.vaga, hoje):
+        if not self._pode_contatar(atual, registro.tentativa - 1):
             self._mudar_convite(registro, EstadoConvite.ENCERRADO)
             self._evento("convite", "contato bloqueado pelas regras", candidato.id)
             return
@@ -2120,7 +2165,7 @@ class FluxoVaga:
         """Deixa o convite a enviar. Quem envia é a execução, que confere estado e mandato."""
         progresso = self._progresso()
         atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
-        if pode_contatar(atual, tentativa, self.vaga, self._relogio().date()):
+        if self._pode_contatar(atual, tentativa):
             self._novo_convite(progresso, candidato_id, tentativa + 1)
 
     def _registrar_opt_out(self, candidato_id: str) -> None:

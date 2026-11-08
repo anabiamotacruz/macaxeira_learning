@@ -196,6 +196,32 @@ def autorizacao_ativa(candidato: Candidato, hoje: date) -> bool:
     )
 
 
+MAX_CONTATOS_PELO_PUBLICADO = 2
+"""E-mail inicial e um único lembrete, como em `backend/contato/email_inicial.py`."""
+
+
+def externo_sem_autorizacao(candidato: Candidato) -> bool:
+    """Veio de fonte externa e nunca registrou autorização: pode ser analisada (decisão de 8/11).
+
+    É como `candidato_de_item` entrega quem vem da busca real: dado real, pendente, sem
+    autorização e sem validade. Opt-out, remoção e autorização que existiu e venceu ficam de fora
+    e continuam cortando. O contato dessa pessoa só sai pelo e-mail que ela mesma publicou
+    (`pode_contatar_pelo_publicado`).
+    """
+    return (
+        not candidato.simulado
+        and not candidato.opt_out
+        and not candidato.autorizou_contato
+        and candidato.autorizacao_valida_ate is None
+        and candidato.estado == EstadoBanco.PENDENTE
+    )
+
+
+def pode_ir_ao_modelo(candidato: Candidato, hoje: date) -> bool:
+    """Autorização ativa ou pessoa externa que nunca teve autorização registrada."""
+    return autorizacao_ativa(candidato, hoje) or externo_sem_autorizacao(candidato)
+
+
 @dataclass(frozen=True)
 class CorteDeAutorizacao:
     """Saída de quem não pode ir ao modelo, para o fluxo sem funil. Sem dados do perfil."""
@@ -218,6 +244,8 @@ def corte_de_autorizacao(candidato: Candidato, hoje: date) -> CorteDeAutorizacao
         return corte("opt_out", "a pessoa pediu para não ser contatada")
     if candidato.estado == EstadoBanco.REMOVIDO:
         return corte("estado_bloqueado", "perfil removido")
+    if externo_sem_autorizacao(candidato):
+        return None
     if not candidato.autorizou_contato or validade is None:
         return corte("sem_autorizacao", "sem autorização registrada")
     if validade < hoje:
@@ -234,6 +262,18 @@ def pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga, hoje: date)
     """
     _exigir_mesma_empresa(vaga, candidato)
     return autorizacao_ativa(candidato, hoje) and 0 <= tentativas < vaga.max_tentativas_contato
+
+
+def pode_contatar_pelo_publicado(
+    candidato: Candidato, tentativas: int, vaga: Vaga, *, tem_contato_publicado: bool
+) -> bool:
+    """Contato de quem nunca autorizou: só pelo e-mail que a pessoa publicou, no máximo duas vezes.
+
+    `tem_contato_publicado` vem de `contato_publicado`: contato inferido ou de provedor não vale.
+    """
+    _exigir_mesma_empresa(vaga, candidato)
+    limite = min(vaga.max_tentativas_contato, MAX_CONTATOS_PELO_PUBLICADO)
+    return tem_contato_publicado and externo_sem_autorizacao(candidato) and 0 <= tentativas < limite
 
 
 def _trecho_no_perfil(trecho: str, perfil: str) -> bool:
@@ -441,7 +481,7 @@ def classificar_faixa(
             sinais=sinais,
         )
 
-    if not autorizacao_ativa(candidato, hoje):
+    if not pode_ir_ao_modelo(candidato, hoje):
         return faixa(TipoDecisao.DESCARTAR, "sem_autorizacao")
     reprovados = sorted(i for i, s in requisitos.items() if s == StatusRequisito.NAO_ATENDE)
     if reprovados:
