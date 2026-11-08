@@ -27,6 +27,7 @@ e a pessoa chega sem autorização. O custo da página soma a busca da Brave e c
 
 import logging
 import re
+import threading
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -53,6 +54,7 @@ __all__ = [
     "SITE_PERFIS_LINKEDIN",
     "ExtratorPerfil",
     "ProvedorLinkedinPorBrave",
+    "limpar_cache_de_perfis",
     "usuario_de_url_perfil",
 ]
 
@@ -65,6 +67,32 @@ _HOSTS_PERFIL = frozenset({"linkedin.com", "www.linkedin.com", "br.linkedin.com"
 _CAMINHO_PERFIL = re.compile(r"/in/([A-Za-z0-9_%.-]{3,100})/?")
 _TEM_LETRA_OU_NUMERO = re.compile(r"[A-Za-z0-9]")
 _ERROS_DE_EXTRATOR = (FonteIndisponivel, ConnectionError, TimeoutError)
+
+
+# Cache do processo, compartilhado por todas as instâncias e threads: cada crédito pago vira uma
+# pessoa diferente. Guarda só o `ItemColetado` já limpo (nunca a resposta crua do extrator). `None`
+# marca o perfil não encontrado (404) ou fora do formato, já cobrado e que não se tenta de novo.
+# Falha de extrator (sem crédito, indisponível) não entra: a próxima consulta pode tentar.
+_cache_de_perfis: dict[str, ItemColetado | None] = {}
+_trava_do_cache = threading.Lock()
+_travas_por_usuario: dict[str, threading.Lock] = {}
+
+
+def limpar_cache_de_perfis() -> None:
+    """Esvazia o cache de perfis. Usado nos testes."""
+    with _trava_do_cache:
+        _cache_de_perfis.clear()
+        _travas_por_usuario.clear()
+
+
+def _trava_do_usuario(usuario: str) -> threading.Lock:
+    with _trava_do_cache:
+        return _travas_por_usuario.setdefault(usuario, threading.Lock())
+
+
+def _no_cache(usuario: str) -> bool:
+    with _trava_do_cache:
+        return usuario in _cache_de_perfis
 
 
 class ExtratorPerfil(Protocol):
@@ -111,6 +139,7 @@ class _Pagina:
     ativos: list[ExtratorPerfil]
     custo: float
     perfis: Counter[str] = field(default_factory=Counter)
+    do_cache: int = 0
     ultimo_motivo: MotivoTroca | None = None
 
 
@@ -159,23 +188,52 @@ class ProvedorLinkedinPorBrave:
                 )
                 if usuario
             )
-        )[: self._perfis]
+        )
         pagina = _Pagina(ativos=list(self.extratores), custo=self._brave.custo_requisicao_usd)
-        itens = [item for item in (self._extrair(u, pagina) for u in usuarios) if item]
-        logger.info(
-            "linkedin_brave: %s usuário(s), %s perfil(is) extraído(s), perfis por extrator=%s, "
-            "custo US$ %.3f",
+        itens: list[ItemColetado] = []
+        novos = 0
+        for usuario in usuarios:
+            if not _no_cache(usuario):
+                # O teto conta só quem ainda pode custar; quem está no cache entra de graça.
+                if novos >= self._perfis:
+                    continue
+                novos += 1
+            item = self._item_do_usuario(usuario, pagina)
+            if item:
+                itens.append(item)
+        logger.warning(
+            "linkedin_brave: página com %s usuário(s) achado(s), %s do cache, %s pago(s) "
+            "(por extrator=%s), %s perfil(is) devolvido(s), custo US$ %.3f",
             len(usuarios),
-            len(itens),
+            pagina.do_cache,
+            sum(pagina.perfis.values()),
             dict(pagina.perfis),
+            len(itens),
             pagina.custo,
         )
         if usuarios and not itens and not pagina.ativos:
             raise ErroProvedor(pagina.ultimo_motivo or MotivoTroca.FALHA_TEMPORARIA, pagina.custo)
         return RespostaProvedor(itens=itens, custo_usd=pagina.custo)
 
-    def _extrair(self, usuario: str, pagina: _Pagina) -> ItemColetado | None:
-        """Tenta os extratores ativos em ordem. O que falha sai da página, sem texto do erro."""
+    def _item_do_usuario(self, usuario: str, pagina: _Pagina) -> ItemColetado | None:
+        """Cache primeiro; só o que não está nele chama um extrator. Uma extração por usuário."""
+        with _trava_do_usuario(usuario):
+            with _trava_do_cache:
+                if usuario in _cache_de_perfis:
+                    pagina.do_cache += 1
+                    return _cache_de_perfis[usuario]
+            item, definitivo = self._extrair(usuario, pagina)
+            if definitivo:
+                with _trava_do_cache:
+                    _cache_de_perfis[usuario] = item
+            return item
+
+    def _extrair(self, usuario: str, pagina: _Pagina) -> tuple[ItemColetado | None, bool]:
+        """Tenta os extratores ativos em ordem. O que falha sai da página, sem texto do erro.
+
+        O segundo valor diz se o resultado é definitivo (vai para o cache): perfil extraído ou não
+        encontrado. Sem extrator disponível, não é.
+        """
         while pagina.ativos:
             extrator = pagina.ativos[0]
             try:
@@ -194,10 +252,10 @@ class ProvedorLinkedinPorBrave:
                 continue
             pagina.custo += custo
             if registro is None:
-                return None
+                return None, True
             pagina.perfis[extrator.origem] += 1
-            return self._item(registro, usuario, extrator.origem)
-        return None
+            return self._item(registro, usuario, extrator.origem), True
+        return None, False
 
     @staticmethod
     def _desligar(pagina: _Pagina, extrator: ExtratorPerfil, motivo: MotivoTroca) -> None:
