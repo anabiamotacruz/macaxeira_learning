@@ -134,8 +134,10 @@ fi
 
 # Modelo e voz: com a chave da Featherless, o agente pensa com o modelo e fala em voz real.
 if [[ -n "${FEATHERLESS_API_KEY:-}" ]]; then
+  # Qwen3-30B-A3B: ~5 s por chamada contra ~26 s do GLM-5.2; a vaga chega aos convites em ~1 min.
+  export MODELO_PADRAO="${MODELO_PADRAO:-Qwen/Qwen3-30B-A3B-Instruct-2507}"
   export AGENTE_COM_MODELO="${AGENTE_COM_MODELO:-1}" VOZ_REAL="${VOZ_REAL:-1}"
-  info "Modelo ligado (AGENTE_COM_MODELO=$AGENTE_COM_MODELO) e voz real (VOZ_REAL=$VOZ_REAL)."
+  info "Modelo $MODELO_PADRAO ligado e voz real (VOZ_REAL=$VOZ_REAL)."
 else
   aviso "Sem FEATHERLESS_API_KEY: o agente roda sem modelo e sem voz real."
 fi
