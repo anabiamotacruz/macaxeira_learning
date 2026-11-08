@@ -300,11 +300,19 @@ def test_recusa_por_requisito_vem_antes_do_portao_de_instrucao() -> None:
     assert decisao.alertas
 
 
-def test_vaga_sem_requisito_vai_para_uma_pessoa() -> None:
+def test_vaga_sem_requisito_decide_como_qualquer_vaga() -> None:
     vaga = vaga_teste(requisitos=[])
     decisao = decidir_teste(vaga=vaga, analise=analise_teste(vaga), mandato=mandato_teste(vaga))
-    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
-    assert "vaga_sem_requisitos" in decisao.portoes
+
+    com_requisito = vaga_teste()
+    esperada = decidir_teste(
+        vaga=com_requisito,
+        analise=analise_teste(com_requisito),
+        mandato=mandato_teste(com_requisito),
+    )
+
+    assert "vaga_sem_requisitos" not in decisao.portoes
+    assert decisao.destino == esperada.destino
 
 
 # Sinais

@@ -270,7 +270,7 @@ def _faltas_de_evidencia(
     evidencias: tuple[tuple[str, TipoEvidencia], ...],
     aceitas: frozenset[TipoEvidencia],
 ) -> list[str]:
-    faltas = [] if vaga.requisitos else ["vaga_sem_requisitos"]
+    faltas: list[str] = []
     for requisito in sorted(vaga.requisitos, key=lambda r: r.id):
         if analise.requisitos_ok.get(requisito.id) is not True:
             faltas.append(f"requisito_nao_confirmado:{requisito.id}")

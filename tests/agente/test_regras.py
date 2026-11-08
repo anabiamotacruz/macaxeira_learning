@@ -568,13 +568,24 @@ def test_competencia_sem_evidencia_nao_vai_para_a_faixa_verde() -> None:
     assert "sem_evidencia_competencia:backend" in decisao.motivo
 
 
-def test_vaga_sem_requisitos_nao_vai_para_a_faixa_verde() -> None:
-    analise = _analise(requisitos_ok={})
+def test_vaga_sem_requisitos_decide_pelas_competencias() -> None:
+    """Sem requisito eliminatório, a decisão segue as competências e a nota."""
+    vaga = _vaga_faixa(requisitos=[])
 
-    decisao = _decidir(vaga=_vaga_faixa(requisitos=[]), analise=analise)
+    decisao = _decidir(vaga=vaga, analise=_analise(requisitos_ok={}))
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "vaga_sem_requisitos" in decisao.motivo
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert decisao.regra == "faixa_verde_v1"
+
+    sem_evidencia = _analise(
+        requisitos_ok={},
+        evidencias=[Evidencia(criterio="outra", trecho="Liderou APIs", fonte="github")],
+    )
+    pendente = _decidir(vaga=vaga, analise=sem_evidencia)
+
+    assert pendente.tipo is TipoDecisao.PEDIR_HUMANO
+    assert "sem_evidencia_competencia:backend" in pendente.motivo
+    assert "vaga_sem_requisitos" not in pendente.motivo
 
 
 @pytest.mark.parametrize(
