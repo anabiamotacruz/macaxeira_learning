@@ -370,3 +370,42 @@ export async function proporVaga(
   >("/vagas/proposta", { method: "POST", body: JSON.stringify({ descricao }) });
   return { proposta: resposta.proposta, pergunta: resposta.pergunta };
 }
+
+export type MensagemWhatsApp = {
+  id: string;
+  direcao: "entrada" | "saida";
+  texto: string;
+  momento: string;
+  audio_id: string | null;
+  enviada: boolean;
+};
+
+export type ConversaWhatsApp = {
+  numero_mascarado: string;
+  empresa_id: string;
+  vaga_id: string;
+  candidato_id: string;
+  codigo: string;
+  encerrada: boolean;
+  mensagens: MensagemWhatsApp[];
+  simulado: boolean;
+};
+
+/** Conversas do WhatsApp real desta vaga. Sem WhatsApp configurado na API, a lista vem vazia. */
+export async function listarConversasWhatsApp(vagaId: string): Promise<ConversaWhatsApp[]> {
+  try {
+    return await request<ConversaWhatsApp[]>(`/vagas/${encodeURIComponent(vagaId)}/whatsapp`);
+  } catch {
+    return [];
+  }
+}
+
+/** O MP3 de uma resposta por voz, como URL local para o <audio>. A rota exige a empresa. */
+export async function obterAudioWhatsApp(vagaId: string, audioId: string): Promise<string> {
+  const resposta = await fetch(
+    `${API_URL}/vagas/${encodeURIComponent(vagaId)}/whatsapp/audio/${encodeURIComponent(audioId)}`,
+    { headers: { "X-Empresa-Id": EMPRESA_ID }, cache: "no-store" },
+  );
+  if (!resposta.ok) throw new ApiError(resposta.status);
+  return URL.createObjectURL(await resposta.blob());
+}

@@ -1,0 +1,39 @@
+# Evolution API local, para a demo do WhatsApp. Pareia um número de teste por QR code.
+# Uso: EVOLUTION_API_KEY=<segredo> docker compose -f infra/evolution/docker-compose.yml up -d
+# Nenhuma chave fica neste arquivo: tudo vem do ambiente.
+services:
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_SENHA:-evolution-local}@evolution-db:5432/evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      LOG_LEVEL: ERROR,WARN
+      LOG_BAILEYS: error
+      LANGUAGE: pt-BR
+    volumes:
+      - evolution-instancias:/evolution/instances
+    depends_on:
+      - evolution-db
+  evolution-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_SENHA:-evolution-local}
+    volumes:
+      - evolution-db:/var/lib/postgresql/data
+volumes:
+  evolution-instancias: {}
+  evolution-db: {}
