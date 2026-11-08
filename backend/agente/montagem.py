@@ -3,7 +3,8 @@
 `montar_demo` monta a demonstração: tudo é sintético, em simulação e sem chave nem internet.
 `montar_com_modelo` usa o modelo de verdade na análise, na revisão, nas consultas e nas dúvidas,
 com os mesmos dados sintéticos. `montar_servico` escolhe: o modelo só entra com
-`AGENTE_COM_MODELO=1` e a chave do provedor no ambiente.
+`AGENTE_COM_MODELO=1` e a chave do provedor no ambiente. Com `NARA_MCP_URL`, a entrega, o link e
+o resultado da entrevista passam pelo servidor MCP da Nara simulada, um conector por empresa.
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """
@@ -18,6 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
 from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
@@ -26,7 +28,7 @@ from backend.contato.conversa import contem_instrucao, material_da_vaga, respond
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contato.pos_entrevista import mensagem_pos_entrevista
 from backend.contratos.erros import ModeloIndisponivel
-from backend.contratos.interfaces import Analisador, ClienteModelo, Revisor
+from backend.contratos.interfaces import AgenteRecrutador, Analisador, ClienteModelo, Revisor
 from backend.contratos.modelos import Analise, Candidato, Evidencia, ResultadoEntrevista, Vaga
 from backend.contratos.simulacoes import (
     BancoTalentosSimulado,
@@ -45,12 +47,14 @@ from backend.fontes.consultas import ETAPA_GERAR, ampliar_consultas, gerar_consu
 from backend.fontes.funil import priorizar
 from backend.fontes.revisor import RevisorIndependente
 from backend.modelos.cliente import ClienteFeatherless
+from backend.nara_simulada.mcp import configuracao_destino
 from backend.nara_simulada.servico import NaraSimulada
 
 logger = logging.getLogger(__name__)
 
 LIMITE_ANALISES_POR_RODADA = 20
 COM_MODELO = "AGENTE_COM_MODELO"
+NARA_MCP_URL = "NARA_MCP_URL"
 """Quantas pessoas cada rodada leva às análises por modelo. As demais vão para a fila humana."""
 
 
@@ -330,6 +334,7 @@ def _montar(
     consultas: ProvedorConsultas,
     medidor_gasto: Callable[[], float],
     respondedor_duvida: Callable[[Vaga, Candidato, str], str | None],
+    destino: AgenteRecrutador | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
@@ -342,7 +347,7 @@ def _montar(
             analisador=analisador,
             revisor=revisor,
             mensageiro=MensageiroSimulado(),
-            destino=NaraSimulada(),
+            destino=NaraSimulada() if destino is None else destino,
             relogio=_agora,
             medidor_gasto=medidor_gasto,
             consultas=consultas,
@@ -356,7 +361,16 @@ def _montar(
     )
 
 
-def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
+def nara_por_mcp(url: str) -> DestinoPorEmpresa:
+    """A Nara simulada pelo servidor MCP dela, com um conector por empresa da sessão."""
+    return DestinoPorEmpresa(
+        lambda empresa_id: ConectorMCP(DestinoMCP(**configuracao_destino(empresa_id, url)))
+    )
+
+
+def montar_demo(
+    caminho: str | Path | None = None, *, destino: AgenteRecrutador | None = None
+) -> ServicoVagas:
     """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
     return _montar(
         caminho,
@@ -367,6 +381,7 @@ def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
         ),
         medidor_gasto=_sem_gasto,
         respondedor_duvida=responder_duvida_demo,
+        destino=destino,
     )
 
 
@@ -375,6 +390,7 @@ def montar_com_modelo(
     *,
     cliente: ClienteModelo,
     medidor_gasto: Callable[[], float],
+    destino: AgenteRecrutador | None = None,
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
 
@@ -391,6 +407,7 @@ def montar_com_modelo(
         consultas=consultas_por_modelo(cliente),
         medidor_gasto=medidor_gasto,
         respondedor_duvida=responder,
+        destino=destino,
     )
 
 
@@ -402,15 +419,17 @@ def montar_servico(
 ) -> ServicoVagas:
     """Escolhe a montagem pelo ambiente. Sem opt-in ou sem chave, fica a demonstração sem modelo."""
     ambiente = os.environ if ambiente is None else ambiente
+    url_nara = ambiente.get(NARA_MCP_URL, "").strip()
+    destino = nara_por_mcp(url_nara) if url_nara else None
     if ambiente.get(COM_MODELO, "").strip() != "1":
-        return montar_demo(caminho)
+        return montar_demo(caminho, destino=destino)
     try:
         cliente = criar_cliente()
     except ModeloIndisponivel as erro:
         logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
-        return montar_demo(caminho)
+        return montar_demo(caminho, destino=destino)
 
     def gasto() -> float:
         return float(getattr(cliente, "custo_total_usd", 0.0))
 
-    return montar_com_modelo(caminho, cliente=cliente, medidor_gasto=gasto)
+    return montar_com_modelo(caminho, cliente=cliente, medidor_gasto=gasto, destino=destino)

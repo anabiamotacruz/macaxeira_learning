@@ -17,6 +17,7 @@ validado, e o texto do servidor não vai para modelo, log, rastro ou mensagem de
 import asyncio
 import logging
 import re
+import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any, NoReturn, Self
@@ -37,6 +38,7 @@ from pydantic import (
 
 from backend.agente.auditoria import contexto_atual, contexto_rastro, rastreado
 from backend.contratos.erros import ErroContrato
+from backend.contratos.interfaces import AgenteRecrutador
 from backend.contratos.modelos import Contrato, PacoteContexto, ResultadoEntrevista, Texto
 
 logger = logging.getLogger(__name__)
@@ -279,3 +281,41 @@ class ConectorMCP:
         async with asyncio.timeout(self._destino.tempo_limite_s):
             async with Client(str(self._destino.url)) as cliente:
                 return await cliente.call_tool(ferramenta, argumentos)
+
+
+class DestinoPorEmpresa:
+    """`AgenteRecrutador` para várias empresas: um destino por empresa, criado na primeira chamada.
+
+    Cada `ConectorMCP` atende uma única empresa. O link de agendamento não recebe a empresa, então
+    ela vem do rastro em andamento; sem rastro, o pedido é recusado e o convite segue sem link.
+    """
+
+    def __init__(self, criar: Callable[[str], AgenteRecrutador], *, simulado: bool = True) -> None:
+        self._criar = criar
+        self._simulado = simulado
+        self._destinos: dict[str, AgenteRecrutador] = {}
+        self._trava = threading.Lock()
+
+    @property
+    def simulado(self) -> bool:
+        return self._simulado
+
+    def _destino(self, empresa_id: str) -> AgenteRecrutador:
+        if not empresa_id or not empresa_id.strip():
+            raise EmpresaForaDoEscopo("destino sem empresa: pedido recusado")
+        with self._trava:
+            if empresa_id not in self._destinos:
+                self._destinos[empresa_id] = self._criar(empresa_id)
+            return self._destinos[empresa_id]
+
+    def link_agendamento(self, vaga_id: str, candidato_id: str) -> str | None:
+        atual = contexto_atual()
+        if atual is None:
+            raise EmpresaForaDoEscopo("link de agendamento sem empresa no rastro: pedido recusado")
+        return self._destino(atual.empresa_id).link_agendamento(vaga_id, candidato_id)
+
+    def entregar(self, pacote: PacoteContexto) -> bool:
+        return self._destino(pacote.empresa_id).entregar(pacote)
+
+    def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoEntrevista]:
+        return self._destino(empresa_id).resultados(empresa_id, vaga_id)
