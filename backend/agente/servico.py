@@ -23,6 +23,7 @@ from backend.agente.fluxo import (
     RedatorConvite,
     RegistroConvite,
     Reidentificador,
+    RespondedorDuvida,
     concorrencia_do_ambiente,
     consulta_pelo_titulo,
     exigir_humano,
@@ -116,6 +117,7 @@ class DependenciasFluxo:
     reidentificador: Reidentificador | None = None
     concorrencia: int = field(default_factory=concorrencia_do_ambiente)
     redator_convite: RedatorConvite | None = None
+    respondedor_duvida: RespondedorDuvida | None = None
 
 
 def _novo_id_de_vaga() -> str:
@@ -164,6 +166,7 @@ class ServicoVagas:
             reidentificador=d.reidentificador,
             concorrencia=d.concorrencia,
             redator_convite=d.redator_convite,
+            respondedor_duvida=d.respondedor_duvida,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:

@@ -31,6 +31,7 @@ from backend.agente import exemplos_api as exemplos
 from backend.agente.auditoria import DecisoesAutomaticasPausadas
 from backend.agente.fluxo import (
     AcaoRecusada,
+    DuvidaConvite,
     EstadoConvite,
     ResponsavelInvalido,
     TransicaoInvalida,
@@ -195,9 +196,21 @@ class ItemConvite(Contrato):
     simulado: bool
     estado: EstadoConvite
     tentativa: int
+    duvidas: Annotated[
+        list[DuvidaConvite],
+        Field(
+            description="Dúvidas da pessoa e resposta do agente; sem resposta, uma pessoa atende."
+        ),
+    ] = []
 
     @classmethod
-    def de(cls, convite: Convite, estado: EstadoConvite, tentativa: int) -> "ItemConvite":
+    def de(
+        cls,
+        convite: Convite,
+        estado: EstadoConvite,
+        tentativa: int,
+        duvidas: Sequence[DuvidaConvite] = (),
+    ) -> "ItemConvite":
         return cls(
             id=convite.id,
             candidato_id=convite.candidato_id,
@@ -207,6 +220,7 @@ class ItemConvite(Contrato):
             simulado=convite.simulado,
             estado=estado,
             tentativa=tentativa,
+            duvidas=list(duvidas),
         )
 
 
@@ -641,7 +655,8 @@ def consultar_entrega(id: str, empresa: EmpresaDaSessao, servico: Servico) -> Re
 def listar_convites(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaConvites:
     """Lista os convites da vaga com o estado de cada um. Todo convite aqui é simulado."""
     itens = [
-        ItemConvite.de(r.convite, r.estado, r.tentativa) for r in servico.convites(empresa, id)
+        ItemConvite.de(r.convite, r.estado, r.tentativa, r.duvidas)
+        for r in servico.convites(empresa, id)
     ]
     return RespostaConvites(vaga_id=id, itens=itens)
 

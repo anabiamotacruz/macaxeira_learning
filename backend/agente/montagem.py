@@ -17,6 +17,7 @@ from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
+from backend.contato.conversa import contem_instrucao, material_da_vaga
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contratos.interfaces import ClienteModelo
 from backend.contratos.modelos import Analise, Candidato, Evidencia, Vaga
@@ -104,7 +105,8 @@ PERFIS_DEMO = (
 
 
 _PALAVRAS_VAZIAS = frozenset(
-    "com para por dos das que uma sem nos nas como mais sua seu tem ter and the for".split()
+    "com para por dos das que uma sem nos nas como mais sua seu tem ter and the for vaga vagas "
+    "voces qual quais".split()
 )
 
 
@@ -222,6 +224,23 @@ def modelos_de_vaga() -> list[dict]:
     ]
 
 
+def responder_duvida_demo(vaga: Vaga, candidato: Candidato, texto: str) -> str | None:
+    """Sem modelo: responde só com a frase do material da vaga que trata da pergunta.
+
+    Usa o material e o detector de instrução da Frente 3. Sem frase que trate da pergunta,
+    ou com instrução no texto, a dúvida fica para uma pessoa.
+    """
+    if not texto.strip() or contem_instrucao(texto):
+        return None
+    frases = [
+        frase
+        for linha in material_da_vaga(vaga).splitlines()
+        for frase in _frases(linha.split(": ", 1)[-1])
+    ]
+    trecho = _melhor_trecho(texto, frases)
+    return None if trecho is None else f"[Resposta simulada] Pelo material da vaga: {trecho}"
+
+
 def redigir_convite(vaga: Vaga, candidato: Candidato, analise: Analise, link: str | None) -> str:
     """Convite da Frente 3 sem modelo: cita os critérios com evidência e o link da Nara."""
     convite = criar_convite(
@@ -307,6 +326,7 @@ def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
             ),
             priorizador=priorizador_do_funil(),
             redator_convite=redigir_convite,
+            respondedor_duvida=responder_duvida_demo,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),
