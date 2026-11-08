@@ -1,0 +1,52 @@
+{
+  "empresa_id": "empresa-ficticia",
+  "candidato_id": "pessoa-ficticia-1",
+  "simulado": true,
+  "coletado_em": "2026-11-07",
+  "nome": "Pessoa Fictícia",
+  "fatos": [
+    {
+      "fonte": "github",
+      "url": "https://pessoa-ficticia.example.invalid/repositorios/fila",
+      "coletado_em": "2026-11-07",
+      "texto": "Mantém um repositório público em Python.",
+      "trecho": "Repositório fila. Linguagem: Python.",
+      "tipo": "comprovado"
+    },
+    {
+      "fonte": "documento_enviado",
+      "documento": "curriculo-ficticio.pdf",
+      "coletado_em": "2026-11-07",
+      "texto": "Declara cinco anos de experiência com APIs.",
+      "trecho": "Cinco anos desenvolvendo APIs em produção.",
+      "tipo": "declarado"
+    },
+    {
+      "fonte": "site_indicado",
+      "url": "https://pessoa-ficticia.example.invalid/sobre",
+      "coletado_em": "2026-11-07",
+      "texto": "Provável experiência com filas, a confirmar com a pessoa.",
+      "trecho": "Escrevi sobre processamento assíncrono.",
+      "tipo": "inferido"
+    }
+  ],
+  "contatos": [
+    {
+      "fonte": "documento_enviado",
+      "documento": "curriculo-ficticio.pdf",
+      "coletado_em": "2026-11-07",
+      "tipo": "email",
+      "valor": "pessoa@example.invalid",
+      "publicado_pela_pessoa": true
+    },
+    {
+      "fonte": "documento_enviado",
+      "documento": "curriculo-ficticio.pdf",
+      "coletado_em": "2026-11-07",
+      "tipo": "telefone",
+      "valor": "+55 00 00000-0000",
+      "publicado_pela_pessoa": true
+    }
+  ],
+  "alertas": []
+}

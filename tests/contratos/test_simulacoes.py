@@ -314,3 +314,17 @@ def test_agente_sem_agenda_recebe_pacote_sem_link_nem_resultado():
     assert agente.entregar(_pacote()) is True
     assert len(agente.entregues) == 1
     assert agente.resultados("empresa-a", "v1") == []
+
+
+def test_banco_simulado_le_o_estado_atual_por_id_e_isola_empresas():
+    banco = BancoTalentosSimulado(hoje=HOJE)
+    banco.importar("empresa-a", [{"id": "c1", "perfil_texto": "Perfil"}])
+
+    assert banco.obter("empresa-a", "c1").id == "c1"
+    assert banco.obter("empresa-b", "c1") is None
+
+    banco.registrar_opt_out("empresa-a", "c1")
+    assert banco.obter("empresa-a", "c1").opt_out is True
+
+    banco.remover("empresa-a", "c1")
+    assert banco.obter("empresa-a", "c1") is None
