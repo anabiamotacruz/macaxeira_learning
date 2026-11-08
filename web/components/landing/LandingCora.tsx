@@ -101,7 +101,7 @@ const COLUNAS: Array<{ titulo: string; total: string; cor: string; cartoes: Cart
     ],
   },
   {
-    titulo: "Entregue à Nara",
+    titulo: "Entregue ao recrutador",
     total: "2",
     cor: "bg-[#377B5D]",
     cartoes: [
@@ -188,7 +188,7 @@ function ProdutoAoVivo() {
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs text-cora-placeholder">Vagas / Backend Sênior</span>
                 <span className="text-[22px] font-semibold tracking-[-0.03em]">Pessoa Desenvolvedora Backend Sênior</span>
-                <span className="text-[13px] text-cora-placeholder">Meta: 5 pessoas interessadas na Nara em 7 dias · 2 de 5 entregues</span>
+                <span className="text-[13px] text-cora-placeholder">Meta: 5 pessoas entregues ao recrutador em 7 dias · 2 de 5 entregues</span>
               </div>
               <Badge className="bg-cora-warn-bg px-2.5 py-[3px] font-semibold text-cora-warn-ink">
                 <span className="size-1.5 rounded-full bg-[#C98A12]" />
