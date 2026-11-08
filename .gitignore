@@ -15,6 +15,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!web/lib/
 lib64/
 parts/
 sdist/
@@ -223,3 +224,5 @@ __marimo__/
 node_modules/
 .next/
 .vercel/
+
+!web/lib/
