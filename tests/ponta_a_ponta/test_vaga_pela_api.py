@@ -256,12 +256,15 @@ def test_aplicacao_de_demonstracao_funciona_sem_nenhuma_chave(tmp_path, monkeypa
     monkeypatch.delenv("FEATHERLESS_API_KEY", raising=False)
     cliente = TestClient(criar_app(montar_demo(tmp_path / "demo.db")))
 
-    criada = cliente.post("/vagas", headers=SESSAO, json=PEDIDO_VAGA).json()
+    # A demo usa as vagas e os perfis sintéticos da Frente 2. O banco é autodeclarado, então o
+    # mandato precisa aceitar evidência declarada para alguém entrar na faixa verde.
+    modelo = cliente.get("/vagas/modelos", headers=SESSAO).json()["itens"][0]
+    criada = cliente.post("/vagas", headers=SESSAO, json={**modelo, "meta_candidatos": 2}).json()
     vaga = criada["vaga"]["id"]
     assinada = cliente.post(
         f"/vagas/{vaga}/mandato",
         headers=SESSAO,
-        json=_mandato(limiar_verde=0.8, modo_entrega="na_decisao"),
+        json=_mandato(limiar_verde=0.8, modo_entrega="na_decisao", aceitar_declarada=True),
     )
 
     assert assinada.status_code == 201, assinada.text

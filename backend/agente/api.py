@@ -221,6 +221,12 @@ class RespostaRegistroResposta(RespostaSimulada):
     tipo: TipoResposta
 
 
+class RespostaModelosVaga(RespostaSimulada):
+    """Vagas de exemplo, sintéticas, para preencher o formulário de `POST /vagas`."""
+
+    itens: list[PedidoVaga]
+
+
 class RespostaVaga(RespostaSimulada):
     vaga: Vaga
     estado: EstadoVaga
@@ -531,6 +537,22 @@ def assinar_mandato(
     if estado != EstadoVaga.PAUSADA:
         tarefas.add_task(servico.executar, empresa, id)
     return RespostaMandato(mandato=mandato, estado=estado)
+
+
+@rotas.get(
+    "/vagas/modelos",
+    tags=["vagas"],
+    response_model=RespostaModelosVaga,
+    responses=_respostas(
+        RespostaModelosVaga(itens=[PedidoVaga.model_validate(exemplos.PEDIDO_VAGA)]),
+        erros=(401, 422),
+    ),
+)
+def listar_modelos_de_vaga(_: EmpresaDaSessao, servico: Servico) -> RespostaModelosVaga:
+    """Vagas sintéticas de exemplo. Declarada antes de `/vagas/{id}` para não ser lida como id."""
+    return RespostaModelosVaga(
+        itens=[PedidoVaga.model_validate(m) for m in servico.modelos_de_vaga()]
+    )
 
 
 @rotas.get(
