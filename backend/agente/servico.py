@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any
 
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
+from backend.agente.documento import documento_de_ingestao
 from backend.agente.fluxo import (
     REGRA_REVERSAO,
     FluxoVaga,
@@ -313,6 +314,22 @@ class ServicoVagas:
             simulado=True,
             momento=self._dependencias.relogio(),
         )
+
+    def documento(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
+        """O documento de ingestão de quem já foi entregue ao destino, com a conversa."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        pacote = next(
+            (p for p in fluxo.pacotes_entregues() if p.candidato_id == candidato_id), None
+        )
+        if pacote is None:
+            raise CandidatoInexistente("não há entrega para esta pessoa nesta vaga")
+        duvidas = [
+            duvida
+            for registro in fluxo.convites()
+            if registro.convite.candidato_id == candidato_id
+            for duvida in registro.duvidas
+        ]
+        return documento_de_ingestao(pacote, fluxo.vaga, duvidas)
 
     def resumo(self, empresa_id: str, vaga_id: str) -> ResumoExecucao:
         fluxo = self._fluxo(empresa_id, vaga_id)
