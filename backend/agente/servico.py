@@ -16,7 +16,7 @@ from typing import Any
 
 from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
-from backend.agente.configuracao import PerguntaVaga
+from backend.agente.configuracao import PerguntaVaga, PropostaComObservacoes
 from backend.agente.contato_publicado import ContatoPorEmpresa
 from backend.agente.documento import documento_de_ingestao
 from backend.agente.documento_html import documento_html
@@ -137,7 +137,9 @@ class DependenciasFluxo:
     redator_convite: RedatorConvite | None = None
     respondedor_duvida: RespondedorDuvida | None = None
     redator_retorno: RedatorRetorno | None = None
-    propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None
+    propositor_vaga: (
+        Callable[[str, str], Vaga | PerguntaVaga | PropostaComObservacoes] | None
+    ) = None
     """Recebe a descrição e a empresa. Sem ele, a proposta de critérios fica indisponível."""
     buscador_contato: ContatoPorEmpresa | None = None
     """EnvoAPI, só com a busca real e `ENVO_API_KEY`. Guarda o resultado por empresa e pessoa."""
@@ -341,7 +343,9 @@ class ServicoVagas:
             momento=self._dependencias.relogio(),
         )
 
-    def propor_vaga(self, empresa_id: str, descricao: str) -> Vaga | PerguntaVaga:
+    def propor_vaga(
+        self, empresa_id: str, descricao: str
+    ) -> Vaga | PerguntaVaga | PropostaComObservacoes:
         """Critérios propostos a partir da descrição. Não cria vaga: a pessoa revisa e cria."""
         propositor = self._dependencias.propositor_vaga
         if propositor is None:

@@ -136,8 +136,10 @@ fi
 if [[ -n "${FEATHERLESS_API_KEY:-}" ]]; then
   # Qwen3-30B-A3B: ~5 s por chamada contra ~26 s do GLM-5.2; a vaga chega aos convites em ~1 min.
   export MODELO_PADRAO="${MODELO_PADRAO:-Qwen/Qwen3-30B-A3B-Instruct-2507}"
+  # A revisão independente fica no GLM: o Qwen inventa ressalva e derruba a nota de todo mundo.
+  export MODELO_REVISAO="${MODELO_REVISAO:-zai-org/GLM-5.2}"
   export AGENTE_COM_MODELO="${AGENTE_COM_MODELO:-1}" VOZ_REAL="${VOZ_REAL:-1}"
-  info "Modelo $MODELO_PADRAO ligado e voz real (VOZ_REAL=$VOZ_REAL)."
+  info "Modelo $MODELO_PADRAO ligado, revisão com $MODELO_REVISAO e voz real (VOZ_REAL=$VOZ_REAL)."
 else
   aviso "Sem FEATHERLESS_API_KEY: o agente roda sem modelo e sem voz real."
 fi

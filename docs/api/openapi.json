@@ -509,7 +509,8 @@
                     "max_tentativas_contato": 2,
                     "palavras_chave": []
                   },
-                  "pergunta": null
+                  "pergunta": null,
+                  "observacoes": []
                 }
               }
             }
@@ -5750,6 +5751,13 @@
               }
             ],
             "title": "Pergunta"
+          },
+          "observacoes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Observacoes"
           }
         },
         "additionalProperties": false,
@@ -5758,7 +5766,8 @@
           "simulado",
           "exemplo_fixo",
           "proposta",
-          "pergunta"
+          "pergunta",
+          "observacoes"
         ],
         "title": "RespostaProposta",
         "description": "Critérios propostos para revisão, ou a pergunta que falta responder. Nada é criado."

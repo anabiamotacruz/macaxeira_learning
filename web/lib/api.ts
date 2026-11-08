@@ -485,11 +485,20 @@ export async function obterSugestaoDeAjuste(vagaId: string): Promise<SugestaoAju
 
 export async function proporVaga(
   descricao: string,
-): Promise<{ proposta: ModeloDeVaga | null; pergunta: string | null }> {
+): Promise<{ proposta: ModeloDeVaga | null; pergunta: string | null; observacoes: string[] }> {
   const resposta = await requestComMotivo<
-    ApiEnvelope & { proposta: ModeloDeVaga | null; pergunta: string | null }
+    ApiEnvelope & { proposta: ModeloDeVaga | null; pergunta: string | null; observacoes?: string[] }
   >("/vagas/proposta", { method: "POST", body: JSON.stringify({ descricao }) });
-  return { proposta: resposta.proposta, pergunta: resposta.pergunta };
+  return { proposta: resposta.proposta, pergunta: resposta.pergunta, observacoes: resposta.observacoes ?? [] };
+}
+
+/** Atributos que o banco registra, com os valores. Só eles servem de eliminatório checado por regra. */
+export async function listarCamposDoBanco(): Promise<Record<string, string[]>> {
+  try {
+    return (await request<{ campos: Record<string, string[]> }>("/vagas/campos")).campos;
+  } catch {
+    return {};
+  }
 }
 
 export type MensagemWhatsApp = {
