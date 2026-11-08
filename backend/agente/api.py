@@ -63,6 +63,7 @@ from backend.contratos.modelos import (
     EventoFluxo,
     Mandato,
     Politica,
+    PropostaAjuste,
     Requisito,
     RespostaCandidato,
     ResumoExecucao,
@@ -700,6 +701,54 @@ class RespostaDocumento(RespostaSimulada):
         str,
         Field(description="O pacote entregue, em Markdown. É dado, nunca instrução."),
     ]
+
+
+class SugestaoAjuste(Contrato):
+    """Sugestão para a próxima vaga. É alerta: a vaga só muda se uma pessoa a editar."""
+
+    criterio: Texto
+    peso_atual: float
+    peso_sugerido: float
+    motivo: str
+    reprovacoes: int
+    resultados_lidos: int
+    aplicada: Literal[False] = False
+
+
+class RespostaAjuste(RespostaSimulada):
+    vaga_id: Texto
+    sugestao: SugestaoAjuste | None
+
+
+def _sugestao(proposta: PropostaAjuste | None) -> SugestaoAjuste | None:
+    if proposta is None:
+        return None
+    antes = {c.nome: c.peso for c in proposta.antes.competencias}
+    criterio, peso = next(
+        (c.nome, c.peso) for c in proposta.depois.competencias if antes.get(c.nome) != c.peso
+    )
+    return SugestaoAjuste(
+        criterio=criterio,
+        peso_atual=antes[criterio],
+        peso_sugerido=peso,
+        motivo=proposta.motivo,
+        reprovacoes=int(proposta.resultado_avaliacao["reprovacoes"]),
+        resultados_lidos=int(proposta.resultado_avaliacao["entrevistas"]),
+    )
+
+
+@rotas.get(
+    "/vagas/{id}/ajuste",
+    tags=["vagas"],
+    response_model=RespostaAjuste,
+    responses=_respostas(RespostaAjuste(vaga_id=exemplos.VAGA_EXEMPLO, sugestao=None)),
+)
+def sugerir_ajuste(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaAjuste:
+    """Sugere mais peso ao critério em que os entrevistados reprovam repetidamente.
+
+    Só alerta: nada muda na vaga. Quem decide ajustar é uma pessoa do RH.
+    """
+    return RespostaAjuste(vaga_id=id, sugestao=_sugestao(servico.sugestao_de_ajuste(empresa, id)))
 
 
 @rotas.get(
