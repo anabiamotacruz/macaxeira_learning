@@ -57,7 +57,7 @@ export default function PropostaDeVagaPage() {
           <textarea
             className="mt-6 h-40 w-full rounded-xl border border-[#cbd8d2] bg-white p-4 text-sm"
             onChange={(e) => setDescricao(e.target.value)}
-            placeholder="Ex.: Vaga de engenharia de software backend. Obrigatório: trabalhar presencialmente em São Paulo e ter experiência com software em produção. Valorizamos Python, sistemas distribuídos e cloud AWS. Queremos 5 pessoas em 14 dias."
+            placeholder="Ex.: Vaga de engenharia de software backend. Obrigatório: trabalhar presencialmente em São Paulo e ter experiência com software em produção. Valorizamos Python, sistemas distribuídos e experiência com cloud. Queremos 5 pessoas em 14 dias."
             value={descricao}
           />
           <button className="mt-3 rounded-lg bg-[#fb3c0d] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" disabled={ocupado || !descricao.trim()} onClick={pedir} type="button">
