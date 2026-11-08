@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from backend.agente.regras import StatusRequisito, avaliar_requisitos
-from backend.contratos.modelos import Candidato, EstadoBanco, Vaga
+from backend.contratos.modelos import Candidato, Vaga
 from backend.fontes.funil import Corte, RegraCorte, priorizar
 
 pytestmark = pytest.mark.eval
@@ -53,42 +53,23 @@ def _rodar(vaga: Vaga, perfis: list[Candidato], limite: int = SEM_LIMITE):
     return escolhidos, cortes
 
 
-def _mais_recente(registros: list) -> object:
-    """O mesmo desempate do funil: data mais nova, depois fonte e origem."""
-    return min(registros, key=lambda c: (-c.atualizado_em.toordinal(), c.fonte, c.origem))
-
-
 def test_quem_atende_todos_os_requisitos_sempre_aparece(conjunto):
-    """A única saída aceita para quem atende tudo é o perfil desatualizado, que vai a uma pessoa."""
+    """Quem atende tudo, com autorização, sempre aparece, mesmo com o perfil desatualizado."""
     perfis, vagas, casos = conjunto
     for vaga in vagas:
-        por_pessoa: dict[str, list] = {}
-        for pessoa in _da_empresa(perfis, vaga):
-            por_pessoa.setdefault(pessoa.id, []).append(pessoa)
-        desatualizados = {
-            pessoa_id
-            for pessoa_id, registros in por_pessoa.items()
-            if _mais_recente(registros).estado == EstadoBanco.DESATUALIZADO
-        }
         esperados = {
             c["candidato_id"]
             for c in casos
             if c["vaga_id"] == vaga.id
             and c["autorizacao_para_vaga"] != "bloqueada"
             and all(r["estado"] == "atende" for r in c["requisitos"].values())
-        } - desatualizados
+        }
         assert esperados, vaga.id
         escolhidos, cortes = _rodar(vaga, perfis)
+        # Perfil desatualizado com autorização é analisado como os demais, e o pacote pede para
+        # confirmar o perfil com a pessoa: o corte por perfil desatualizado não existe mais.
         assert esperados <= {p.id for p in escolhidos}, vaga.id
-        # Perfil desatualizado não é analisado. Quem adere à vaga vai para confirmação
-        # humana; quem não adere vai para a reserva, que é a regra do funil.
-        assert not (desatualizados & {p.id for p in escolhidos}), vaga.id
-        regras = {c.regra for c in cortes if c.candidato_id in desatualizados}
-        assert regras <= {
-            RegraCorte.PERFIL_DESATUALIZADO,
-            RegraCorte.RESERVA,
-            RegraCorte.DUPLICATA,
-        }, vaga.id
+        assert RegraCorte.PERFIL_DESATUALIZADO not in {c.regra for c in cortes}, vaga.id
 
 
 def test_falta_comprovada_de_requisito_nunca_passa(conjunto):

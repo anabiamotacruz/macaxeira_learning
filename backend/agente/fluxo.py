@@ -52,6 +52,7 @@ from backend.agente.persistencia import Repositorio, resumos_da_pessoa
 from backend.agente.regras import (
     CORTES_POR_AUTORIZACAO,
     CORTES_SEM_DECISAO,
+    RESSALVA_REVISOR_INVALIDO,
     CorteFunil,
     StatusRequisito,
     TipoEvidencia,
@@ -182,7 +183,6 @@ LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
 REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
-RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
 REGRA_REVERSAO = "reversao_humana"
 VALIDADE_DA_RESERVA = timedelta(minutes=5)
 """Por quanto tempo uma ação reservada segura as outras execuções, caso a primeira tenha caído."""

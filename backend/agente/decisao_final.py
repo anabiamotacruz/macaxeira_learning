@@ -1,12 +1,14 @@
 """Decisão com destino e score: aprovar, recusar, garden ou revisão humana. Tudo em código.
 
-Convive com `regras.decidir`, que segue valendo no fluxo. Diferenças em relação à faixa verde:
+Convive com `regras.decidir`, que segue valendo no fluxo, e usa a mesma nota: competência sem
+trecho do perfil ou com ressalva do revisor vale no máximo 0.5, instrução detectada limita cada
+competência a 0.8, nota ausente entra com 0.15 e o limiar padrão é 0.7. Requisito confirmado pelo
+código não depende de trecho nem da análise. Diferenças que o contrato `DecisaoFinal` impõe:
 
-- portão duro é só requisito sem evidência aceita, instrução detectada, trecho inexistente em
-  requisito e ressalva grave. Inferência em competência, ressalva leve e outros alertas são sinais:
-  só reduzem a nota, em vez de mandar a decisão para uma pessoa;
-- nota baixa nunca recusa: vai para uma pessoa, sem prioridade, e pode voltar;
-- `SEM_DADO` em requisito nunca aprova, e o contrato `DecisaoFinal` também recusa isso.
+- nota baixa nunca recusa: vai para uma pessoa, sem prioridade, e pode voltar. A faixa verde
+  descarta, porque o RH reverte pela API;
+- `SEM_DADO` em requisito nunca aprova. A faixa verde decide pela nota e pede confirmação;
+- revisão inválida e instrução na pré-triagem são portões, e outros alertas só reduzem a nota.
 
 Reduções e fatores são ponto de partida, não valores calibrados: por isso o selo `não calibrado`.
 """
@@ -24,7 +26,12 @@ from backend.agente.auditoria import PREFIXO_HUMANO, rastreado, responsavel_do_m
 from backend.agente.mandato import Mandato, MandatoInvalido, mandato_valido
 from backend.agente.regras import (
     FONTE_REGRA,
-    REGRA_PERFIL_DESATUALIZADO,
+    LIMIAR_PADRAO,
+    NOTA_SEM_RESPOSTA,
+    RESSALVA_REVISOR_INVALIDO,
+    TETO_COM_ALERTA,
+    TETO_COM_RESSALVA,
+    TETO_SEM_TRECHO,
     StatusRequisito,
     TipoEvidencia,
     autorizacao_ativa,
@@ -76,19 +83,14 @@ from backend.contratos.modelos import (
 logger = logging.getLogger(__name__)
 
 ETAPA_DECISAO_FINAL = "decisao_final"
-FATOR_QUALIDADE = {
-    QualidadeDado.COMPROVADO: 1.0,
-    QualidadeDado.DECLARADO: 1.0,
-    QualidadeDado.INFERIDO: 0.5,
-    QualidadeDado.SEM_DADO: 0.0,
-}
-"""Quanto da nota vale. Declarado vale inteiro em competência, como na faixa verde."""
+QUALIDADES_SEM_TRECHO = frozenset({QualidadeDado.INFERIDO, QualidadeDado.SEM_DADO})
+"""Sem trecho do perfil, a nota vale até `TETO_SEM_TRECHO`, como na faixa verde."""
 
 REDUCAO_SINAL_EXTERNO = 0.05
 """Quanto cada ressalva leve ou alerta sem instrução tira da nota geral."""
 
-FAIXA_ALTA_SEM_LIMIAR = 0.8
-"""Corte da faixa alta enquanto o mandato não define `limiar_verde`."""
+FAIXA_ALTA_SEM_LIMIAR = LIMIAR_PADRAO
+"""Corte da faixa alta enquanto o mandato não define `limiar_verde`: o mesmo da faixa verde."""
 
 NOTA_DO_NIVEL = {
     NivelCriterio.NEGA: 0.0,
@@ -232,14 +234,31 @@ def _nota_valida(nota: float | None) -> float | None:
     return nota if nota is not None and math.isfinite(nota) and 0 <= nota <= 1 else None
 
 
-def _considerada(nota: float | None, qualidade: QualidadeDado) -> float:
-    return 0.0 if nota is None else round(nota * FATOR_QUALIDADE[qualidade], 6)
+def _considerada(nota: float | None, qualidade: QualidadeDado, teto: float = 1.0) -> float:
+    """A nota que entra na média: a regra é a de `regras._notas_da_decisao`."""
+    if nota is None:
+        base = NOTA_SEM_RESPOSTA
+    elif qualidade in QUALIDADES_SEM_TRECHO:
+        base = min(nota, TETO_SEM_TRECHO)
+    else:
+        base = nota
+    return round(min(base, teto), 6)
+
+
+def _teto(com_ressalva: bool, com_instrucao: bool) -> float:
+    tetos = [1.0]
+    if com_ressalva:
+        tetos.append(TETO_COM_RESSALVA)
+    if com_instrucao:
+        tetos.append(TETO_COM_ALERTA)
+    return min(tetos)
 
 
 def _nota_competencia(
     competencia: Competencia,
     analise: Analise,
     evidencias: Sequence[tuple[Evidencia, TipoEvidencia]],
+    teto: float = 1.0,
 ) -> NotaCriterio:
     citadas = [(e, tipo) for e, tipo in evidencias if e.criterio == competencia.nome]
     qualidade = _qualidade(tipo for _, tipo in citadas)
@@ -251,7 +270,7 @@ def _nota_competencia(
         peso=competencia.peso if _peso_valido(competencia) else 0,
         qualidade=qualidade,
         nota=nota,
-        nota_considerada=_considerada(nota, qualidade),
+        nota_considerada=_considerada(nota, qualidade, teto),
         nivel=None if nota is None else nivel_da_nota(nota),
         trechos=_trechos(citadas),
     )
@@ -333,41 +352,57 @@ def _criterio_da_ressalva(ressalva: str) -> str | None:
     return resto.strip() if prefixo.strip() == RESSALVA_NOTA_SEM_EVIDENCIA else prefixo.strip()
 
 
-def _sinais_e_portoes_externos(vaga: Vaga, analise: Analise) -> tuple[list[SinalNota], list[str]]:
-    """Separa o que só reduz a nota do que para a decisão. Ressalva que não se entende é grave."""
+def _competencias_com_ressalva(vaga: Vaga, analise: Analise) -> set[str]:
     competencias = {c.nome for c in vaga.competencias}
-    sinais: list[SinalNota] = []
+    return {
+        criterio
+        for ressalva in analise.ressalvas_revisor
+        if (criterio := _criterio_da_ressalva(ressalva)) in competencias
+    }
+
+
+def _tem_instrucao(analise: Analise) -> bool:
+    return any(_alerta_de_instrucao(alerta) for alerta in analise.alertas)
+
+
+def _sinais_e_portoes_externos(vaga: Vaga, analise: Analise) -> tuple[list[SinalNota], list[str]]:
+    """Separa o que só se registra ou reduz a nota do que para a decisão, como na faixa verde.
+
+    Ressalva sobre competência limita a nota dela e fica como sinal sem redução extra. Ressalva
+    sobre requisito, não confirmada ou que não se entende não muda nada: requisito é do código.
+    Só a revisão inválida para a decisão. Instrução detectada limita as notas e vai a `alertas`.
+    """
+    sinais = [
+        SinalNota(codigo=SINAL_RESSALVA, criterio=criterio, reducao=0)
+        for criterio in sorted(_competencias_com_ressalva(vaga, analise))
+    ]
     portoes: list[str] = []
-    for ressalva in analise.ressalvas_revisor:
-        criterio = _criterio_da_ressalva(ressalva)
-        if criterio in competencias:
-            sinais.append(
-                SinalNota(codigo=SINAL_RESSALVA, criterio=criterio, reducao=REDUCAO_SINAL_EXTERNO)
-            )
-        else:
-            requisitos = {r.id for r in vaga.requisitos}
-            portoes.append(f"ressalva_grave:{criterio if criterio in requisitos else 'revisor'}")
+    if RESSALVA_REVISOR_INVALIDO in (r.strip() for r in analise.ressalvas_revisor):
+        portoes.append("ressalva_grave:revisor")
     for alerta in analise.alertas:
-        if _alerta_de_instrucao(alerta):
-            portoes.append(PORTAO_INSTRUCAO)
-        else:
+        if not _alerta_de_instrucao(alerta):
             sinais.append(SinalNota(codigo=SINAL_ALERTA, reducao=REDUCAO_SINAL_EXTERNO))
     return sinais, sorted(set(portoes))
 
 
-def _lacuna_de_requisito(criterio: NotaCriterio) -> MotivoLacuna | None:
+def _lacuna_de_requisito(criterio: NotaCriterio, declarado: bool) -> MotivoLacuna | None:
+    """Requisito que o código confirmou pelo atributo do banco não é lacuna, com ou sem trecho.
+
+    `declarado` marca o requisito respondido pela própria pessoa na pré-triagem: o atributo veio
+    da resposta dela, e a política de evidência do mandato continua valendo.
+    """
     if criterio.status_requisito == StatusRequisito.NAO_ATENDE:
         return MotivoLacuna.NAO_ATENDE
     if criterio.status_requisito == StatusRequisito.SEM_DADO:
         return MotivoLacuna.SEM_DADO
-    if not criterio.evidencia_aceita:
+    if declarado and not criterio.evidencia_aceita:
         return MotivoLacuna.SEM_EVIDENCIA_ACEITA
-    return None if criterio.confirmado_na_analise else MotivoLacuna.NAO_CONFIRMADO
+    return None
 
 
-def _lacuna_de(criterio: NotaCriterio) -> LacunaCriterio | None:
+def _lacuna_de(criterio: NotaCriterio, declarado: bool = False) -> LacunaCriterio | None:
     if criterio.tipo == TipoCriterio.REQUISITO:
-        motivo = _lacuna_de_requisito(criterio)
+        motivo = _lacuna_de_requisito(criterio, declarado)
     elif criterio.peso > 0 and criterio.qualidade in (
         QualidadeDado.SEM_DADO,
         QualidadeDado.INFERIDO,
@@ -396,6 +431,7 @@ class _Pecas:
     criterios: tuple[NotaCriterio, ...]
     integridade: tuple[str, ...]
     externos: tuple[SinalNota, ...]
+    alertas: tuple[str, ...]
     evidencias: tuple[Evidencia, ...]
     indisponibilidade: FatoIndisponibilidade | None
     limiar_certificado: float | None
@@ -420,11 +456,10 @@ def _revisao(regra: str, motivo: str, portoes: Sequence[str] = ()) -> _Resolucao
 
 
 def _resolver_autorizacao(pecas: _Pecas) -> _Resolucao | None:
+    """Perfil desatualizado com autorização válida decide como os demais, como na faixa verde."""
     if autorizacao_ativa(pecas.candidato, pecas.hoje):
         return None
     corte = corte_de_autorizacao(pecas.candidato, pecas.hoje)
-    if corte is not None and corte.regra == REGRA_PERFIL_DESATUALIZADO:
-        return _revisao(REGRA_PERFIL_DESATUALIZADO, corte.motivo)
     motivo = "sem autorização válida" if corte is None else corte.motivo
     return _Resolucao(DestinoDecisao.RECUSAR, REGRA_RECUSA_AUTORIZACAO, motivo)
 
@@ -476,9 +511,8 @@ def _resolver_lacunas_de_requisito(
 def _resolver_nota(pecas: _Pecas, score: ScoreRecrutador) -> _Resolucao:
     politica = pecas.mandato.politica
     nota = score.nota_geral
-    if politica.limiar_verde is None:
-        return _revisao("limiar_nao_definido", "o mandato não define limiar de aprovação")
-    if nota >= politica.limiar_verde:
+    limiar = LIMIAR_PADRAO if politica.limiar_verde is None else politica.limiar_verde
+    if nota >= limiar:
         return _Resolucao(
             DestinoDecisao.APROVAR, REGRA_APROVACAO, "dentro dos critérios do mandato"
         )
@@ -518,9 +552,10 @@ def _entrada(pecas: _Pecas, score: ScoreRecrutador, resolucao: _Resolucao) -> di
         "mandato_id": pecas.mandato.id,
         "mandato_versao": str(pecas.mandato.versao),
         "hash_vaga": pecas.mandato.hash_vaga,
-        "limiar_verde": "nao_calibrado"
-        if politica.limiar_verde is None
-        else str(politica.limiar_verde),
+        "limiar_verde": str(
+            LIMIAR_PADRAO if politica.limiar_verde is None else politica.limiar_verde
+        ),
+        "limiar_origem": "padrao" if politica.limiar_verde is None else "mandato",
         "piso_nota": str(politica.piso_nota),
         "aceitar_declarada": str(politica.aceitar_declarada).lower(),
         "lapidar_exige_confirmacao": str(politica.lapidar_exige_confirmacao).lower(),
@@ -552,9 +587,13 @@ def _concluir(pecas: _Pecas) -> DecisaoFinal:
         pecas.limiar_certificado,
         PORTAO_PESOS not in pecas.integridade,
     )
-    lacunas = [lacuna for c in pecas.criterios if (lacuna := _lacuna_de(c)) is not None]
+    lacunas = [
+        lacuna
+        for c in pecas.criterios
+        if (lacuna := _lacuna_de(c, c.criterio in pecas.reavaliados)) is not None
+    ]
     resolucao = _resolver(pecas, score, lacunas)
-    alertas = [p for p in pecas.integridade if p == PORTAO_INSTRUCAO]
+    alertas = sorted({*pecas.alertas, *(p for p in pecas.integridade if p == PORTAO_INSTRUCAO)})
     return DecisaoFinal(
         empresa_id=pecas.vaga.empresa_id,
         vaga_id=pecas.vaga.id,
@@ -611,20 +650,20 @@ def classificar_destino(
     politica = mandato.politica
     status = avaliar_requisitos(vaga, candidato)
     classificadas = [(e, classificar_evidencia(e, candidato)) for e in analise.evidencias]
+    ressalvadas = _competencias_com_ressalva(vaga, analise)
+    instrucao = _tem_instrucao(analise)
     criterios = (
         *(
             _nota_requisito(r, status[r.id], analise, classificadas, politica)
             for r in vaga.requisitos
         ),
-        *(_nota_competencia(c, analise, classificadas) for c in vaga.competencias),
+        *(
+            _nota_competencia(c, analise, classificadas, _teto(c.nome in ressalvadas, instrucao))
+            for c in vaga.competencias
+        ),
     )
+    # Trecho inexistente sobre requisito não é portão: o requisito é decidido pelo código.
     externos, integridade = _sinais_e_portoes_externos(vaga, analise)
-    for requisito in sorted(vaga.requisitos, key=lambda r: r.id):
-        if any(
-            e.criterio == requisito.id and tipo == TipoEvidencia.INFERIDA
-            for e, tipo in classificadas
-        ):
-            integridade.append(f"{PORTAO_TRECHO_INEXISTENTE}:{requisito.id}")
     if not all(_peso_valido(c) for c in vaga.competencias):
         integridade.append(PORTAO_PESOS)
     return _concluir(
@@ -635,6 +674,7 @@ def classificar_destino(
             criterios=criterios,
             integridade=tuple(integridade),
             externos=tuple(externos),
+            alertas=(PORTAO_INSTRUCAO,) if instrucao else (),
             evidencias=tuple(
                 e
                 for e, tipo in classificadas
@@ -676,7 +716,9 @@ def _reavaliar_requisito(
     )
 
 
-def _reavaliar_competencia(anterior: NotaCriterio, resposta: RespostaCriterio) -> NotaCriterio:
+def _reavaliar_competencia(
+    anterior: NotaCriterio, resposta: RespostaCriterio, teto: float = 1.0
+) -> NotaCriterio:
     nota = anterior.nota if resposta.nivel is None else NOTA_DO_NIVEL[resposta.nivel]
     nota = NOTA_DO_NIVEL[NivelCriterio.GENERICA] if nota is None else nota
     qualidade = (
@@ -688,7 +730,7 @@ def _reavaliar_competencia(anterior: NotaCriterio, resposta: RespostaCriterio) -
         update={
             "qualidade": qualidade,
             "nota": nota,
-            "nota_considerada": _considerada(nota, qualidade),
+            "nota_considerada": _considerada(nota, qualidade, teto),
             "nivel": nivel_da_nota(nota),
             "trechos": [
                 *anterior.trechos,
@@ -742,7 +784,9 @@ def reavaliar_criterios(
             situacao = status[criterio.criterio]
             criterios.append(_reavaliar_requisito(criterio, resposta, situacao, mandato.politica))
         else:
-            criterios.append(_reavaliar_competencia(criterio, resposta))
+            # A resposta da pessoa é fato novo e tira o teto da ressalva; o da instrução fica.
+            teto = TETO_COM_ALERTA if PORTAO_INSTRUCAO in anterior.alertas else 1.0
+            criterios.append(_reavaliar_competencia(criterio, resposta, teto))
 
     resolvidos = {f"{PORTAO_TRECHO_INEXISTENTE}:{c}" for c in por_criterio}
     integridade = [p for p in _portoes_de_integridade_anteriores(anterior) if p not in resolvidos]
@@ -755,6 +799,7 @@ def reavaliar_criterios(
             criterios=tuple(criterios),
             integridade=tuple(sorted({*integridade, *portoes_extras})),
             externos=tuple(s for s in anterior.score.sinais if s.codigo in SINAIS_EXTERNOS),
+            alertas=tuple(anterior.alertas),
             evidencias=(*_evidencias_do_perfil(anterior), *novas),
             indisponibilidade=indisponibilidade,
             limiar_certificado=limiar_certificado,

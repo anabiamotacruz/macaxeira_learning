@@ -64,6 +64,8 @@ class RegraCorte(StrEnum):
     AUTORIZACAO_VENCIDA = "autorizacao_vencida"
     REQUISITO_NAO_ATENDIDO = "requisito_nao_atendido"
     PERFIL_DESATUALIZADO = "perfil_desatualizado"
+    """Não é mais aplicado: o perfil desatualizado com autorização segue para a análise. Fica
+    para ler cortes antigos."""
     FORA_DO_LIMITE = "fora_do_limite"
     RESERVA = "reserva"
 
@@ -242,11 +244,6 @@ def _regra_de_corte(
     bloqueio = _regra_de_autorizacao(registros, hoje)
     if bloqueio is not None:
         return bloqueio
-    if registros[0].estado == EstadoBanco.DESATUALIZADO:
-        return (
-            RegraCorte.PERFIL_DESATUALIZADO,
-            "autorização válida, perfil desatualizado: uma pessoa confirma antes de analisar",
-        )
     faltas = _faltas_de_requisito(vaga, registros, avaliar_requisitos)
     if faltas:
         return (
@@ -268,10 +265,11 @@ def priorizar(
     """Devolve até `limite` candidatos elegíveis, do mais aderente ao menos, com empate por `id`.
 
     Só falta comprovada elimina: dado ausente segue adiante. Perfil desatualizado com autorização
-    válida sai para uma pessoa confirmar, sem análise. Quem tem os requisitos confirmados e não
-    coube sai por `FORA_DO_LIMITE`; os demais que ficam de fora vão para a `RESERVA`, e só entram
-    nesta rodada se os aderentes não bastam para a meta da vaga. Cada saída passa por
-    `registrar_corte`. Candidato de outra empresa levanta `ValueError` antes de qualquer registro.
+    válida segue como os demais: a análise e o pacote pedem para confirmar o perfil com a pessoa.
+    Quem tem os requisitos confirmados e não coube sai por `FORA_DO_LIMITE`; os demais que ficam
+    de fora vão para a `RESERVA`, e só entram nesta rodada se os aderentes não bastam para a meta
+    da vaga. Cada saída passa por `registrar_corte`. Candidato de outra empresa levanta
+    `ValueError` antes de qualquer registro.
     """
     if limite < 0:
         raise ValueError("limite não pode ser negativo")
@@ -299,8 +297,6 @@ def priorizar(
         pessoa = _prioridade(vaga, registros, competencias, avaliar_requisitos)
         if corte is None:
             elegiveis.append(pessoa)
-        elif corte[0] == RegraCorte.PERFIL_DESATUALIZADO and not pessoa.aderente:
-            cortar(registros[0], RegraCorte.RESERVA, MOTIVO_RESERVA)
         else:
             cortar(registros[0], *corte)
 
