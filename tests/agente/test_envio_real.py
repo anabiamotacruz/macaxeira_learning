@@ -7,6 +7,8 @@ from backend.agente.montagem import montar_servico
 from backend.contato.mensageiro import MensageiroSimulado
 from backend.contato.prompts import AVISO_SIMULACAO
 from backend.contato.resend import MensageiroResend
+from backend.contratos.modelos import RespostaCandidato, TipoResposta
+from backend.contratos.simulacoes import ClienteNaraSimulado
 from backend.contratos.simulacoes import MensageiroSimulado as CaixaSimulada
 from backend.fontes.provedores.modelos import CONTATO_NAO_PUBLICADO
 from backend.fontes.provedores.transporte import PedidoHttp, RespostaHttp
@@ -125,3 +127,101 @@ def test_lembrete_real_tambem_nao_leva_o_aviso():
 
     assert AVISO_SIMULACAO not in texto
     assert ORIGEM in texto
+
+
+LINK = "https://wa.me/5500000000000?text=Vaga"
+
+
+class PecasComLink(PecasReais):
+    def __init__(self, tmp_path, candidatos, **campos) -> None:
+        super().__init__(tmp_path, candidatos, **campos)
+        self.mensageiro = MensageiroResend(
+            CHAVE, REMETENTE, transporte=self.transporte, simulado=self.caixa, link_convite=LINK
+        )
+
+
+class NaraComLink(ClienteNaraSimulado):
+    """A Nara simulada de sempre, que devolve um link `.local` de agendamento."""
+
+    def link_agendamento(self, vaga_id: str, candidato_id: str) -> str | None:
+        return f"https://nara.simulada.local/agenda/{vaga_id}/{candidato_id}"
+
+
+def test_envio_real_sem_convite_link_nao_leva_o_link_da_nara_simulada(tmp_path):
+    pecas = PecasReais(tmp_path, [externo()])
+    pecas.destino = NaraComLink()
+
+    fluxo = pecas.rodar()
+
+    corpo = pecas.transporte.pedidos[0].corpo_json
+    for parte in (corpo["html"], corpo["text"]):
+        assert "nara.simulada" not in parte
+        assert ".local" not in parte
+    assert "Quero conversar sobre a vaga" not in corpo["html"]
+    assert "responda este e-mail" in corpo["text"]
+    [registro] = fluxo.convites()
+    assert ".local" not in registro.convite.mensagem
+    assert registro.convite.link_agendamento is None
+
+
+def test_envio_real_com_convite_link_o_botao_usa_esse_link(tmp_path):
+    pecas = PecasComLink(tmp_path, [externo()])
+    pecas.destino = NaraComLink()
+
+    fluxo = pecas.rodar()
+
+    corpo = pecas.transporte.pedidos[0].corpo_json
+    assert 'href="https://wa.me/5500000000000?text=Vaga"' in corpo["html"]
+    assert LINK in corpo["text"]
+    assert ".local" not in corpo["html"] + corpo["text"]
+    [registro] = fluxo.convites()
+    assert registro.convite.link_agendamento == LINK
+
+
+def test_envio_real_manda_uma_unica_mensagem_por_pessoa_e_vaga(tmp_path):
+    pecas = PecasReais(tmp_path, [externo()])
+    fluxo = pecas.rodar()
+    [registro] = fluxo.convites()
+
+    fluxo.registrar_resposta(
+        RespostaCandidato(convite_id=registro.convite.id, tipo=TipoResposta.SILENCIO)
+    )
+    pecas.relogio.avancar(days=30)
+    fluxo.verificar_prazo()
+    fluxo.continuar()
+
+    assert len(pecas.transporte.pedidos) == 1
+    assert len([r for r in fluxo.convites() if r.convite.candidato_id == "ext"]) == 1
+
+
+class TransporteQueRecusa(TransporteFalso):
+    def enviar(self, pedido: PedidoHttp) -> RespostaHttp:
+        self.pedidos.append(pedido)
+        return RespostaHttp(status=409)
+
+
+def test_409_encerra_o_convite_sem_tentar_de_novo(tmp_path):
+    pecas = PecasReais(tmp_path, [externo()])
+    pecas.transporte = TransporteQueRecusa()
+    pecas.mensageiro = MensageiroResend(
+        CHAVE, REMETENTE, transporte=pecas.transporte, simulado=pecas.caixa
+    )
+    fluxo = pecas.rodar()
+
+    fluxo.verificar_prazo()
+    fluxo.continuar()
+
+    assert len(pecas.transporte.pedidos) == 1
+    [registro] = fluxo.convites()
+    assert registro.estado == "encerrado"
+    assert any("recusado" in e.mensagem for e in fluxo.eventos if e.candidato_id == "ext")
+
+
+def test_convite_link_do_ambiente_so_vale_com_https(tmp_path):
+    com_link = montar_servico(tmp_path / "a.db", ambiente={**ENVIO_REAL, "CONVITE_LINK": LINK})
+    sem_https = montar_servico(
+        tmp_path / "b.db", ambiente={**ENVIO_REAL, "CONVITE_LINK": "http://wa.me/55"}
+    )
+
+    assert _mensageiro(com_link).link_convite == LINK
+    assert _mensageiro(sem_https).link_convite is None

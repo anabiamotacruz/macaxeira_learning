@@ -192,6 +192,8 @@ def _transitar(
 
 
 CANAL_CONVITE = "email"
+MAX_ENVIOS_REAIS = 1
+"""Com o envio real, uma única mensagem por pessoa e vaga, sem lembrete."""
 ETAPA_RESERVA = "reserva"
 CONSULTA_TODO_O_BANCO = ""
 """Consulta vazia devolve todos os perfis aptos da empresa: ver `BancoTalentos.buscar`."""
@@ -2045,7 +2047,13 @@ class FluxoVaga:
         return True
 
     def _pode_contatar(self, candidato: Candidato, tentativas: int) -> bool:
-        """Autorização ativa, ou o e-mail que a própria pessoa publicou, se ela nunca autorizou."""
+        """Autorização ativa, ou o e-mail que a própria pessoa publicou, se ela nunca autorizou.
+
+        Com o envio real, há uma única mensagem por pessoa e vaga (`MAX_ENVIOS_REAIS`), sem
+        lembrete: o SAIR respondido por e-mail ainda é registrado à mão.
+        """
+        if isinstance(self._mensageiro, MensageiroDeEmail) and tentativas >= MAX_ENVIOS_REAIS:
+            return False
         if pode_contatar(candidato, tentativas, self.vaga, self._relogio().date()):
             return True
         publicado = contato_publicado(candidato) is not None
@@ -2089,17 +2097,22 @@ class FluxoVaga:
         """Grava o convite antes do envio. Pessoa bloqueada não tem nem o link pedido ao destino."""
         candidato = progresso.candidato(candidato_id)
         atual = self._candidato_atual(candidato, progresso)
-        if self._pode_contatar(atual, tentativa - 1):
-            link = self._link_de_agendamento(candidato_id)
-            estado = EstadoConvite.A_ENVIAR
-        else:
-            link = None
-            estado = EstadoConvite.ENCERRADO
-        identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
         # O e-mail de quem nunca autorizou só sai de verdade com o envio real ligado na montagem;
         # sem ele, sai pelo mensageiro simulado, é simulação e diz isso.
-        envio_real = isinstance(self._mensageiro, MensageiroDeEmail)
+        mensageiro = self._mensageiro
+        envio_real = isinstance(mensageiro, MensageiroDeEmail)
         simulado = candidato.simulado or (externo_sem_autorizacao(atual) and not envio_real)
+        if not self._pode_contatar(atual, tentativa - 1):
+            link = None
+            estado = EstadoConvite.ENCERRADO
+        elif not simulado and isinstance(mensageiro, MensageiroDeEmail):
+            # O e-mail real nunca leva o link do destino, que na demonstração é a Nara simulada.
+            link = mensageiro.link_convite
+            estado = EstadoConvite.A_ENVIAR
+        else:
+            link = self._link_de_agendamento(candidato_id)
+            estado = EstadoConvite.A_ENVIAR
+        identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
         mensagem = self._texto_do_convite(
             progresso, atual, link, estado, tentativa, simulado=simulado
         )
@@ -2190,8 +2203,17 @@ class FluxoVaga:
         elif feito:
             self._mudar_convite(registro, EstadoConvite.AGUARDANDO)
             self._evento("convite", "convite enviado", candidato.id)
+        elif self._recusado_de_vez(registro):
+            self._mudar_convite(registro, EstadoConvite.ENCERRADO)
+            self._evento("convite", "envio recusado de vez pelo provedor de e-mail", candidato.id)
         else:
             self._evento("convite", "envio do convite falhou", candidato.id)
+
+    def _recusado_de_vez(self, registro: RegistroConvite) -> bool:
+        mensageiro = self._mensageiro
+        return isinstance(mensageiro, MensageiroDeEmail) and mensageiro.falha_final(
+            registro.convite.chave_idempotencia
+        )
 
     def _envio_real(
         self, progresso: ProgressoFluxo, atual: Candidato, registro: RegistroConvite
@@ -2209,7 +2231,7 @@ class FluxoVaga:
             atual,
             progresso.analises.get(atual.id),
             contato,
-            convite.link_agendamento,
+            self._mensageiro.link_convite,
             registro.tentativa,
             simulado=False,
         )

@@ -9,6 +9,17 @@ sai duas vezes: a caixa guarda as chaves enviadas, e o pedido leva `Idempotency-
 do convite. O Resend aceita esse cabeçalho e, por 24 horas, devolve a mesma resposta para a mesma
 chave sem enviar de novo, o que cobre a confirmação perdida no meio do envio.
 
+O botão do e-mail real usa só `link_convite` (https), configurado de propósito. Nunca usa o link
+de agendamento do destino, que na demonstração é o da Nara simulada; sem `link_convite`, o e-mail
+vai sem botão e pede que a pessoa responda.
+
+Um 409 do Resend (a mesma `Idempotency-Key` com outro corpo) é falha final: o convite não tenta de
+novo, e `falha_final` avisa o fluxo para encerrá-lo.
+
+Limite conhecido: no envio real, o SAIR que a pessoa responde por e-mail chega à caixa do
+remetente e precisa ser registrado à mão como opt-out, e as chaves enviadas ficam só em memória.
+Por isso a montagem limita o envio real a uma única mensagem por pessoa e por vaga, sem lembrete.
+
 O transporte dos provedores (`backend/fontes`) só fala com os hosts da Frente 2, e por isso este
 módulo tem um cliente mínimo, que só fala com `api.resend.com`.
 """
@@ -43,6 +54,14 @@ HOST_RESEND = "api.resend.com"
 URL_RESEND = f"https://{HOST_RESEND}/emails"
 USER_AGENT = "macaxeira-learning/0.1"
 TEMPO_LIMITE_S = 30.0
+STATUS_CONFLITO = 409
+"""A mesma `Idempotency-Key` com outro corpo, ou em uso: o Resend não envia."""
+
+
+def _https(link: str) -> bool:
+    """Só `https://` com host: http, javascript ou endereço sem esquema não servem."""
+    partes = urlsplit(link.strip())
+    return partes.scheme == "https" and bool(partes.hostname)
 
 
 class TransporteResend:
@@ -80,16 +99,21 @@ class MensageiroResend:
         *,
         transporte: Transporte | None = None,
         simulado: Mensageiro | None = None,
+        link_convite: str | None = None,
     ) -> None:
         if not chave or not chave.strip():
             raise ValueError("a chave do Resend é obrigatória")
         if not remetente or not remetente.strip() or "@" not in remetente:
             raise ValueError("o remetente (EMAIL_FROM) é obrigatório")
+        if link_convite is not None and not _https(link_convite):
+            raise ValueError("o link do convite precisa ser https")
         self.__chave = chave.strip()
+        self.link_convite = link_convite.strip() if link_convite else None
         self.remetente = remetente.strip()
         self._transporte = transporte or TransporteResend()
         self._simulado = simulado or MensageiroSimulado()
         self._enviados: dict[str, str] = {}
+        self._recusados: set[str] = set()
         self._trava = threading.Lock()
         self._logo = base64.b64encode(LOGO.read_bytes()).decode()
 
@@ -97,6 +121,10 @@ class MensageiroResend:
         return f"MensageiroResend(remetente={self.remetente!r}, enviados={len(self._enviados)})"
 
     __str__ = __repr__
+
+    def falha_final(self, chave_idempotencia: str) -> bool:
+        """O Resend recusou de vez este convite (409): tentar de novo não adianta."""
+        return chave_idempotencia in self._recusados
 
     def enviar(self, convite: Convite) -> bool:
         """Convite simulado vai para a caixa simulada. O real precisa de `enviar_email`."""
@@ -114,11 +142,22 @@ class MensageiroResend:
         with self._trava:
             if convite.chave_idempotencia in self._enviados:
                 return True
+            if convite.chave_idempotencia in self._recusados:
+                return False
+            conteudo = conteudo.model_copy(update={"link": self.link_convite})
             try:
                 resposta = self._transporte.enviar(self._pedido(convite, para, conteudo))
             except (OSError, ValueError) as erro:
                 logger.warning(
                     "envio do convite %s pelo Resend falhou: %s", convite.id, type(erro).__name__
+                )
+                return False
+            if resposta.status == STATUS_CONFLITO:
+                self._recusados.add(convite.chave_idempotencia)
+                logger.warning(
+                    "envio do convite %s recusado de vez pelo Resend: status %d",
+                    convite.id,
+                    resposta.status,
                 )
                 return False
             if not 200 <= resposta.status < 300:

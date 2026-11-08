@@ -10,6 +10,10 @@ PDL, cada uma só com a sua chave); quem vem delas chega sem autorização, é a
 demais e só recebe convite pelo e-mail que a própria pessoa publicou (`agente/contato_publicado`).
 Esse convite só sai de verdade, pelo Resend, com `AGENTE_ENVIO_REAL=1`, `RESEND_API_KEY` e
 `EMAIL_FROM`; sem os três, ele fica no mensageiro simulado. Pessoa sintética nunca recebe e-mail.
+O botão do e-mail real leva só `CONVITE_LINK` (https), nunca o link da Nara simulada; sem ele, o
+e-mail vai sem botão. Limite conhecido: o SAIR respondido por e-mail é registrado à mão e não
+sobrevive a reinício, por isso o envio real manda uma única mensagem por pessoa e vaga, sem
+lembrete.
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """
@@ -84,6 +88,7 @@ COM_MODELO = "AGENTE_COM_MODELO"
 ENVIO_REAL = "AGENTE_ENVIO_REAL"
 RESEND_API_KEY = "RESEND_API_KEY"
 EMAIL_FROM = "EMAIL_FROM"
+CONVITE_LINK = "CONVITE_LINK"
 NARA_MCP_URL = "NARA_MCP_URL"
 BUSCA_REAL = "AGENTE_BUSCA_REAL"
 ENVO_API_KEY = "ENVO_API_KEY"
@@ -490,10 +495,16 @@ def mensageiro_do_ambiente(ambiente: Mapping[str, str]) -> Mensageiro | None:
     if not chave or not remetente:
         logger.warning("%s=1, mas falta a chave ou o remetente: o envio segue simulado", ENVIO_REAL)
         return None
+    link = ambiente.get(CONVITE_LINK, "").strip() or None
+    if link is not None and not link.startswith("https://"):
+        logger.warning("%s precisa ser https: o e-mail real vai sem botão", CONVITE_LINK)
+        link = None
     try:
-        return MensageiroResend(chave, remetente)
+        return MensageiroResend(chave, remetente, link_convite=link)
     except ValueError:
-        logger.warning("%s=1, mas o remetente é inválido: o envio segue simulado", ENVIO_REAL)
+        logger.warning(
+            "%s=1, mas o remetente ou o link é inválido: o envio segue simulado", ENVIO_REAL
+        )
         return None
 
 

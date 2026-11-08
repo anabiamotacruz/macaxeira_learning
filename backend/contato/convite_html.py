@@ -52,9 +52,16 @@ class ConteudoConvite(BaseModel):
 
 @runtime_checkable
 class MensageiroDeEmail(Protocol):
-    """Mensageiro que envia o e-mail de verdade: recebe o destinatário e o conteúdo."""
+    """Mensageiro que envia o e-mail de verdade: recebe o destinatário e o conteúdo.
+
+    `link_convite` é o único link que o e-mail real leva no botão; `None`, sem botão.
+    """
+
+    link_convite: str | None
 
     def enviar(self, convite: Convite) -> bool: ...
+
+    def falha_final(self, chave_idempotencia: str) -> bool: ...
 
     def enviar_email(self, convite: Convite, para: str, conteudo: ConteudoConvite) -> bool: ...
 
