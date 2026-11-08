@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
+from backend.agente.configuracao import PerguntaVaga, propor_configuracao
 from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
@@ -351,6 +352,7 @@ def _montar(
     respondedor_duvida: Callable[[Vaga, Candidato, str], str | None],
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
+    propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
@@ -376,6 +378,7 @@ def _montar(
             redator_convite=redigir_convite,
             respondedor_duvida=respondedor_duvida,
             redator_retorno=redigir_retorno,
+            propositor_vaga=propositor_vaga,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),
@@ -445,6 +448,9 @@ def montar_com_modelo(
         respondedor_duvida=responder,
         destino=destino,
         fonte_extra=fonte_extra,
+        propositor_vaga=lambda descricao, empresa_id: propor_configuracao(
+            descricao, empresa_id, cliente
+        ),
     )
 
 

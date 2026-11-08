@@ -32,6 +32,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.agente import exemplos_api as exemplos
 from backend.agente.auditoria import DecisoesAutomaticasPausadas
+from backend.agente.configuracao import PerguntaVaga
 from backend.agente.fluxo import (
     AcaoRecusada,
     DuvidaConvite,
@@ -47,6 +48,7 @@ from backend.agente.servico import (
     CandidatoInexistente,
     ChaveReutilizada,
     CriteriosSensiveis,
+    PropostaSemModelo,
     RequisitoIncompleto,
     ServicoVagas,
     VagaInexistente,
@@ -605,6 +607,51 @@ def assinar_mandato(
     return RespostaMandato(mandato=mandato, estado=estado)
 
 
+class PedidoProposta(Contrato):
+    """Descrição livre da vaga. É dado: o modelo só a interpreta, e o código confere o resultado."""
+
+    descricao: Annotated[str, Field(max_length=20000)]
+
+
+class RespostaProposta(RespostaSimulada):
+    """Critérios propostos para revisão, ou a pergunta que falta responder. Nada é criado."""
+
+    proposta: PedidoVaga | None
+    pergunta: str | None
+
+
+@rotas.post(
+    "/vagas/proposta",
+    tags=["vagas"],
+    response_model=RespostaProposta,
+    responses=_respostas(
+        RespostaProposta(proposta=PedidoVaga.model_validate(exemplos.PEDIDO_VAGA), pergunta=None),
+        erros=(401, 409, 422),
+    ),
+)
+def propor_vaga(
+    pedido: Annotated[
+        PedidoProposta,
+        Body(openapi_examples=_exemplo_de_pedido({"descricao": exemplos.PEDIDO_VAGA["descricao"]})),
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaProposta:
+    """O agente propõe requisitos, competências e meta a partir da descrição.
+
+    Não cria a vaga: a pessoa revisa, cria por `POST /vagas` e assina o mandato.
+    """
+    resultado = servico.propor_vaga(empresa, pedido.descricao)
+    if isinstance(resultado, PerguntaVaga):
+        return RespostaProposta(proposta=None, pergunta=resultado.pergunta)
+    return RespostaProposta(
+        proposta=PedidoVaga.model_validate(
+            resultado.model_dump(exclude={"id", "empresa_id", "aprovada"})
+        ),
+        pergunta=None,
+    )
+
+
 @rotas.get(
     "/vagas/modelos",
     tags=["vagas"],
@@ -1121,6 +1168,11 @@ def _mensagem_de_validacao(erros: Sequence[Any]) -> str:
 
 
 _ERROS_DE_DOMINIO: dict[type[ErroContrato], tuple[int, str, str]] = {
+    PropostaSemModelo: (
+        409,
+        "proposta_sem_modelo",
+        "A proposta de critérios precisa do modelo. Suba a API com AGENTE_COM_MODELO=1.",
+    ),
     VagaInexistente: (404, "vaga_nao_encontrada", "Vaga não encontrada nesta empresa."),
     CandidatoInexistente: (
         404,
