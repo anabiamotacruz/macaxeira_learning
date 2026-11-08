@@ -5,6 +5,8 @@
 com os mesmos dados sintéticos. `montar_servico` escolhe: o modelo só entra com
 `AGENTE_COM_MODELO=1` e a chave do provedor no ambiente. Com `NARA_MCP_URL`, a entrega, o link e
 o resultado da entrevista passam pelo servidor MCP da Nara simulada, um conector por empresa.
+Com `AGENTE_BUSCA_REAL=1`, a busca também usa as fontes externas da Frente 2 (Brave, Bright Data e
+PDL, cada uma só com a sua chave); quem vem delas chega sem autorização e o funil o segura.
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """
@@ -28,7 +30,14 @@ from backend.contato.conversa import contem_instrucao, material_da_vaga, respond
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contato.pos_entrevista import mensagem_pos_entrevista
 from backend.contratos.erros import ModeloIndisponivel
-from backend.contratos.interfaces import AgenteRecrutador, Analisador, ClienteModelo, Revisor
+from backend.contratos.interfaces import (
+    AgenteRecrutador,
+    Analisador,
+    BancoTalentos,
+    ClienteModelo,
+    FonteCandidatos,
+    Revisor,
+)
 from backend.contratos.modelos import Analise, Candidato, Evidencia, ResultadoEntrevista, Vaga
 from backend.contratos.simulacoes import (
     BancoTalentosSimulado,
@@ -45,6 +54,8 @@ from backend.fontes.anonimizador import (
 )
 from backend.fontes.consultas import ETAPA_GERAR, ampliar_consultas, gerar_consultas
 from backend.fontes.funil import priorizar
+from backend.fontes.provedores.configuracao import montar_fonte_externa
+from backend.fontes.provedores.fonte import SupressaoPorBanco
 from backend.fontes.revisor import RevisorIndependente
 from backend.modelos.cliente import ClienteFeatherless
 from backend.nara_simulada.mcp import configuracao_destino
@@ -55,6 +66,10 @@ logger = logging.getLogger(__name__)
 LIMITE_ANALISES_POR_RODADA = 20
 COM_MODELO = "AGENTE_COM_MODELO"
 NARA_MCP_URL = "NARA_MCP_URL"
+BUSCA_REAL = "AGENTE_BUSCA_REAL"
+
+FonteExtra = Callable[[BancoTalentos, Repositorio], FonteCandidatos]
+"""Cria uma fonte a mais com o banco e o repositório da montagem, para a supressão valer."""
 """Quantas pessoas cada rodada leva às análises por modelo. As demais vão para a fila humana."""
 
 
@@ -335,15 +350,21 @@ def _montar(
     medidor_gasto: Callable[[], float],
     respondedor_duvida: Callable[[Vaga, Candidato, str], str | None],
     destino: AgenteRecrutador | None = None,
+    fonte_extra: FonteExtra | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
     fonte = FonteDemo(_agora().date())
+    repositorio = Repositorio(caminho)
+    banco = BancoTalentosSimulado(_agora().date())
+    fontes: list[FonteCandidatos] = [fonte]
+    if fonte_extra is not None:
+        fontes.append(fonte_extra(banco, repositorio))
     return ServicoVagas(
         DependenciasFluxo(
-            repositorio=Repositorio(caminho),
-            banco=BancoTalentosSimulado(_agora().date()),
-            fontes=[fonte],
+            repositorio=repositorio,
+            banco=banco,
+            fontes=fontes,
             analisador=analisador,
             revisor=revisor,
             mensageiro=MensageiroSimulado(),
@@ -368,8 +389,21 @@ def nara_por_mcp(url: str) -> DestinoPorEmpresa:
     )
 
 
+def busca_real(ambiente: Mapping[str, str]) -> FonteExtra:
+    """Fontes externas da Frente 2 pelo ambiente. A supressão usa o banco e os bloqueios."""
+
+    def criar(banco: BancoTalentos, repositorio: Repositorio) -> FonteCandidatos:
+        supressao = SupressaoPorBanco(banco, bloqueios=[repositorio])
+        return montar_fonte_externa(ambiente, supressao=supressao, banco=banco)
+
+    return criar
+
+
 def montar_demo(
-    caminho: str | Path | None = None, *, destino: AgenteRecrutador | None = None
+    caminho: str | Path | None = None,
+    *,
+    destino: AgenteRecrutador | None = None,
+    fonte_extra: FonteExtra | None = None,
 ) -> ServicoVagas:
     """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
     return _montar(
@@ -382,6 +416,7 @@ def montar_demo(
         medidor_gasto=_sem_gasto,
         respondedor_duvida=responder_duvida_demo,
         destino=destino,
+        fonte_extra=fonte_extra,
     )
 
 
@@ -391,6 +426,7 @@ def montar_com_modelo(
     cliente: ClienteModelo,
     medidor_gasto: Callable[[], float],
     destino: AgenteRecrutador | None = None,
+    fonte_extra: FonteExtra | None = None,
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
 
@@ -408,6 +444,7 @@ def montar_com_modelo(
         medidor_gasto=medidor_gasto,
         respondedor_duvida=responder,
         destino=destino,
+        fonte_extra=fonte_extra,
     )
 
 
@@ -416,20 +453,24 @@ def montar_servico(
     *,
     ambiente: Mapping[str, str] | None = None,
     criar_cliente: Callable[..., ClienteModelo] = ClienteFeatherless,
+    criar_busca: Callable[[Mapping[str, str]], FonteExtra] = busca_real,
 ) -> ServicoVagas:
     """Escolhe a montagem pelo ambiente. Sem opt-in ou sem chave, fica a demonstração sem modelo."""
     ambiente = os.environ if ambiente is None else ambiente
     url_nara = ambiente.get(NARA_MCP_URL, "").strip()
     destino = nara_por_mcp(url_nara) if url_nara else None
+    extra = criar_busca(ambiente) if ambiente.get(BUSCA_REAL, "").strip() == "1" else None
     if ambiente.get(COM_MODELO, "").strip() != "1":
-        return montar_demo(caminho, destino=destino)
+        return montar_demo(caminho, destino=destino, fonte_extra=extra)
     try:
         cliente = criar_cliente()
     except ModeloIndisponivel as erro:
         logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
-        return montar_demo(caminho, destino=destino)
+        return montar_demo(caminho, destino=destino, fonte_extra=extra)
 
     def gasto() -> float:
         return float(getattr(cliente, "custo_total_usd", 0.0))
 
-    return montar_com_modelo(caminho, cliente=cliente, medidor_gasto=gasto, destino=destino)
+    return montar_com_modelo(
+        caminho, cliente=cliente, medidor_gasto=gasto, destino=destino, fonte_extra=extra
+    )
