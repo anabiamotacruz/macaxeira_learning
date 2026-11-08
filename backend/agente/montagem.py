@@ -19,8 +19,9 @@ from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
 from backend.contato.conversa import contem_instrucao, material_da_vaga
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
+from backend.contato.pos_entrevista import mensagem_pos_entrevista
 from backend.contratos.interfaces import ClienteModelo
-from backend.contratos.modelos import Analise, Candidato, Evidencia, Vaga
+from backend.contratos.modelos import Analise, Candidato, Evidencia, ResultadoEntrevista, Vaga
 from backend.contratos.simulacoes import (
     BancoTalentosSimulado,
     ClienteModeloSimulado,
@@ -254,6 +255,11 @@ def redigir_convite(vaga: Vaga, candidato: Candidato, analise: Analise, link: st
     return convite.mensagem
 
 
+def redigir_retorno(vaga: Vaga, candidato: Candidato, resultado: ResultadoEntrevista) -> str:
+    """Retorno da Frente 3, sem modelo: só comunica o resultado que a Nara devolveu."""
+    return mensagem_pos_entrevista(vaga, resultado).replace("{nome}", candidato.nome)
+
+
 class DadosDemo:
     """Coloca as pessoas fictícias na fonte da demonstração, por empresa."""
 
@@ -327,6 +333,7 @@ def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
             priorizador=priorizador_do_funil(),
             redator_convite=redigir_convite,
             respondedor_duvida=responder_duvida_demo,
+            redator_retorno=redigir_retorno,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),

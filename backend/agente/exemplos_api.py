@@ -306,6 +306,7 @@ CONVITE = Convite(
     chave_idempotencia=f"convite:{EMPRESA_EXEMPLO}:{VAGA_EXEMPLO}:{CANDIDATOS[0].id}:1",
     simulado=True,
 )
+PEDIDO_RETORNOS = {"chave_idempotencia": "exemplo-retornos-1"}
 PEDIDO_RESPOSTA = {
     "vaga_id": VAGA_EXEMPLO,
     "tipo": "aceite",

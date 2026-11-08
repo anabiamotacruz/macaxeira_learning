@@ -98,6 +98,7 @@ from backend.contratos.modelos import (
     Evidencia,
     PacoteContexto,
     RespostaCandidato,
+    ResultadoEntrevista,
     TipoConvite,
     TipoDecisao,
     TipoResposta,
@@ -116,6 +117,8 @@ RedatorConvite = Callable[[Vaga, Candidato, Analise, str | None], str]
 RespondedorDuvida = Callable[[Vaga, Candidato, str], str | None]
 """Responde a dúvida pelo material da vaga, ou devolve None para uma pessoa responder."""
 """Escreve o texto do convite a partir da análise. Sem ele, o convite usa um texto fixo."""
+RedatorRetorno = Callable[[Vaga, Candidato, ResultadoEntrevista], str]
+"""Escreve o retorno pós-entrevista a partir do resultado do destino. Sem ele, texto neutro."""
 Reidentificador = Callable[[PacoteContexto, Candidato, Vaga, Decisao], PacoteContexto]
 """Reduz os achados antes das análises e informa quem saiu, por `RegistrarCorte`."""
 
@@ -310,11 +313,24 @@ class DuvidaConvite(Contrato):
     momento: AwareDatetime
 
 
+class RetornoEntrevista(Contrato):
+    """O que o agente comunicou depois da entrevista. Sem nota: o resultado é do destino."""
+
+    candidato_id: str
+    convite_id: str
+    aprovado: bool
+    mensagem: str
+    enviado: bool
+    simulado: bool
+    momento: AwareDatetime
+
+
 class RegistroConvite(Contrato):
     convite: Convite
     tentativa: int
     estado: EstadoConvite = EstadoConvite.A_ENVIAR
     duvidas: list[DuvidaConvite] = Field(default_factory=list)
+    retorno: RetornoEntrevista | None = None
 
 
 class ProgressoFluxo(Contrato):
@@ -464,6 +480,7 @@ class FluxoVaga:
         concorrencia: int = CONCORRENCIA_PADRAO,
         redator_convite: RedatorConvite | None = None,
         respondedor_duvida: RespondedorDuvida | None = None,
+        redator_retorno: RedatorRetorno | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -477,6 +494,7 @@ class FluxoVaga:
         self._reidentificador = reidentificador
         self._redator_convite = redator_convite
         self._respondedor_duvida = respondedor_duvida
+        self._redator_retorno = redator_retorno
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -838,6 +856,91 @@ class FluxoVaga:
         if dados is None:
             return []
         return ProgressoFluxo.model_validate_json(dados).convites
+
+    def acompanhar_entrevistas(self) -> list[RetornoEntrevista]:
+        """Lê os resultados do destino e manda o retorno a quem já foi entregue, uma vez só.
+
+        O agente só comunica: a decisão vem do destino. Quem saiu ou perdeu a autorização não
+        recebe mensagem. Retorno que não saiu fica marcado e sai na próxima chamada.
+        """
+        progresso = self._progresso()
+        try:
+            resultados = self._destino.resultados(self.vaga.empresa_id, self.vaga.id)
+        except (ErroContrato, OSError, *ERROS_TEMPORARIOS) as erro:
+            self._evento("pos_entrevista", f"resultados indisponíveis: {type(erro).__name__}")
+            resultados = []
+        hoje = self._relogio().date()
+        for resultado in resultados:
+            if (resultado.empresa_id, resultado.vaga_id) != (self.vaga.empresa_id, self.vaga.id):
+                continue
+            candidato_id = resultado.candidato_id
+            registro = self._ultimo_convite(progresso, candidato_id)
+            if candidato_id not in progresso.entregues or registro is None:
+                continue
+            if registro.retorno is not None and registro.retorno.enviado:
+                continue
+            atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+            if atual.opt_out or not autorizacao_ativa(atual, hoje):
+                continue
+            self._enviar_retorno(registro, atual, resultado)
+        return [r.retorno for r in self._progresso().convites if r.retorno is not None]
+
+    def _ultimo_convite(
+        self, progresso: ProgressoFluxo, candidato_id: str
+    ) -> RegistroConvite | None:
+        registros = [r for r in progresso.convites if r.convite.candidato_id == candidato_id]
+        return registros[-1] if registros else None
+
+    def _texto_do_retorno(self, candidato: Candidato, resultado: ResultadoEntrevista) -> str:
+        """Texto do redator, quando houver; se ele falhar, um texto neutro que não decide nada."""
+        neutro = (
+            f"Obrigado pela entrevista para a vaga de {self.vaga.titulo}. "
+            "A equipe vai entrar em contato com o retorno."
+        )
+        if self._redator_retorno is None:
+            return neutro
+        try:
+            return self._redator_retorno(self.vaga, candidato, resultado)
+        except Exception:
+            logger.warning("retorno da vaga %s usou o texto neutro", self.vaga.id, exc_info=True)
+            return neutro
+
+    def _enviar_retorno(
+        self, registro: RegistroConvite, candidato: Candidato, resultado: ResultadoEntrevista
+    ) -> None:
+        texto = self._texto_do_retorno(candidato, resultado)
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:retorno",
+                "mensagem": texto,
+                "link_agendamento": None,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:retorno",
+            }
+        )
+        enviado = bool(
+            self._acao_idempotente(
+                mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+            )
+        )
+        retorno = RetornoEntrevista(
+            candidato_id=candidato.id,
+            convite_id=registro.convite.id,
+            aprovado=resultado.aprovado,
+            mensagem=texto,
+            enviado=enviado,
+            simulado=registro.convite.simulado or resultado.simulado,
+            momento=self._relogio(),
+        )
+
+        def guardar(atual: ProgressoFluxo) -> None:
+            alvo = next(r for r in atual.convites if r.convite.id == registro.convite.id)
+            alvo.retorno = retorno
+
+        self._mudar(guardar)
+        texto_evento = (
+            "retorno da entrevista enviado" if enviado else "retorno da entrevista não saiu"
+        )
+        self._evento("pos_entrevista", texto_evento, candidato.id)
 
     def pacotes_entregues(self) -> list[PacoteContexto]:
         """Os pacotes que já chegaram ao destino, montados como na entrega."""

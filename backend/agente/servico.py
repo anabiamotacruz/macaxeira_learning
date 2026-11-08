@@ -21,9 +21,11 @@ from backend.agente.fluxo import (
     Priorizador,
     ProvedorConsultas,
     RedatorConvite,
+    RedatorRetorno,
     RegistroConvite,
     Reidentificador,
     RespondedorDuvida,
+    RetornoEntrevista,
     concorrencia_do_ambiente,
     consulta_pelo_titulo,
     exigir_humano,
@@ -118,6 +120,7 @@ class DependenciasFluxo:
     concorrencia: int = field(default_factory=concorrencia_do_ambiente)
     redator_convite: RedatorConvite | None = None
     respondedor_duvida: RespondedorDuvida | None = None
+    redator_retorno: RedatorRetorno | None = None
 
 
 def _novo_id_de_vaga() -> str:
@@ -167,6 +170,7 @@ class ServicoVagas:
             concorrencia=d.concorrencia,
             redator_convite=d.redator_convite,
             respondedor_duvida=d.respondedor_duvida,
+            redator_retorno=d.redator_retorno,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:
@@ -278,6 +282,12 @@ class ServicoVagas:
 
     def convites(self, empresa_id: str, vaga_id: str) -> list[RegistroConvite]:
         return self._fluxo(empresa_id, vaga_id).convites()
+
+    def acompanhar_entrevistas(self, empresa_id: str, vaga_id: str) -> list[RetornoEntrevista]:
+        """Manda o retorno do destino a quem já foi entrevistado. Repetir não reenvia."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        with self._exclusivo(empresa_id, vaga_id):
+            return fluxo.acompanhar_entrevistas()
 
     def entregar(self, empresa_id: str, vaga_id: str) -> tuple[list[str], list[str]]:
         """Entrega quem o fluxo já libera. Devolve quem foi entregue e quem ficou pendente."""
