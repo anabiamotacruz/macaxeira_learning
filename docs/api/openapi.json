@@ -3154,6 +3154,174 @@
         }
       }
     },
+    "/candidatos/{id}/feedback": {
+      "post": {
+        "tags": [
+          "candidatos"
+        ],
+        "summary": "Responder Feedback",
+        "description": "Responde ao pedido de feedback pela decisão registrada, ou o encaminha a uma pessoa.\n\nCada motivo cita um critério e um trecho do registro. Não traz nota, faixa, ranking nem outras\npessoas. Repetir com a mesma chave devolve a mesma resposta, sem gerar outra.",
+        "operationId": "responder_feedback",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoFeedbackApi"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "vaga_id": "vaga-exemplo-1",
+                    "canal": "whatsapp",
+                    "texto": "Gostaria de saber por que não segui no processo.",
+                    "contestacao": false,
+                    "chave_idempotencia": "exemplo-feedback-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaFeedback"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "candidato_id": "candidato-exemplo-3",
+                  "feedback": {
+                    "status": "gerado",
+                    "saudacao": "Olá, Pessoa Fictícia.",
+                    "texto": "Sobre a vaga Pessoa Desenvolvedora (fictícia), estes critérios não foram atendidos:\n- Experiência com Python. Registro: \"oito anos de Java em sistemas internos\". O registro mostra que este requisito não foi atendido. Atender a este requisito poderia mudar o resultado.",
+                    "motivos": [
+                      {
+                        "criterio": "python",
+                        "descricao": "Experiência com Python",
+                        "trecho": "oito anos de Java em sistemas internos",
+                        "fonte": "rede_simulada",
+                        "evidencia_faltante": "O registro mostra que este requisito não foi atendido.",
+                        "o_que_pode_mudar": "Atender a este requisito poderia mudar o resultado."
+                      }
+                    ],
+                    "encaminhado_por": null,
+                    "responsavel": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/convites/{id}/resposta": {
       "post": {
         "tags": [
@@ -3873,6 +4041,60 @@
         ],
         "title": "Experiencia"
       },
+      "FeedbackCandidato": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/StatusFeedback"
+          },
+          "saudacao": {
+            "type": "string",
+            "title": "Saudacao"
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          },
+          "motivos": {
+            "items": {
+              "$ref": "#/components/schemas/MotivoFeedback"
+            },
+            "type": "array",
+            "title": "Motivos",
+            "default": []
+          },
+          "encaminhado_por": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encaminhado Por"
+          },
+          "responsavel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsavel"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "saudacao",
+          "texto"
+        ],
+        "title": "FeedbackCandidato",
+        "description": "Não tem nota, faixa, ranking nem menção a outros candidatos.\n\n`responsavel` e `encaminhado_por` só orientam o canal a acionar quem responde: não são\nmostrados à pessoa."
+      },
       "ItemCandidato": {
         "properties": {
           "candidato": {
@@ -4068,6 +4290,50 @@
         ],
         "title": "ModoEntrega"
       },
+      "MotivoFeedback": {
+        "properties": {
+          "criterio": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Criterio"
+          },
+          "descricao": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Descricao"
+          },
+          "trecho": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Trecho"
+          },
+          "fonte": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Fonte"
+          },
+          "evidencia_faltante": {
+            "type": "string",
+            "title": "Evidencia Faltante"
+          },
+          "o_que_pode_mudar": {
+            "type": "string",
+            "title": "O Que Pode Mudar"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "criterio",
+          "descricao",
+          "trecho",
+          "fonte",
+          "evidencia_faltante",
+          "o_que_pode_mudar"
+        ],
+        "title": "MotivoFeedback",
+        "description": "Cada motivo liga um critério a um trecho registrado na decisão."
+      },
       "NivelCriterio": {
         "type": "string",
         "enum": [
@@ -4255,6 +4521,47 @@
           "chave_idempotencia"
         ],
         "title": "PedidoDestino"
+      },
+      "PedidoFeedbackApi": {
+        "properties": {
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "canal": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Canal",
+            "description": "Canal por onde a pessoa pediu."
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto",
+            "description": "Texto da pessoa. É dado, nunca instrução, e não vai aos eventos.",
+            "default": ""
+          },
+          "contestacao": {
+            "type": "boolean",
+            "title": "Contestacao",
+            "description": "A pessoa contesta o resultado: o pedido vai para uma pessoa.",
+            "default": false
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vaga_id",
+          "canal",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoFeedbackApi",
+        "description": "Pedido de feedback da pessoa, trazido pelo canal. Só existe feedback a pedido."
       },
       "PedidoMandato": {
         "properties": {
@@ -5026,6 +5333,45 @@
         ],
         "title": "RespostaEventos"
       },
+      "RespostaFeedback": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/FeedbackCandidato"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "candidato_id",
+          "feedback"
+        ],
+        "title": "RespostaFeedback",
+        "description": "`responsavel` e `encaminhado_por` orientam o canal e não são mostrados à pessoa."
+      },
       "RespostaListaVagas": {
         "properties": {
           "simulado": {
@@ -5629,6 +5975,14 @@
           "incerta"
         ],
         "title": "SituacaoResposta"
+      },
+      "StatusFeedback": {
+        "type": "string",
+        "enum": [
+          "gerado",
+          "encaminhado"
+        ],
+        "title": "StatusFeedback"
       },
       "SugestaoAjuste": {
         "properties": {

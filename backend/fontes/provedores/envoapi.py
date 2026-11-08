@@ -1,8 +1,15 @@
 """EnvoAPI: e-mail que a própria pessoa publicou no perfil do LinkedIn (envoapi.com).
 
 Pedido do dono do produto em 8/11/2026. A EnvoAPI é um serviço independente, sem vínculo com o
-LinkedIn. Só o endpoint de contato é usado, e só para quem o agente já indicou: na busca real,
-nenhuma outra fonte traz o e-mail publicado pela pessoa, e sem ele o convite não sai.
+LinkedIn. Dois endpoints são usados:
+- o de contato, só para quem o agente já indicou: na busca real, nenhuma outra fonte traz o e-mail
+  publicado pela pessoa, e sem ele o convite não sai;
+- o de perfil completo, pelo `ExtratorPerfilEnvo`, para o provedor `linkedin_brave`: a Brave acha o
+  link do perfil, e a EnvoAPI devolve experiência, competências e resumo. É o extrator principal; a
+  LinkdAPI é a reserva (decisão do dono do produto em 8/11/2026).
+
+A URL do LinkedIn só vai como identificador, no parâmetro `url` do pedido à EnvoAPI: nenhum pedido
+sai para o LinkedIn.
 
 Referências consultadas em 8/11/2026:
 - docs.envoapi.com/api/operations/getprofilecontactbyurl/: `GET
@@ -10,6 +17,11 @@ Referências consultadas em 8/11/2026:
   <chave>` e `Accept: application/json`. O usuário no caminho `/in/` escolhe o perfil. Resposta
   `data` com `emailAddress` (texto ou nulo), `phoneNumbers`, `websites`, `socialHandles`,
   `birthdate` e `address`, e `meta.creditCost`. Custa 1 crédito por chamada.
+- docs.envoapi.com/api/operations/getprofiledetailsbyurl/: `GET
+  https://api.envoapi.com/v1/profiles/details/by-url?url=<perfil>`, 1 crédito. Resposta `data` com
+  `fullName`, `headline`, `about`, `location` (`displayName`, `locality`, `country`,
+  `countryCode`), `experience[]` (`title`, `company.name`, `dateRange.start` e `dateRange.end` com
+  `year`, `month` e `day`), `education[]` (`school.name`, `degree`) e `skills` (texto).
 - docs.envoapi.com/guides/errors/: envelope `error.code`, `error.message`, `error.retryable`,
   `error.details` e `meta.requestId`. 400 `invalid_request`, 401 `invalid_api_key`, 402
   `insufficient_credits`, 404 `resource_not_found` e 429 `rate_limit_exceeded`.
@@ -33,12 +45,13 @@ import logging
 import re
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urlencode
 
 from backend.agente.auditoria import rastreado
 from backend.contratos.erros import FonteIndisponivel
 from backend.fontes.provedores.erros import ErroProvedor, MotivoTroca
+from backend.fontes.provedores.linkdapi import registro_de_perfil
 from backend.fontes.provedores.modelos import limpar_texto_externo
 from backend.fontes.provedores.transporte import PedidoHttp, RespostaHttp, Transporte
 
@@ -46,8 +59,10 @@ logger = logging.getLogger(__name__)
 
 NOME = "envoapi"
 ETAPA_ENVOAPI = "provedor_envoapi_contato"
+ETAPA_ENVOAPI_PERFIL = "provedor_envoapi_perfil"
 URL_BASE = "https://api.envoapi.com"
 URL_CONTATO = f"{URL_BASE}/v1/profiles/contact/by-url"
+URL_DETALHES = f"{URL_BASE}/v1/profiles/details/by-url"
 CREDITOS_POR_CONSULTA = 1
 CUSTO_CREDITO_USD = 0.01
 """Preço não publicado na documentação: teto suposto, o mesmo da LinkdAPI."""
@@ -103,6 +118,51 @@ def _espera(resposta: RespostaHttp) -> float:
     except ValueError:
         segundos = 1.0
     return min(max(segundos, 0.0), ESPERA_MAXIMA_S)
+
+
+def _levantar_erro(resposta: RespostaHttp, corpo: Any) -> NoReturn:
+    """Erro sobe só com o motivo: nunca com o texto da resposta."""
+    status = resposta.status
+    if status == 429:
+        raise FonteIndisponivel(f"{NOME}: limite de requisições excedido (status 429)")
+    if status >= 500:
+        raise FonteIndisponivel(f"{NOME}: status {status}")
+    codigo = _codigo_de_erro(corpo)
+    if status == 402 or codigo == "insufficient_credits":
+        motivo = MotivoTroca.SEM_CREDITOS
+    elif status == 401 or codigo == "invalid_api_key":
+        motivo = MotivoTroca.AUTENTICACAO
+    elif status == 400:
+        motivo = MotivoTroca.CONSULTA_INVALIDA
+    else:  # inclui o 403 do firewall, sem envelope
+        motivo = MotivoTroca.RECUSADO_PELO_PROVEDOR
+    logger.warning("envoapi recusou a consulta: status=%s motivo=%s", status, motivo.value)
+    raise ErroProvedor(motivo)
+
+
+def _texto(valor: Any) -> str:
+    return valor.strip() if isinstance(valor, str) else ""
+
+
+def registro_de_perfil_envo(dados: dict[str, Any]) -> dict[str, Any]:
+    """Leva o perfil da EnvoAPI ao formato da LinkdAPI e converte como ela. Contato não entra."""
+    adaptado = dict(dados)
+    local = dados.get("location")
+    if isinstance(local, dict):
+        adaptado["location"] = _texto(local.get("displayName")) or {
+            "city": local.get("locality"),
+            "country": local.get("country"),
+        }
+    experiencias = []
+    brutas = dados.get("experience")
+    for bruta in brutas if isinstance(brutas, list) else []:
+        if not isinstance(bruta, dict):
+            continue
+        datas = bruta.get("dateRange")
+        datas = datas if isinstance(datas, dict) else {}
+        experiencias.append({**bruta, "start": datas.get("start"), "end": datas.get("end")})
+    adaptado["experience"] = experiencias
+    return registro_de_perfil(adaptado)
 
 
 class BuscadorContatoEnvo:
@@ -171,18 +231,54 @@ class BuscadorContatoEnvo:
         if status == 404:
             self._cobrar()
             return []
-        if status == 429:
-            raise FonteIndisponivel(f"{NOME}: limite de requisições excedido (status 429)")
-        if status >= 500:
-            raise FonteIndisponivel(f"{NOME}: status {status}")
-        codigo = _codigo_de_erro(corpo)
-        if status == 402 or codigo == "insufficient_credits":
-            motivo = MotivoTroca.SEM_CREDITOS
-        elif status == 401 or codigo == "invalid_api_key":
-            motivo = MotivoTroca.AUTENTICACAO
-        elif status == 400:
-            motivo = MotivoTroca.CONSULTA_INVALIDA
-        else:  # inclui o 403 do firewall, sem envelope
-            motivo = MotivoTroca.RECUSADO_PELO_PROVEDOR
-        logger.warning("envoapi recusou a consulta: status=%s motivo=%s", status, motivo.value)
-        raise ErroProvedor(motivo)
+        _levantar_erro(resposta, corpo)
+
+
+class ExtratorPerfilEnvo:
+    """Perfil completo pelo usuário do LinkedIn, para o provedor `linkedin_brave`."""
+
+    nome = NOME
+    origem = NOME
+
+    def __init__(
+        self, chave: str, transporte: Transporte, *, custo_credito_usd: float = CUSTO_CREDITO_USD
+    ) -> None:
+        self._chave = chave
+        self._transporte = transporte
+        self._custo = custo_credito_usd
+
+    def __repr__(self) -> str:
+        return "ExtratorPerfilEnvo()"
+
+    @property
+    def custo_por_perfil_usd(self) -> float:
+        return CREDITOS_POR_CONSULTA * self._custo
+
+    @rastreado(ETAPA_ENVOAPI_PERFIL)
+    def perfil(self, usuario_ou_url: str) -> tuple[dict[str, Any] | None, float]:
+        """O registro e o custo. `None` quando o perfil não existe ou veio fora do formato.
+
+        Falta de crédito, chave recusada e indisponibilidade sobem como erro, para a reserva
+        assumir.
+        """
+        usuario = usuario_de(usuario_ou_url)
+        if usuario is None:
+            return None, 0.0
+        resposta = self._transporte.enviar(
+            PedidoHttp(
+                metodo="GET",
+                url=f"{URL_DETALHES}?{urlencode({'url': url_perfil_linkedin(usuario)})}",
+                cabecalhos={
+                    "Authorization": f"Bearer {self._chave}",
+                    "Accept": "application/json",
+                },
+            )
+        )
+        corpo = _ler_json(resposta)
+        if resposta.status == 200:
+            dados = corpo.get("data") if isinstance(corpo, dict) else None
+            registro = registro_de_perfil_envo(dados) if isinstance(dados, dict) else None
+            return registro, self.custo_por_perfil_usd
+        if resposta.status == 404:
+            return None, self.custo_por_perfil_usd
+        _levantar_erro(resposta, corpo)

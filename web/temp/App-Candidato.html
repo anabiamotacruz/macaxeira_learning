@@ -1,0 +1,410 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&amp;display=swap">
+<style>
+body{margin:0;background:#F7F8F5}
+button,input,select,textarea{font:inherit;color:inherit}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #FB3C0D;outline-offset:2px}
+input::placeholder,textarea::placeholder{color:#5E7672}
+.num{font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.btn{transition:background-color .15s ease,border-color .15s ease}
+.btn-primary:hover{background:#C42C08 !important}
+.btn-outline:hover{background:#EEF2EF !important}
+.pill:hover{background:#F1F4F2}
+.pill[aria-current="page"]:hover{background:#EEF2EF}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
+.uma{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
+.show-md{display:none !important}
+@media (max-width: 1140px){.split{grid-template-columns:minmax(0,1fr)}}
+@media (max-width: 860px){.hide-md{display:none !important}.show-md{display:flex !important}}
+@media (max-width: 600px){.hide-sm{display:none !important}}
+</style>
+</head><body>
+<template id="tpl">
+
+<div style="min-height: 100vh; display: flex; background: #F7F8F5; color: #0B3038; font-family: Geist, system-ui, sans-serif; font-size: 14px; line-height: 1.5;">
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+<header style="height: 60px; box-sizing: border-box; background: #FFFFFF; border-bottom: 1px solid #E4E9E5; position: sticky; top: 0; z-index: 10;">
+<div style="max-width: 1240px; height: 100%; margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: 20px;">
+<a href="#catalogo" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #0B3038; flex-shrink: 0;"><img src="coral.png" alt="" width="28" height="29" style="width: 28px; height: 29px; object-fit: contain;"><span style="font-size: 18px; font-weight: 600; letter-spacing: -0.03em;">CORA</span></a>
+<nav class="hide-md" aria-label="Principal" style="display: flex; align-items: center; gap: 4px;">
+<a href="#catalogo" class="pill" aria-current="page" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; background: #EEF2EF; color: #0B3038; font-weight: 600;">Vagas</a>
+<a href="#banco" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Banco de talentos</a>
+<a href="#empresa" class="pill" style="padding: 6px 12px; border-radius: 8px; font-size: 14px; text-decoration: none; color: #526C68; font-weight: 500;">Empresa</a>
+</nav>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+<label class="hide-md" style="width: 240px; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-radius: 8px; background: #F1F4F2; color: #526C68;">
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.4 10.4 3.1 3.1"></path></svg>
+<span class="sr-only">Buscar pessoas ou vagas</span>
+<input type="search" placeholder="Buscar pessoas ou vagas" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13px; color: #0B3038;">
+<kbd style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #526C68; padding: 1px 6px; border-radius: 5px; border: 1px solid #DFE6E1; background: #FFFFFF;">⌘K</kbd>
+</label>
+<a href="#criar-vaga" class="btn btn-primary" style="height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; background: #DC3209; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Criar vaga</a>
+<button type="button" class="show-md" aria-label="Abrir menu" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; align-items: center; justify-content: center; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"></path></svg></button>
+<button type="button" aria-label="Conta de Ana Ribeiro" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; border: 0; background: #0B3038; color: #FFFFFF; font-size: 12px; font-weight: 600; cursor: pointer;">AR</button>
+</div>
+</div>
+</header>
+
+<main id="candidato-larissa-rocha" style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 32px 24px 24px; display: flex; flex-direction: column; gap: 20px;">
+
+<nav aria-label="Caminho" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: #5E7672;">
+<a href="#catalogo" style="color: #5E7672; text-decoration: none;">Vagas</a>
+<span aria-hidden="true">/</span>
+<a href="#vaga-014" style="color: #5E7672; text-decoration: none;">Backend Sênior</a>
+<span aria-hidden="true">/</span>
+<span aria-current="page" style="color: #0B3038;">Larissa Rocha</span>
+</nav>
+
+<section aria-label="Resumo da pessoa" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 22px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px;">
+<div style="display: flex; align-items: center; gap: 16px; min-width: 0;">
+<span aria-hidden="true" style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 50%; background: #EEF2EF; color: #0B3038; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600;">LR</span>
+<div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+<h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.15;">Larissa Rocha</h1>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #CDE6D5; background: #E3F3E8; color: #2F6E52; font-size: 12px; font-weight: 600;">Autorizada</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #FB3C0D;"></span>Em conversa</span>
+</div>
+<span style="font-size: 14px; color: #526C68;">Pessoa Engenheira Backend Sênior na Fintech Corrente · Recife, PE · larissa.rocha@exemplo.com · <a href="https://wa.me/5581900000014" style="color: #526C68; text-underline-offset: 3px;">+55 81 90000-0014</a></span>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 20px;">
+<div style="display: flex; flex-direction: column; align-items: flex-end;">
+<span class="num" style="font-size: 44px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; color: #DC3209;">92</span>
+<span style="font-size: 12px; color: #5E7672; margin-top: 4px;">nota para a vaga 014</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<button type="button" class="btn btn-outline" style="height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;">Pausar contato</button>
+<button type="button" class="btn btn-outline" style="height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 14px; font-weight: 500; cursor: pointer;">Registrar decisão do RH</button>
+</div>
+</div>
+</section>
+
+<div role="tablist" aria-label="Seções da pessoa" style="display: flex; gap: 20px; border-bottom: 1px solid #E4E9E5;">
+<sc-for list="{{abas}}" as="a" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{a.selected}}" onClick="{{a.pick}}" style="{{a.style}}">{{a.label}}</button>
+</sc-for>
+</div>
+
+<div class="{{splitClass}}">
+<div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+
+<sc-if value="{{abaVisao}}" hint-placeholder-val="{{true}}">
+<section aria-labelledby="sec-nota" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="padding: 20px 22px 14px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h2 id="sec-nota" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Nota por critério</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68;">Eliminatórios não somam nota: ou atende, ou a pessoa é descartada. A nota é a média ponderada dos desejáveis.</p>
+</div>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid #DFE6E1; background: #EEF2EF; color: #2C4F55; font-size: 12px; font-weight: 600;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"></path></svg>Troca de nome e gênero: mesma nota</span>
+</div>
+<div style="padding: 9px 22px; border-top: 1px solid #EDF1EE; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 13px; font-weight: 600;">Eliminatórios</div>
+<div style="display: grid; grid-template-columns: 48px 1fr auto; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">E-01</span><span style="display: flex; flex-direction: column;"><span style="font-weight: 500;">Pelo menos 5 anos com backend</span><span style="font-size: 12px; color: #5E7672;">8 anos, desde 2018</span></span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #CDE6D5; background: #E3F3E8; color: #2F6E52; font-size: 12px; font-weight: 600;">Atende</span></div>
+<div style="display: grid; grid-template-columns: 48px 1fr auto; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid #F1F4F2; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">E-02</span><span style="display: flex; flex-direction: column;"><span style="font-weight: 500;">Go ou Python em produção</span><span style="font-size: 12px; color: #5E7672;">Go em produção desde 2021</span></span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #CDE6D5; background: #E3F3E8; color: #2F6E52; font-size: 12px; font-weight: 600;">Atende</span></div>
+<div style="display: grid; grid-template-columns: 48px 1fr auto; gap: 10px 14px; padding: 12px 22px; border-bottom: 1px solid #EDF1EE; align-items: center;"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #2C4F55;">E-03</span><span style="display: flex; flex-direction: column;"><span style="font-weight: 500;">Filas e mensageria</span><span style="font-size: 12px; color: #5E7672;">Migração de RabbitMQ para Kafka</span></span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #CDE6D5; background: #E3F3E8; color: #2F6E52; font-size: 12px; font-weight: 600;">Atende</span></div>
+<div style="padding: 9px 22px; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between;"><span>Desejáveis</span><span style="font-weight: 500; color: #526C68;">nota de 0 a 100</span></div>
+<div style="padding: 14px 22px 18px; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: grid; grid-template-columns: minmax(120px, 1fr) 64px minmax(120px, 2fr) 36px; gap: 12px; align-items: center;"><span style="font-weight: 500;">Kafka</span><span style="font-size: 12px; color: #526C68;">peso 3</span><span style="height: 6px; border-radius: 3px; background: #EDF1EE; overflow: hidden;"><span style="display: block; width: 98%; height: 100%; background: #FB3C0D; border-radius: 3px;"></span></span><span class="num" style="font-weight: 700; color: #DC3209; text-align: right;">98</span></div>
+<div style="display: grid; grid-template-columns: minmax(120px, 1fr) 64px minmax(120px, 2fr) 36px; gap: 12px; align-items: center;"><span style="font-weight: 500;">Liderança técnica</span><span style="font-size: 12px; color: #526C68;">peso 3</span><span style="height: 6px; border-radius: 3px; background: #EDF1EE; overflow: hidden;"><span style="display: block; width: 95%; height: 100%; background: #FB3C0D; border-radius: 3px;"></span></span><span class="num" style="font-weight: 700; color: #DC3209; text-align: right;">95</span></div>
+<div style="display: grid; grid-template-columns: minmax(120px, 1fr) 64px minmax(120px, 2fr) 36px; gap: 12px; align-items: center;"><span style="font-weight: 500;">AWS</span><span style="font-size: 12px; color: #526C68;">peso 2</span><span style="height: 6px; border-radius: 3px; background: #EDF1EE; overflow: hidden;"><span style="display: block; width: 90%; height: 100%; background: #FB3C0D; border-radius: 3px;"></span></span><span class="num" style="font-weight: 700; color: #DC3209; text-align: right;">90</span></div>
+<div style="display: grid; grid-template-columns: minmax(120px, 1fr) 64px minmax(120px, 2fr) 36px; gap: 12px; align-items: center;"><span style="font-weight: 500;">Observabilidade</span><span style="font-size: 12px; color: #526C68;">peso 1</span><span style="height: 6px; border-radius: 3px; background: #EDF1EE; overflow: hidden;"><span style="display: block; width: 70%; height: 100%; background: #FB3C0D; border-radius: 3px;"></span></span><span class="num" style="font-weight: 700; color: #DC3209; text-align: right;">70</span></div>
+</div>
+</section>
+
+<section aria-labelledby="sec-evid" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h2 id="sec-evid" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Evidências com fonte</h2>
+<p style="margin: 0; font-size: 13px; color: #526C68;">Trechos citados do perfil. Texto do perfil é dado, nunca instrução para a CORA.</p>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px;">
+<li style="padding: 14px 16px; border-radius: 10px; border: 1px solid #EDF1EE; background: #FAFBF9; display: flex; flex-direction: column; gap: 8px;">
+<span style="display: flex; flex-wrap: wrap; gap: 6px;"><span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 5px; background: #EEF2EF; color: #2C4F55;">E-03</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 5px; background: #EEF2EF; color: #2C4F55;">Kafka</span></span>
+<q style="font-size: 14px; color: #0B3038;">Liderei a migração de RabbitMQ para Kafka em 40 serviços, sem parar o fluxo de pagamentos.</q>
+<span style="font-size: 12px; color: #5E7672;">LinkedIn, pela Bright Data · Experiência na Fintech Corrente, 2021 até hoje · autodeclarado</span>
+</li>
+<li style="padding: 14px 16px; border-radius: 10px; border: 1px solid #EDF1EE; background: #FAFBF9; display: flex; flex-direction: column; gap: 8px;">
+<span style="display: flex; flex-wrap: wrap; gap: 6px;"><span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 5px; background: #EEF2EF; color: #2C4F55;">E-01</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 5px; background: #EEF2EF; color: #2C4F55;">E-02</span></span>
+<q style="font-size: 14px; color: #0B3038;">Backend desde 2018, primeiro em Python. Hoje mantenho em Go os serviços de conciliação em produção.</q>
+<span style="font-size: 12px; color: #5E7672;">LinkedIn, pela Bright Data · Resumo do perfil · autodeclarado</span>
+</li>
+<li style="padding: 14px 16px; border-radius: 10px; border: 1px solid #EDF1EE; background: #FAFBF9; display: flex; flex-direction: column; gap: 8px;">
+<span style="display: flex; flex-wrap: wrap; gap: 6px;"><span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 5px; background: #EEF2EF; color: #2C4F55;">Liderança técnica</span></span>
+<q style="font-size: 14px; color: #0B3038;">Referência técnica de quatro pessoas no time de pagamentos. Conduzo as revisões de arquitetura.</q>
+<span style="font-size: 12px; color: #5E7672;">LinkedIn, pela Bright Data · Experiência na Fintech Corrente · autodeclarado</span>
+</li>
+<li style="padding: 14px 16px; border-radius: 10px; border: 1px solid #EDF1EE; background: #FAFBF9; display: flex; flex-direction: column; gap: 8px;">
+<span style="display: flex; flex-wrap: wrap; gap: 6px;"><span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 2px 6px; border-radius: 5px; background: #EEF2EF; color: #2C4F55;">AWS</span></span>
+<q style="font-size: 14px; color: #0B3038;">Infraestrutura em AWS com ECS, SQS e RDS.</q>
+<span style="font-size: 12px; color: #5E7672;">LinkedIn, pela Bright Data · Competências · autodeclarado</span>
+</li>
+</ul>
+</section>
+
+<section aria-labelledby="sec-lacunas" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
+<h2 id="sec-lacunas" class="sr-only">Lacunas e pontos a aprofundar</h2>
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<span style="font-size: 15px; font-weight: 600;">Lacunas</span>
+<ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: #2C4F55;">
+<li>Observabilidade aparece só como dashboards, sem tracing ou alertas.</li>
+<li>Nenhuma evidência verificável fora do LinkedIn, como repositório público.</li>
+</ul>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<span style="font-size: 15px; font-weight: 600;">Para a Nara aprofundar</span>
+<ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: #2C4F55;">
+<li>Como planejou a migração para Kafka sem parar pagamentos.</li>
+<li>Como lida com incidente em produção sem tracing.</li>
+</ul>
+</div>
+</section>
+
+</sc-if>
+
+<sc-if value="{{abaContato}}" hint-placeholder-val="{{false}}">
+<section aria-labelledby="sec-contato" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px 22px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+<h2 id="sec-contato" style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em;">Histórico de contato</h2></div>
+<div role="tablist" aria-label="Canal" style="display: inline-flex; gap: 2px; padding: 3px; border-radius: 9px; background: #EAF0EC;">
+<sc-for list="{{canais}}" as="c" hint-placeholder-count="2">
+<button type="button" role="tab" aria-selected="{{c.selected}}" onClick="{{c.pick}}" style="{{c.style}}">{{c.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<sc-if value="{{canalEmail}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<div style="border-radius: 10px; border: 1px solid #DFE6E1; overflow: hidden;">
+<div style="padding: 12px 16px; border-bottom: 1px solid #EDF1EE; background: #FAFBF9; display: flex; flex-direction: column; gap: 2px; font-size: 13px;">
+<span style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px;"><span><b>CORA</b>, assistente de recrutamento da Maré Tech</span><span class="num" style="color: #526C68;">sex, 08/11 · 09:02</span></span>
+<span style="color: #526C68;">Para: larissa.rocha@exemplo.com · Tentativa 1 de 2 · lote aprovado por Ana Ribeiro</span>
+<span style="font-weight: 600; margin-top: 4px;">Larissa, uma vaga de Backend com a sua cara</span>
+</div>
+<p style="margin: 0; padding: 14px 16px; font-size: 14px; color: #2C4F55;">Oi, Larissa. Sou a CORA, assistente de recrutamento da Maré Tech. Vi sua migração para Kafka na fintech e lembrei de uma vaga remota de Backend Sênior com liderança técnica. Se fizer sentido, a gente conversa rapidinho pelo WhatsApp. Se preferir não receber mensagens, é só responder “sair”.</p>
+</div>
+<div style="align-self: flex-end; max-width: 80%; border-radius: 10px; border: 1px solid #DFE6E1; background: #F7F8F5; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 12px; color: #526C68;">Larissa respondeu · 09:14</span>
+<span style="font-size: 14px;">Oi! Tenho interesse sim. Te chamei no WhatsApp pelo link.</span>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{canalWhats}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 10px; background: #F3F6F4;">
+<sc-for list="{{mensagens}}" as="m" hint-placeholder-count="7">
+<div style="{{m.wrap}}"><span style="{{m.bolha}}">{{m.texto}}</span><span class="num" style="font-size: 11px; color: #526C68;">{{m.meta}}</span></div>
+</sc-for>
+<div style="margin-top: 6px; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid #F1D58A; background: #FFF8E3; font-size: 13px; color: #6B4A0C;">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px;"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v3.5M8 11h0"></path></svg>
+<span>A faixa salarial não estava no material da vaga, então a dúvida foi para Ana Ribeiro, do RH, que respondeu às 11:02. O horário quem marca é a Nara.</span>
+</div>
+</div>
+</sc-if>
+</section>
+</sc-if>
+
+</div>
+
+<aside aria-label="Situação e entrega" style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+<sc-if value="{{abaVisao}}" hint-placeholder-val="{{true}}">
+
+<section aria-labelledby="sec-situacao" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+<h2 id="sec-situacao" style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em;">Situação e autorização</h2>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+<div style="display: flex; justify-content: space-between; gap: 12px;"><dt style="color: #526C68;">Situação</dt><dd style="margin: 0;"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #CDE6D5; background: #E3F3E8; color: #2F6E52; font-size: 12px; font-weight: 600;">Autorizada</span></dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px;"><dt style="color: #526C68;">Autorizou em</dt><dd class="num" style="margin: 0; font-weight: 500;">07/11/2026, pelo e-mail de autorização</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px;"><dt style="color: #526C68;">Válida até</dt><dd class="num" style="margin: 0; font-weight: 500;">11/2027</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px;"><dt style="color: #526C68;">Origem</dt><dd style="margin: 0; font-weight: 500; text-align: right;">LinkedIn, pela Bright Data</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px;"><dt style="color: #526C68;">Atualizado em</dt><dd class="num" style="margin: 0; font-weight: 500;">07/11/2026</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px;"><dt style="color: #526C68;">Blacklist</dt><dd style="margin: 0; font-weight: 500; text-align: right;">Fintech Corrente não está na lista</dd></div>
+</dl>
+<a href="#remocao" style="align-self: flex-start; font-size: 13px; font-weight: 500; color: #0B3038; text-underline-offset: 3px;">Registrar pedido de remoção</a>
+</section>
+
+<section aria-labelledby="sec-decisao" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+<h2 id="sec-decisao" style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em;">Decisão registrada</h2>
+<p style="margin: 0; font-size: 13px; color: #2C4F55;"><b>Indicar para contato.</b> Atende E-01, E-02 e E-03 e tem nota 0,92, acima da mínima do mandato (0,70).</p>
+<dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px;">
+<dt style="color: #526C68;">Regra</dt><dd style="margin: 0; font-family: 'Geist Mono', monospace;">faixa_verde</dd>
+<dt style="color: #526C68;">Responsável</dt><dd style="margin: 0;">CORA, dentro do mandato</dd>
+<dt style="color: #526C68;">Convite</dt><dd style="margin: 0;">lote aprovado por Ana Ribeiro, 08/11 08:55</dd>
+<dt style="color: #526C68;">Rastro</dt><dd style="margin: 0; font-family: 'Geist Mono', monospace;">r-014-0340</dd>
+</dl>
+</section>
+
+<section aria-labelledby="sec-etapas" style="background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+<h2 id="sec-etapas" style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em;">Etapas</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+<li style="display: flex; align-items: center; gap: 10px;"><span aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: #E3F3E8; color: #2F6E52; display: flex; align-items: center; justify-content: center;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"></path></svg></span>Analisada pela CORA<span class="sr-only">, concluída</span></li>
+<li style="display: flex; align-items: center; gap: 10px;"><span aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: #E3F3E8; color: #2F6E52; display: flex; align-items: center; justify-content: center;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"></path></svg></span>Autorizou o contato<span class="sr-only">, concluída</span></li>
+<li style="display: flex; align-items: center; gap: 10px;"><span aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: #E3F3E8; color: #2F6E52; display: flex; align-items: center; justify-content: center;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"></path></svg></span>Convite aprovado pelo RH<span class="sr-only">, concluída</span></li>
+<li style="display: flex; align-items: center; gap: 10px; font-weight: 600;"><span aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; border: 2px solid #FB3C0D; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #FB3C0D;"></span></span>Em conversa<span class="sr-only">, etapa atual</span></li>
+<li style="display: flex; align-items: center; gap: 10px; color: #526C68;"><span aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; border: 1.5px solid #C9D5CF; box-sizing: border-box;"></span>Entregue à Nara, com o dossiê</li>
+<li style="display: flex; align-items: center; gap: 10px; color: #526C68;"><span aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; border: 1.5px solid #C9D5CF; box-sizing: border-box;"></span>Entrevista: a Nara agenda e avalia</li>
+</ol>
+</section>
+
+</sc-if>
+
+<sc-if value="{{abaDossie}}" hint-placeholder-val="{{false}}">
+<section id="dossie" aria-labelledby="sec-dossie" style="width: 100%; max-width: 760px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 12px; box-shadow: 0 1px 2px rgba(11,48,56,0.06); overflow: hidden;">
+<div style="padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid #EDF1EE;">
+<h2 id="sec-dossie" style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em;">Dossiê para a Nara</h2>
+<span style="font-family: 'Geist Mono', monospace; font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid #F1C36A; background: #FFF7DF; color: #805D16;">Nara simulada</span>
+</div>
+<div style="padding: 16px; background: #EEF2EF;">
+<article style="background: #FFFFFF; border: 1px solid #E4E9E5; border-radius: 6px; padding: 22px 22px 18px; font-family: 'Source Serif 4', Georgia, serif; color: #0B3038; display: flex; flex-direction: column; gap: 12px;">
+<h3 style="margin: 0; font-size: 20px; font-weight: 600; line-height: 1.25;">Larissa Rocha para Backend Sênior</h3>
+<p style="margin: 0; font-size: 14px; line-height: 1.6; color: #2C4F55;">Indicada por atender os três eliminatórios e pela força em Kafka e liderança técnica. Liderou a migração de 40 serviços para Kafka sem parar pagamentos.</p>
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 14px; font-weight: 600;">Para aprofundar</span>
+<span style="font-size: 14px; line-height: 1.6; color: #2C4F55;">Planejamento da migração; resposta a incidente sem tracing.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 14px; font-weight: 600;">O que ela quer</span>
+<span style="font-size: 14px; line-height: 1.6; color: #2C4F55;">Liderar tecnicamente, sem gestão de pessoas. Início em cerca de 30 dias.</span>
+</div>
+<span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #526C68; padding-top: 10px; border-top: 1px solid #EDF1EE;">rastro r-014-0340 · autorização até 11/2027 · fonte LinkedIn</span>
+</article>
+</div>
+<div style="padding: 14px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #F1D58A; background: #FFF1CC; color: #855A0E; font-size: 12px; font-weight: 600;">Sai quando ela escolher o horário</span>
+<button type="button" class="btn btn-outline" style="height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px; border: 1px solid #DFE6E1; background: #FFFFFF; color: #0B3038; font-size: 13px; font-weight: 500; cursor: pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"></path></svg>Baixar</button>
+</div>
+</section>
+</sc-if>
+
+</aside>
+</div>
+
+
+<form aria-label="Pedir algo à CORA" style="position: sticky; bottom: 20px; align-self: center; width: 100%; max-width: 720px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 14px; box-shadow: 0 12px 32px -16px rgba(11,48,56,0.35); z-index: 4;">
+<label for="pedido-cora" class="sr-only">Pedido para a CORA</label>
+<input id="pedido-cora" type="text" placeholder="Peça algo à CORA: “prepare 3 perguntas sobre observabilidade”" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 14px; color: #0B3038; outline: none;">
+<span class="hide-sm" style="display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: #F1F4F2;"><span style="font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 999px; color: #526C68;">Buscar</span><span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #FFF1EE; color: #A43826;">Agente</span></span>
+<button type="button" aria-label="Enviar pedido" style="width: 36px; height: 36px; flex-shrink: 0; border: 0; border-radius: 50%; background: #DC3209; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+</form>
+</main>
+</div>
+</div>
+</template><div id="root"></div>
+<script>
+class DCLogic { constructor(p){ this.props = p || {}; this.state = {}; }
+  setState(p){ Object.assign(this.state, typeof p === 'function' ? p(this.state) : p); window.__render(); }
+  forceUpdate(){ window.__render(); } }
+</script>
+<script>
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { canal: 'whatsapp', aba: 'visao' };
+  }
+  renderVals() {
+    const canal = this.state.canal;
+    const canais = [['email', 'E-mail'], ['whatsapp', 'WhatsApp']].map(([k, label]) => {
+      const ativo = canal === k;
+      return {
+        label,
+        selected: ativo ? 'true' : 'false',
+        pick: () => this.setState({ canal: k }),
+        style: 'height: 30px; padding: 0 14px; border: 0; border-radius: 7px; font-size: 13px; cursor: pointer; ' + (ativo ? 'background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,48,56,0.1); color: #0B3038; font-weight: 600;' : 'background: transparent; color: #526C68; font-weight: 500;')
+      };
+    });
+    const msgs = [
+      ['p', 'Oi! Vim pelo e-mail. A vaga é remota mesmo?', 'Larissa · 09:15'],
+      ['c', 'É sim, com um encontro por mês em Recife. Hoje você prefere liderar tecnicamente ou também gerir pessoas?', 'CORA · 09:15'],
+      ['p', 'Liderar tecnicamente. Gestão não é meu momento.', 'Larissa · 09:21'],
+      ['c', 'Faz sentido, e é o desenho da vaga. Quando você conseguiria começar?', 'CORA · 09:21'],
+      ['p', 'Uns 30 dias. E qual é a faixa salarial?', 'Larissa · 10:41'],
+      ['c', 'Boa pergunta. Não tenho essa informação confirmada, então passei para a Ana, do RH, que te responde ainda hoje.', 'CORA · 10:41'],
+      ['c', 'A Ana confirmou: a faixa é de R$ 9 mil a R$ 12 mil. Se fizer sentido, escolha um horário com a Nara, que conduz a entrevista: agenda.nara.exemplo/014-larissa', 'CORA · 11:02']
+    ];
+    const mensagens = msgs.map(([quem, texto, meta]) => {
+      const pessoa = quem === 'p';
+      return {
+        texto,
+        meta,
+        wrap: 'display: flex; flex-direction: column; gap: 3px; max-width: 78%; ' + (pessoa ? 'align-self: flex-end; align-items: flex-end;' : 'align-self: flex-start; align-items: flex-start;'),
+        bolha: 'padding: 9px 13px; font-size: 14px; line-height: 1.45; ' + (pessoa ? 'border-radius: 12px 12px 4px 12px; background: #0B3038; color: #FFFFFF;' : 'border-radius: 12px 12px 12px 4px; background: #FFFFFF; color: #0B3038; border: 1px solid #DFE6E1;')
+      };
+    });
+    const aba = this.state.aba;
+    const abas = [['visao', 'Visão geral'], ['contato', 'Contato'], ['dossie', 'Dossiê']].map(([k, label]) => {
+      const ativa = aba === k;
+      return {
+        label,
+        selected: ativa ? 'true' : 'false',
+        pick: () => this.setState({ aba: k }),
+        style: 'padding: 0 0 10px; margin-bottom: -1px; border: 0; border-bottom: 2px solid ' + (ativa ? '#FB3C0D' : 'transparent') + '; background: transparent; font-size: 14px; cursor: pointer; ' + (ativa ? 'color: #0B3038; font-weight: 600;' : 'color: #526C68; font-weight: 500;')
+      };
+    });
+    return {
+      canais, canalEmail: canal === 'email', canalWhats: canal === 'whatsapp', mensagens,
+      abas, splitClass: aba === 'visao' ? 'split' : 'uma',
+      abaVisao: aba === 'visao', abaContato: aba === 'contato', abaDossie: aba === 'dossie'
+    };
+  }
+}
+
+</script>
+<script>
+(function(){
+  const tpl = document.getElementById('tpl').content;
+  const root = document.getElementById('root');
+  const comp = new Component({});
+  const HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
+  const WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
+  function look(scope, path){
+    if (path === 'true') return true; if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    let v = scope; for (const k of path.split('.')) { if (v == null) return undefined; v = v[k]; } return v;
+  }
+  function interp(s, scope){ return s.replace(HOLE, (m, p) => { const v = look(scope, p); return v == null ? '' : String(v); }); }
+  function build(parent, node, scope){
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) { parent.appendChild(document.createTextNode(interp(ch.nodeValue, scope))); continue; }
+      if (ch.nodeType !== 1) continue;
+      const tag = ch.tagName.toLowerCase();
+      if (tag === 'sc-for') {
+        const m = (ch.getAttribute('list') || '').match(WHOLE); const list = m ? look(scope, m[1]) : [];
+        const as = ch.getAttribute('as') || 'item';
+        (list || []).forEach((it, i) => { const s = Object.create(scope); s[as] = it; s.$index = i; build(parent, ch, s); });
+        continue;
+      }
+      if (tag === 'sc-if') {
+        const m = (ch.getAttribute('value') || '').match(WHOLE);
+        if (m && look(scope, m[1])) build(parent, ch, scope);
+        continue;
+      }
+      const el = ch.namespaceURI === 'http://www.w3.org/1999/xhtml' ? document.createElement(ch.localName) : document.createElementNS(ch.namespaceURI, ch.localName);
+      for (const a of ch.attributes) {
+        const m = a.value.match(WHOLE);
+        if (/^on[A-Z]/.test(a.name) || /^on[a-z]+$/.test(a.name) && m) {
+          const fn = m ? look(scope, m[1]) : null; if (typeof fn !== 'function') continue;
+          let ev = a.name.slice(2).toLowerCase(); if (ev === 'change' && (tag === 'textarea' || tag === 'input')) ev = 'input';
+          el.addEventListener(ev, fn); continue;
+        }
+        if (a.name === 'value' && (tag === 'textarea' || tag === 'input')) { el.value = interp(a.value, scope); continue; }
+        if (a.name.startsWith('hint-')) continue;
+        el.setAttribute(a.name, interp(a.value, scope));
+      }
+      if (tag === 'textarea') { if (!el.value) el.value = ch.value || ch.textContent; }
+      else build(el, ch, scope);
+      parent.appendChild(el);
+    }
+  }
+  window.__render = function(){
+    const active = document.activeElement && document.activeElement.id;
+    const frag = document.createDocumentFragment();
+    build(frag, tpl, comp.renderVals());
+    root.replaceChildren(frag);
+    if (active) { const e = document.getElementById(active); if (e) { e.focus(); if (e.setSelectionRange && e.value) e.setSelectionRange(e.value.length, e.value.length); } }
+  };
+  window.__render();
+  if (comp.componentDidMount) comp.componentDidMount();
+})();
+</script>
+</body></html>
