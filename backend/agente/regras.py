@@ -136,7 +136,7 @@ def requisitos_sem_valor(vaga: Vaga) -> list[str]:
 
 
 def validar_criterios(vaga: Vaga) -> list[str]:
-    """Lista os problemas da vaga: critérios, título e descrição com dado sensível.
+    """Lista os problemas da vaga: critérios, título, descrição e palavras-chave com dado sensível.
 
     Título e descrição são texto livre e costumam trazer aviso de não discriminação, que cita
     esses mesmos termos: só a frase que restringe quem concorre, como `apenas homens`, é problema.
@@ -146,6 +146,9 @@ def validar_criterios(vaga: Vaga) -> list[str]:
         problemas.append(f"título usa dado sensível: {', '.join(termos_sensiveis(vaga.titulo))}")
     for _, termos in frases_restritivas(vaga.descricao):
         problemas.append(f"descrição restringe por dado sensível: {', '.join(termos)}")
+    for palavra in vaga.palavras_chave:
+        if termos := termos_sensiveis(palavra):
+            problemas.append(f"palavra-chave usa dado sensível: {', '.join(termos)}")
     return problemas
 
 

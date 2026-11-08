@@ -55,6 +55,8 @@ class Vaga(Contrato):
     prazo_dias: int
     max_tentativas_contato: int
     aprovada: bool = False
+    palavras_chave: list[str] = Field(default_factory=list)
+    """Termos do recrutador para a consulta principal da busca externa. Vazio: busca de hoje."""
 
 
 class Experiencia(Contrato):

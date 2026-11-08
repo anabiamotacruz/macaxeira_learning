@@ -25,7 +25,7 @@
   "limiar_alerta_jaccard": 0.65,
   "pares_muito_semelhantes_sem_vies": [],
   "sha256_candidatos": "6c6f94aaf29643034e2ce6807b313416d574eedbb6fb779161d0063583a1b966",
-  "sha256_vagas": "bd53f21b2ae700a3c0db61dd6f03428cf4acca7f7fb4d2c51d182f46d2df39d4",
+  "sha256_vagas": "88ac68faad5e29f06e5055d441866f938f6b6096a8fc4f70f9a830c7595175e6",
   "sha256_casos": "46cd898edd50e05447d6e30145737febcf3e4f49f742eda8bab8020793a5299d",
   "validacao_rh": "pendente",
   "precisao_modelo": "nao_medida",
