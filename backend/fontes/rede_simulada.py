@@ -2,13 +2,14 @@
 
 import logging
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import date
 from threading import RLock
 
+from backend.contratos.criterios import tem_termo_sensivel
 from backend.contratos.erros import FonteIndisponivel
 from backend.contratos.modelos import Candidato, EstadoBanco
-from backend.fontes.consultas import _normalizar, _tem_sensivel
 
 logger = logging.getLogger(__name__)
 _ESTADOS = {
@@ -18,6 +19,12 @@ _ESTADOS = {
 _CAMPOS_BUSCAVEIS = {
     "cargo", "competencias", "habilidades", "skills", "tecnologias", "linguagens", "cloud",
 }
+
+
+def _normalizar(texto: str) -> str:
+    """Caixa, acento e sublinhado não mudam a comparação."""
+    texto = unicodedata.normalize("NFKD", texto.casefold().replace("_", " "))
+    return " ".join("".join(c for c in texto if not unicodedata.combining(c)).split())
 
 
 def remover_duplicatas(candidatos: list[Candidato]) -> list[Candidato]:
@@ -102,7 +109,7 @@ class RedeSimulada:
             raise ValueError("pagina deve ser inteiro positivo")
         if not isinstance(consulta, str) or len(consulta) > 1000:
             raise ValueError("consulta deve ser texto de até 1000 caracteres")
-        if _tem_sensivel(consulta):
+        if tem_termo_sensivel(consulta):
             raise ValueError("critério sensível não pode ser usado em consultas")
         empresa_id = empresa_id.strip()
         with self._trava:
