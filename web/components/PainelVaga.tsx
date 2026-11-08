@@ -12,6 +12,7 @@ import {
   listarEventosRecentes,
   listarPacotesEntregues,
   obterDecisao,
+  obterDocumentoDeEntrega,
   obterResumo,
   obterVaga,
   responderConvite,
@@ -297,6 +298,32 @@ function Conversa({ convite, nome, vagaId, aoMudar }: {
   );
 }
 
+function BaixarDocumento({ vagaId, candidatoId }: { vagaId: string; candidatoId: string }) {
+  const [erro, setErro] = useState("");
+
+  async function baixar() {
+    setErro("");
+    try {
+      const texto = await obterDocumentoDeEntrega(vagaId, candidatoId);
+      const url = URL.createObjectURL(new Blob([texto], { type: "text/markdown;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `contexto-${candidatoId.replace(/[^\w.-]+/g, "_")}.md`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (erroApi) {
+      setErro(mensagemDeErro(erroApi, "Não foi possível gerar o documento."));
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <button className={botao} onClick={baixar} type="button">Baixar documento (Markdown)</button>
+      {erro && <p className="mt-1 text-sm text-[#a43826]" role="alert">{erro}</p>}
+    </div>
+  );
+}
+
 export function PainelVaga({ vagaId }: { vagaId: string }) {
   const [vaga, setVaga] = useState<Vaga | null>(null);
   const [resumo, setResumo] = useState<ResumoVaga | null>(null);
@@ -515,6 +542,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                     </ul>
                     {pacote.pontos_a_aprofundar.length > 0 && <p className="mt-2 text-sm text-[#526c68]">Para a Nara aprofundar: {pacote.pontos_a_aprofundar.join("; ")}</p>}
                     {pacote.lacunas.length > 0 && <p className="mt-1 text-sm text-[#81908d]">Lacunas: {pacote.lacunas.join("; ")}</p>}
+                    <BaixarDocumento candidatoId={pacote.candidato_id} vagaId={vagaId} />
                   </article>
                 ))}
               </div>

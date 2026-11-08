@@ -337,3 +337,10 @@ export async function avisarResultadosDasEntrevistas(vagaId: string): Promise<Re
 export function guardarVagaNoCatalogo(id: string): void {
   salvarId(id);
 }
+
+export async function obterDocumentoDeEntrega(vagaId: string, candidatoId: string): Promise<string> {
+  const resposta = await requestComMotivo<ApiEnvelope & { documento: string }>(
+    `/vagas/${encodeURIComponent(vagaId)}/entrega/${encodeURIComponent(candidatoId)}/documento`,
+  );
+  return resposta.documento;
+}
