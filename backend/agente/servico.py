@@ -19,7 +19,9 @@ from backend.agente.auditoria import Auditoria, decisoes_vigentes
 from backend.agente.configuracao import PerguntaVaga
 from backend.agente.documento import documento_de_ingestao
 from backend.agente.fluxo import (
+    CANAL_CONVITE,
     REGRA_REVERSAO,
+    AcaoRecusada,
     FluxoVaga,
     ItemGarden,
     Priorizador,
@@ -30,6 +32,7 @@ from backend.agente.fluxo import (
     Reidentificador,
     RespondedorDuvida,
     RetornoEntrevista,
+    TransicaoInvalida,
     concorrencia_do_ambiente,
     consulta_pelo_titulo,
     exigir_humano,
@@ -95,6 +98,19 @@ class AditivoNecessario(ErroContrato):
 
 class ChaveReutilizada(ErroContrato):
     """A mesma chave de idempotência chegou com outro pedido."""
+
+
+@dataclass(frozen=True)
+class SugestaoGarden:
+    """Pessoa do Talent Garden de outra vaga da empresa, para o RH decidir se convida."""
+
+    candidato_id: str
+    vaga_origem_id: str
+    vaga_origem_titulo: str
+    motivo: str
+    confirmado: bool
+    canal: str
+    simulado: bool
 
 
 @dataclass(frozen=True)
@@ -296,6 +312,62 @@ class ServicoVagas:
 
     def talent_garden(self, empresa_id: str, vaga_id: str) -> list[ItemGarden]:
         return self._fluxo(empresa_id, vaga_id).talent_garden()
+
+    def sugestoes_garden(self, empresa_id: str, vaga_id: str) -> list[SugestaoGarden]:
+        """Quem está no Talent Garden das outras vagas da empresa e ainda não foi chamado aqui."""
+        alvo = self._fluxo(empresa_id, vaga_id)
+        chamados = {r.convite.candidato_id for r in alvo.convites()}
+        sugestoes: dict[str, SugestaoGarden] = {}
+        for vaga in self.vagas(empresa_id):
+            if vaga.id == vaga_id:
+                continue
+            origem = self._novo_fluxo(vaga)
+            try:
+                itens = origem.talent_garden()
+            except TransicaoInvalida:
+                continue
+            canais = {r.convite.candidato_id: r.convite.canal for r in origem.convites()}
+            for item in itens:
+                if item.candidato_id in chamados or item.candidato_id in sugestoes:
+                    continue
+                sugestoes[item.candidato_id] = SugestaoGarden(
+                    candidato_id=item.candidato_id,
+                    vaga_origem_id=vaga.id,
+                    vaga_origem_titulo=vaga.titulo,
+                    motivo=item.motivo,
+                    confirmado=item.confirmado,
+                    canal=canais.get(item.candidato_id, CANAL_CONVITE),
+                    simulado=item.simulado,
+                )
+        return list(sugestoes.values())
+
+    def convidar_do_garden(
+        self, empresa_id: str, vaga_id: str, candidato_ids: list[str], responsavel: str
+    ) -> list[RegistroConvite]:
+        """Manda o convite especial a quem o RH escolheu entre as sugestões."""
+        sugestoes = {s.candidato_id: s for s in self.sugestoes_garden(empresa_id, vaga_id)}
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        ja = {r.convite.candidato_id: r for r in fluxo.convites()}
+        fora = [c for c in candidato_ids if c not in sugestoes and c not in ja]
+        if fora:
+            raise AcaoRecusada(f"fora das sugestões do talent garden: {', '.join(fora)}")
+        registros = []
+        with self._exclusivo(empresa_id, vaga_id):
+            for candidato_id in candidato_ids:
+                if candidato_id in ja:
+                    registros.append(ja[candidato_id])
+                    continue
+                sugestao = sugestoes[candidato_id]
+                origem = self._fluxo(empresa_id, sugestao.vaga_origem_id)
+                registros.append(
+                    fluxo.convidar_do_garden(
+                        origem.pessoa(candidato_id),
+                        responsavel,
+                        sugestao.canal,
+                        sugestao.vaga_origem_titulo,
+                    )
+                )
+        return registros
 
     def acompanhar_entrevistas(self, empresa_id: str, vaga_id: str) -> list[RetornoEntrevista]:
         """Manda o retorno do destino a quem já foi entrevistado. Repetir não reenvia."""

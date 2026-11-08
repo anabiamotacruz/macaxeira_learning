@@ -1738,6 +1738,280 @@
         }
       }
     },
+    "/vagas/{id}/talent-garden/sugestoes": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Sugerir Do Talent Garden",
+        "description": "Numa campanha nova, lembra quem está no Talent Garden das outras vagas da empresa.",
+        "operationId": "sugerir_do_talent_garden",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaSugestoesGarden"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "itens": [
+                    {
+                      "candidato_id": "candidato-exemplo-1",
+                      "vaga_origem_id": "vaga-anterior",
+                      "vaga_origem_titulo": "Software Engineer",
+                      "motivo": "nao_agora",
+                      "confirmado": true,
+                      "canal": "email",
+                      "simulado": true
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/talent-garden/convites": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Convidar Do Talent Garden",
+        "description": "Manda o convite especial pelo canal do primeiro contato a quem o RH escolheu.",
+        "operationId": "convidar_do_talent_garden",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoConviteGarden"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaConvites"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "itens": [
+                    {
+                      "id": "convite:vaga-exemplo-1:candidato-exemplo-1:1",
+                      "candidato_id": "candidato-exemplo-1",
+                      "canal": "simulado",
+                      "mensagem": "[SIMULAÇÃO] Convite fictício para a vaga de exemplo.",
+                      "link_destino": null,
+                      "simulado": true,
+                      "estado": "aguardando",
+                      "tentativa": 1,
+                      "duvidas": [],
+                      "retorno": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/vagas/{id}/retornos": {
       "post": {
         "tags": [
@@ -3970,6 +4244,54 @@
         "title": "ItemConvite",
         "description": "O convite como o painel mostra. O agente não agenda: o link é do agente de destino."
       },
+      "ItemSugestaoGarden": {
+        "properties": {
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "vaga_origem_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Origem Id"
+          },
+          "vaga_origem_titulo": {
+            "type": "string",
+            "title": "Vaga Origem Titulo"
+          },
+          "motivo": {
+            "type": "string",
+            "title": "Motivo"
+          },
+          "confirmado": {
+            "type": "boolean",
+            "title": "Confirmado"
+          },
+          "canal": {
+            "type": "string",
+            "title": "Canal",
+            "description": "Canal do primeiro contato, usado de novo."
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidato_id",
+          "vaga_origem_id",
+          "vaga_origem_titulo",
+          "motivo",
+          "confirmado",
+          "canal",
+          "simulado"
+        ],
+        "title": "ItemSugestaoGarden",
+        "description": "Quem estava no Talent Garden de outra vaga. O convite especial só sai com o RH."
+      },
       "ItemTalentGarden": {
         "properties": {
           "candidato_id": {
@@ -4240,6 +4562,38 @@
         ],
         "title": "PedidoControle",
         "description": "Parar ou retomar a vaga. Repetir com a mesma chave não muda o resultado."
+      },
+      "PedidoConviteGarden": {
+        "properties": {
+          "candidato_ids": {
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": "array",
+            "title": "Candidato Ids"
+          },
+          "responsavel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Responsavel",
+            "description": "Pessoa do RH que autoriza. O agente não convida sozinho."
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidato_ids",
+          "responsavel",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoConviteGarden",
+        "description": "O RH escolhe, entre as sugestões, quem recebe o convite especial desta vaga."
       },
       "PedidoDestino": {
         "properties": {
@@ -5376,6 +5730,42 @@
         ],
         "title": "RespostaRevisao",
         "description": "A decisão humana entra ao lado da do agente, que continua no histórico."
+      },
+      "RespostaSugestoesGarden": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemSugestaoGarden"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "itens"
+        ],
+        "title": "RespostaSugestoesGarden"
       },
       "RespostaTalentGarden": {
         "properties": {

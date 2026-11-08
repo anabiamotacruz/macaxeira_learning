@@ -275,6 +275,33 @@ class RespostaTalentGarden(RespostaSimulada):
     itens: list[ItemTalentGarden]
 
 
+class ItemSugestaoGarden(Contrato):
+    """Quem estava no Talent Garden de outra vaga. O convite especial só sai com o RH."""
+
+    candidato_id: Texto
+    vaga_origem_id: Texto
+    vaga_origem_titulo: str
+    motivo: str
+    confirmado: bool
+    canal: Annotated[str, Field(description="Canal do primeiro contato, usado de novo.")]
+    simulado: bool
+
+
+class RespostaSugestoesGarden(RespostaSimulada):
+    vaga_id: Texto
+    itens: list[ItemSugestaoGarden]
+
+
+class PedidoConviteGarden(Contrato):
+    """O RH escolhe, entre as sugestões, quem recebe o convite especial desta vaga."""
+
+    candidato_ids: list[Texto]
+    responsavel: Annotated[
+        Texto, Field(description="Pessoa do RH que autoriza. O agente não convida sozinho.")
+    ]
+    chave_idempotencia: Texto
+
+
 class PedidoRetornos(Contrato):
     """Pede ao agente que leia os resultados das entrevistas e avise cada pessoa."""
 
@@ -888,6 +915,72 @@ def listar_talent_garden(
     """Lista quem o agente sugeriu para o Talent Garden e se o RH já confirmou."""
     itens = [ItemTalentGarden(**item.model_dump()) for item in servico.talent_garden(empresa, id)]
     return RespostaTalentGarden(vaga_id=id, itens=itens)
+
+
+@rotas.get(
+    "/vagas/{id}/talent-garden/sugestoes",
+    tags=["vagas"],
+    response_model=RespostaSugestoesGarden,
+    responses=_respostas(
+        RespostaSugestoesGarden(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            itens=[
+                ItemSugestaoGarden(
+                    candidato_id=exemplos.CONVITE.candidato_id,
+                    vaga_origem_id="vaga-anterior",
+                    vaga_origem_titulo="Software Engineer",
+                    motivo="nao_agora",
+                    confirmado=True,
+                    canal="email",
+                    simulado=True,
+                )
+            ],
+        )
+    ),
+)
+def sugerir_do_talent_garden(
+    id: str, empresa: EmpresaDaSessao, servico: Servico
+) -> RespostaSugestoesGarden:
+    """Numa campanha nova, lembra quem está no Talent Garden das outras vagas da empresa."""
+    itens = [ItemSugestaoGarden(**vars(s)) for s in servico.sugestoes_garden(empresa, id)]
+    return RespostaSugestoesGarden(vaga_id=id, itens=itens)
+
+
+@rotas.post(
+    "/vagas/{id}/talent-garden/convites",
+    tags=["controle"],
+    response_model=RespostaConvites,
+    responses=_respostas(
+        RespostaConvites(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            itens=[ItemConvite.de(exemplos.CONVITE, EstadoConvite.AGUARDANDO, 1)],
+        ),
+        erros=_ERROS_DE_ACAO,
+    ),
+)
+def convidar_do_talent_garden(
+    id: str,
+    pedido: PedidoConviteGarden,
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaConvites:
+    """Manda o convite especial pelo canal do primeiro contato a quem o RH escolheu."""
+    servico.consultar(empresa, id)
+
+    def acao() -> RespostaConvites:
+        registros = servico.convidar_do_garden(
+            empresa, id, pedido.candidato_ids, pedido.responsavel
+        )
+        itens = [ItemConvite.de(r.convite, r.estado, r.tentativa) for r in registros]
+        return RespostaConvites(vaga_id=id, itens=itens)
+
+    return servico.idempotente(
+        empresa,
+        f"garden:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaConvites,
+        acao,
+    )
 
 
 @rotas.post(

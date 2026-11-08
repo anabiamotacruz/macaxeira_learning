@@ -2150,6 +2150,68 @@ class FluxoVaga:
             )
         return itens
 
+    def pessoa(self, candidato_id: str) -> Candidato:
+        """A pessoa como esta vaga a conheceu. Sem mandato assinado, não há ninguém."""
+        return self._progresso().candidato(candidato_id)
+
+    def convidar_do_garden(
+        self, candidato: Candidato, responsavel: str, canal: str, vaga_origem: str
+    ) -> RegistroConvite:
+        """Convite especial a quem estava no Talent Garden. Só uma pessoa do RH autoriza.
+
+        Vai pelo canal do primeiro contato, com a saída. Repetir não manda de novo.
+        """
+        nome = exigir_humano(responsavel)
+        progresso = self._progresso()
+        if candidato.empresa_id != self.vaga.empresa_id:
+            raise AcaoRecusada("pessoa de outra empresa")
+        if candidato.opt_out or self._tem_opt_out(candidato):
+            raise AcaoRecusada("a pessoa pediu para não ser mais contatada")
+        anteriores = [r for r in progresso.convites if r.convite.candidato_id == candidato.id]
+        if anteriores:
+            return anteriores[-1]
+        texto = (
+            f"Olá! Você estava no Talent Garden desta empresa desde a vaga de {vaga_origem}, "
+            f"quando nos disse que aquele não era o momento. Surgiu a vaga de "
+            f"{self.vaga.titulo} e lembramos de você. Se quiser conversar, responda SIM. "
+            "Para não ser mais contatado, responda SAIR."
+        )
+        if candidato.simulado:
+            texto = f"{texto}\n\n{AVISO_AGENDAMENTO_SIMULADO}"
+        identificador = f"{self.vaga.id}:{candidato.id}:tg"
+        registro = RegistroConvite(
+            convite=Convite(
+                id=f"convite:{identificador}",
+                empresa_id=self.vaga.empresa_id,
+                tipo=TipoConvite.VAGA,
+                canal=canal,
+                vaga_id=self.vaga.id,
+                candidato_id=candidato.id,
+                mensagem=texto,
+                link_agendamento=None,
+                chave_idempotencia=f"convite:{self.vaga.empresa_id}:{identificador}",
+                simulado=candidato.simulado,
+            ),
+            tentativa=1,
+        )
+
+        def incluir(atual: ProgressoFluxo) -> None:
+            if all(c.id != candidato.id for c in (*atual.candidatos, *atual.cortados)):
+                atual.candidatos.append(candidato)
+            if not any(r.convite.id == registro.convite.id for r in atual.convites):
+                atual.convites.append(registro)
+
+        self._mudar(incluir)
+        self._evento(
+            "talent_garden",
+            f"convite especial do talent garden autorizado por {nome}",
+            candidato.id,
+        )
+        progresso = self._progresso()
+        with self._contexto(progresso, candidato.id):
+            self._enviar(progresso, registro)
+        return next(r for r in self._progresso().convites if r.convite.id == registro.convite.id)
+
     def _sugerir_garden(
         self, candidato_id: str, motivo: str, registro: RegistroConvite | None = None
     ) -> None:
