@@ -436,7 +436,6 @@ function Acesso() {
         <h2 className="m-0 max-w-[900px] text-[clamp(40px,5.6vw,76px)] font-semibold leading-[0.98] tracking-[-0.04em] text-balance">
           Abra sua primeira vaga hoje.
         </h2>
-        <p className="m-0 text-lg">Você paga por candidato entregue à entrevista: R$ 290.</p>
         <div className="flex flex-wrap items-center justify-center gap-2.5">
           <Button asChild className="h-11 bg-white px-[18px] text-base font-semibold text-cora-ink hover:bg-cora-muted-bg">
             <Link href="/criar-vaga">Criar vaga</Link>
