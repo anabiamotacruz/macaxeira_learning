@@ -24,6 +24,7 @@ from backend.contratos.modelos import Analise, Candidato, Convite, TipoConvite, 
 logger = logging.getLogger(__name__)
 
 ETAPA_CONVITE = "redigir_convite"
+AVISO_SIMULACAO = "Mensagem simulada, enviada em ambiente de demonstração."
 _MARCADOR = re.compile(r"\{[^}]*\}")
 
 
@@ -93,6 +94,14 @@ def mensagem_padrao(vaga: Vaga, analise: Analise, tem_link: bool) -> str:
     )
 
 
+def rodape(candidato: Candidato) -> str:
+    """Origem do contato e aviso de simulação, montados pelo código e nunca pelo modelo."""
+    return (
+        f"Encontramos seu perfil em: {candidato.fonte} ({candidato.origem}). "
+        f"{AVISO_SIMULACAO}"
+    )
+
+
 def _problema_na_redacao(
     redacao: RedacaoConvite, vaga: Vaga, fits: list[tuple[str, str]], tem_link: bool
 ) -> str | None:
@@ -159,6 +168,7 @@ def criar_convite(
     if link_agendamento:
         texto = texto.replace(MARCADOR_LINK, link_agendamento)
     texto = texto.replace(MARCADOR_NOME, candidato.nome)
+    texto = f"{texto} {rodape(candidato)}"
 
     chave = chave_convite(vaga.empresa_id, vaga.id, candidato.id, TipoConvite.VAGA, tentativa)
     return Convite(

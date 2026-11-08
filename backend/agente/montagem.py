@@ -1,26 +1,44 @@
 """Liga as implementações das frentes às interfaces do fluxo. Só aqui o agente as conhece.
 
 `montar_demo` monta a demonstração: tudo é sintético, em simulação e sem chave nem internet.
+`montar_com_modelo` usa o modelo de verdade na análise, na revisão, nas consultas e nas dúvidas,
+com os mesmos dados sintéticos. `montar_servico` escolhe: o modelo só entra com
+`AGENTE_COM_MODELO=1` e a chave do provedor no ambiente. Com `NARA_MCP_URL`, a entrega, o link e
+o resultado da entrevista passam pelo servidor MCP da Nara simulada, um conector por empresa.
+Com `AGENTE_BUSCA_REAL=1`, a busca também usa as fontes externas da Frente 2 (Brave, Bright Data e
+PDL, cada uma só com a sua chave); quem vem delas chega sem autorização e o funil o segura.
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """
 
 import json
+import logging
+import os
 import re
 import tempfile
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
 from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
-from backend.contato.conversa import contem_instrucao, material_da_vaga
+from backend.contato.conversa import contem_instrucao, material_da_vaga, responder_duvida
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
-from backend.contratos.interfaces import ClienteModelo
-from backend.contratos.modelos import Analise, Candidato, Evidencia, Vaga
+from backend.contato.pos_entrevista import mensagem_pos_entrevista
+from backend.contratos.erros import ModeloIndisponivel
+from backend.contratos.interfaces import (
+    AgenteRecrutador,
+    Analisador,
+    BancoTalentos,
+    ClienteModelo,
+    FonteCandidatos,
+    Revisor,
+)
+from backend.contratos.modelos import Analise, Candidato, Evidencia, ResultadoEntrevista, Vaga
 from backend.contratos.simulacoes import (
     BancoTalentosSimulado,
     ClienteModeloSimulado,
@@ -28,7 +46,7 @@ from backend.contratos.simulacoes import (
     RevisorSimulado,
     candidato_simulado,
 )
-from backend.fontes.analisador import ALERTA_INSTRUCAO, INSTRUCAO, normalizar
+from backend.fontes.analisador import ALERTA_INSTRUCAO, INSTRUCAO, AnalisadorPorModelo, normalizar
 from backend.fontes.anonimizador import (
     Pseudonimizador,
     identificadores_do_candidato,
@@ -36,9 +54,22 @@ from backend.fontes.anonimizador import (
 )
 from backend.fontes.consultas import ETAPA_GERAR, ampliar_consultas, gerar_consultas
 from backend.fontes.funil import priorizar
+from backend.fontes.provedores.configuracao import montar_fonte_externa
+from backend.fontes.provedores.fonte import SupressaoPorBanco
+from backend.fontes.revisor import RevisorIndependente
+from backend.modelos.cliente import ClienteFeatherless
+from backend.nara_simulada.mcp import configuracao_destino
 from backend.nara_simulada.servico import NaraSimulada
 
+logger = logging.getLogger(__name__)
+
 LIMITE_ANALISES_POR_RODADA = 20
+COM_MODELO = "AGENTE_COM_MODELO"
+NARA_MCP_URL = "NARA_MCP_URL"
+BUSCA_REAL = "AGENTE_BUSCA_REAL"
+
+FonteExtra = Callable[[BancoTalentos, Repositorio], FonteCandidatos]
+"""Cria uma fonte a mais com o banco e o repositório da montagem, para a supressão valer."""
 """Quantas pessoas cada rodada leva às análises por modelo. As demais vão para a fila humana."""
 
 
@@ -254,6 +285,11 @@ def redigir_convite(vaga: Vaga, candidato: Candidato, analise: Analise, link: st
     return convite.mensagem
 
 
+def redigir_retorno(vaga: Vaga, candidato: Candidato, resultado: ResultadoEntrevista) -> str:
+    """Retorno da Frente 3, sem modelo: só comunica o resultado que a Nara devolveu."""
+    return mensagem_pos_entrevista(vaga, resultado).replace("{nome}", candidato.nome)
+
+
 class DadosDemo:
     """Coloca as pessoas fictícias na fonte da demonstração, por empresa."""
 
@@ -305,29 +341,136 @@ def _sem_gasto() -> float:
     return 0.0
 
 
-def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
-    """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
+def _montar(
+    caminho: str | Path | None,
+    *,
+    analisador: Analisador,
+    revisor: Revisor,
+    consultas: ProvedorConsultas,
+    medidor_gasto: Callable[[], float],
+    respondedor_duvida: Callable[[Vaga, Candidato, str], str | None],
+    destino: AgenteRecrutador | None = None,
+    fonte_extra: FonteExtra | None = None,
+) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
     fonte = FonteDemo(_agora().date())
+    repositorio = Repositorio(caminho)
+    banco = BancoTalentosSimulado(_agora().date())
+    fontes: list[FonteCandidatos] = [fonte]
+    if fonte_extra is not None:
+        fontes.append(fonte_extra(banco, repositorio))
     return ServicoVagas(
         DependenciasFluxo(
-            repositorio=Repositorio(caminho),
-            banco=BancoTalentosSimulado(_agora().date()),
-            fontes=[fonte],
-            analisador=AnalisadorDemo(),
-            revisor=RevisorSimulado(),
+            repositorio=repositorio,
+            banco=banco,
+            fontes=fontes,
+            analisador=analisador,
+            revisor=revisor,
             mensageiro=MensageiroSimulado(),
-            destino=NaraSimulada(),
+            destino=NaraSimulada() if destino is None else destino,
             relogio=_agora,
-            medidor_gasto=_sem_gasto,
-            consultas=consultas_por_modelo(
-                ClienteModeloSimulado({ETAPA_GERAR: {"consultas": ["python"]}})
-            ),
+            medidor_gasto=medidor_gasto,
+            consultas=consultas,
             priorizador=priorizador_do_funil(),
             redator_convite=redigir_convite,
-            respondedor_duvida=responder_duvida_demo,
+            respondedor_duvida=respondedor_duvida,
+            redator_retorno=redigir_retorno,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),
+    )
+
+
+def nara_por_mcp(url: str) -> DestinoPorEmpresa:
+    """A Nara simulada pelo servidor MCP dela, com um conector por empresa da sessão."""
+    return DestinoPorEmpresa(
+        lambda empresa_id: ConectorMCP(DestinoMCP(**configuracao_destino(empresa_id, url)))
+    )
+
+
+def busca_real(ambiente: Mapping[str, str]) -> FonteExtra:
+    """Fontes externas da Frente 2 pelo ambiente. A supressão usa o banco e os bloqueios."""
+
+    def criar(banco: BancoTalentos, repositorio: Repositorio) -> FonteCandidatos:
+        supressao = SupressaoPorBanco(banco, bloqueios=[repositorio])
+        return montar_fonte_externa(ambiente, supressao=supressao, banco=banco)
+
+    return criar
+
+
+def montar_demo(
+    caminho: str | Path | None = None,
+    *,
+    destino: AgenteRecrutador | None = None,
+    fonte_extra: FonteExtra | None = None,
+) -> ServicoVagas:
+    """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
+    return _montar(
+        caminho,
+        analisador=AnalisadorDemo(),
+        revisor=RevisorSimulado(),
+        consultas=consultas_por_modelo(
+            ClienteModeloSimulado({ETAPA_GERAR: {"consultas": ["python"]}})
+        ),
+        medidor_gasto=_sem_gasto,
+        respondedor_duvida=responder_duvida_demo,
+        destino=destino,
+        fonte_extra=fonte_extra,
+    )
+
+
+def montar_com_modelo(
+    caminho: str | Path | None = None,
+    *,
+    cliente: ClienteModelo,
+    medidor_gasto: Callable[[], float],
+    destino: AgenteRecrutador | None = None,
+    fonte_extra: FonteExtra | None = None,
+) -> ServicoVagas:
+    """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
+
+    O gasto vem do cliente: passou do limite do mandato, a vaga pausa.
+    """
+
+    def responder(vaga: Vaga, candidato: Candidato, texto: str) -> str | None:
+        return responder_duvida(vaga, texto, cliente)
+
+    return _montar(
+        caminho,
+        analisador=AnalisadorPorModelo(cliente),
+        revisor=RevisorIndependente(cliente),
+        consultas=consultas_por_modelo(cliente),
+        medidor_gasto=medidor_gasto,
+        respondedor_duvida=responder,
+        destino=destino,
+        fonte_extra=fonte_extra,
+    )
+
+
+def montar_servico(
+    caminho: str | Path | None = None,
+    *,
+    ambiente: Mapping[str, str] | None = None,
+    criar_cliente: Callable[..., ClienteModelo] = ClienteFeatherless,
+    criar_busca: Callable[[Mapping[str, str]], FonteExtra] = busca_real,
+) -> ServicoVagas:
+    """Escolhe a montagem pelo ambiente. Sem opt-in ou sem chave, fica a demonstração sem modelo."""
+    ambiente = os.environ if ambiente is None else ambiente
+    url_nara = ambiente.get(NARA_MCP_URL, "").strip()
+    destino = nara_por_mcp(url_nara) if url_nara else None
+    extra = criar_busca(ambiente) if ambiente.get(BUSCA_REAL, "").strip() == "1" else None
+    if ambiente.get(COM_MODELO, "").strip() != "1":
+        return montar_demo(caminho, destino=destino, fonte_extra=extra)
+    try:
+        cliente = criar_cliente()
+    except ModeloIndisponivel as erro:
+        logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
+        return montar_demo(caminho, destino=destino, fonte_extra=extra)
+
+    def gasto() -> float:
+        return float(getattr(cliente, "custo_total_usd", 0.0))
+
+    return montar_com_modelo(
+        caminho, cliente=cliente, medidor_gasto=gasto, destino=destino, fonte_extra=extra
     )

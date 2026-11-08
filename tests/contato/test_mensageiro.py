@@ -1,6 +1,7 @@
 import pytest
 
 from backend.contato.mensageiro import (
+    AVISO_SIMULACAO,
     MensageiroSimulado,
     PreferenciasContato,
     chave_convite,
@@ -349,3 +350,21 @@ def test_mensageiro_recusa_convite_nao_simulado():
 def test_mensageiro_exige_empresa():
     with pytest.raises(ValueError):
         MensageiroSimulado().enviados("")
+
+
+@pytest.mark.parametrize("personalizar", [True, False])
+def test_convite_traz_origem_do_contato_e_aviso_de_simulacao(personalizar):
+    candidato = _candidato(fonte="rede_simulada", origem="importacao_rede_sintetica")
+    convite = _convite(
+        candidato=candidato, preferencias=PreferenciasContato(personalizar=personalizar)
+    )
+
+    assert "rede_simulada (importacao_rede_sintetica)" in convite.mensagem
+    assert convite.mensagem.endswith(AVISO_SIMULACAO)
+
+
+def test_rodape_do_convite_nao_vai_ao_modelo():
+    modelo = _modelo()
+    _convite(cliente_modelo=modelo, candidato=_candidato(fonte="rede_simulada"))
+
+    assert all("rede_simulada" not in str(chamada) for chamada in modelo.chamadas)

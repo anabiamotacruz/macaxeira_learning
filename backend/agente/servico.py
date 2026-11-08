@@ -21,9 +21,11 @@ from backend.agente.fluxo import (
     Priorizador,
     ProvedorConsultas,
     RedatorConvite,
+    RedatorRetorno,
     RegistroConvite,
     Reidentificador,
     RespondedorDuvida,
+    RetornoEntrevista,
     concorrencia_do_ambiente,
     consulta_pelo_titulo,
     exigir_humano,
@@ -118,6 +120,7 @@ class DependenciasFluxo:
     concorrencia: int = field(default_factory=concorrencia_do_ambiente)
     redator_convite: RedatorConvite | None = None
     respondedor_duvida: RespondedorDuvida | None = None
+    redator_retorno: RedatorRetorno | None = None
 
 
 def _novo_id_de_vaga() -> str:
@@ -167,6 +170,7 @@ class ServicoVagas:
             concorrencia=d.concorrencia,
             redator_convite=d.redator_convite,
             respondedor_duvida=d.respondedor_duvida,
+            redator_retorno=d.redator_retorno,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:
@@ -279,6 +283,12 @@ class ServicoVagas:
     def convites(self, empresa_id: str, vaga_id: str) -> list[RegistroConvite]:
         return self._fluxo(empresa_id, vaga_id).convites()
 
+    def acompanhar_entrevistas(self, empresa_id: str, vaga_id: str) -> list[RetornoEntrevista]:
+        """Manda o retorno do destino a quem já foi entrevistado. Repetir não reenvia."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        with self._exclusivo(empresa_id, vaga_id):
+            return fluxo.acompanhar_entrevistas()
+
     def entregar(self, empresa_id: str, vaga_id: str) -> tuple[list[str], list[str]]:
         """Entrega quem o fluxo já libera. Devolve quem foi entregue e quem ficou pendente."""
         fluxo = self._fluxo(empresa_id, vaga_id)
@@ -366,6 +376,21 @@ class ServicoVagas:
             if decisao.candidato_id == candidato_id and decisao.regra != REGRA_REVERSAO
         ]
         return historico[-1], nova
+
+    def resolver_fila(
+        self,
+        empresa_id: str,
+        vaga_id: str,
+        candidato_id: str,
+        tipo: TipoDecisao,
+        motivo: str,
+        responsavel: str,
+    ) -> Decisao:
+        """Uma pessoa do RH decide quem estava na fila humana: indicar ou descartar."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        self._exigir_candidato_na_vaga(empresa_id, vaga_id, candidato_id)
+        with self._exclusivo(empresa_id, vaga_id):
+            return fluxo.resolver_fila(candidato_id, tipo, motivo, responsavel)
 
     def registrar_destino(
         self,
