@@ -1,0 +1,29 @@
+# Blueprint do Render para a API do agente. O painel vai na Vercel (docs/deploy.md).
+# Segredos com `sync: false` são pedidos no painel do Render e nunca ficam no repositório.
+services:
+  - type: web
+    name: macaxeira-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter  # o plano free dorme após 15 min sem uso e perde o estado em memória
+    healthCheckPath: /docs
+    numInstances: 1  # conversas e banco simulado ficam em memória: uma instância só
+    envVars:
+      - key: ORIGENS_PAINEL
+        sync: false  # URL da Vercel, ex.: https://macaxeira.vercel.app
+      - key: AGENTE_COM_MODELO
+        value: "1"
+      - key: FEATHERLESS_API_KEY
+        sync: false
+      - key: MODELO_PADRAO
+        value: Qwen/Qwen3-30B-A3B-Instruct-2507
+      - key: LIMITE_GASTO_SESSAO_USD
+        value: "5"
+      - key: LIMITE_REQUISICOES_POR_MINUTO
+        value: "600"
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_HOST
+        sync: false
