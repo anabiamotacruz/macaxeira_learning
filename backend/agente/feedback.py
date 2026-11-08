@@ -17,7 +17,7 @@ from datetime import datetime
 from backend.agente.auditoria import PREFIXO_HUMANO, rastreado
 from backend.agente.decisao_final import decisao_final_do_registro
 from backend.agente.neutralizacao import MARCADOR, neutralizar_genero
-from backend.agente.regras import FONTE_REGRA
+from backend.agente.regras import FONTE_REGRA, REGRA_FUNIL_REQUISITO
 from backend.contratos.criterios import sem_acento, termos_proibidos_em_conversa
 from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import (
@@ -35,6 +35,7 @@ from backend.contratos.modelos import (
     RetornoDestino,
     StatusFeedback,
     TipoCriterio,
+    TipoDecisao,
     Vaga,
 )
 
@@ -149,6 +150,43 @@ def _motivos_da_decisao(decisao: DecisaoFinal) -> tuple[list[MotivoFeedback], st
         else:
             motivos.append(_motivo_da_lacuna(lacuna, evidencia))
     return ([], ENCAMINHADO_SEM_TRECHO) if sem_trecho else (motivos, None)
+
+
+def _motivos_do_corte(registro: Decisao, vaga: Vaga) -> tuple[list[MotivoFeedback], str | None]:
+    """Descarte do funil por requisito: o requisito e o valor registrado que o reprovou.
+
+    Outro registro sem decisão final não tem lacuna para citar e vai para a pessoa responsável.
+    """
+    if registro.tipo != TipoDecisao.DESCARTAR or registro.regra != REGRA_FUNIL_REQUISITO:
+        return [], ENCAMINHADO_SEM_DECISAO_FINAL
+    requisitos = {r.id: r for r in vaga.requisitos}
+    citadas = [
+        e
+        for e in registro.evidencias
+        if e.criterio in requisitos and e.fonte != FONTE_REGRA and e.trecho.strip()
+    ]
+    if not citadas:
+        return [], ENCAMINHADO_SEM_TRECHO
+    motivos = []
+    for evidencia in citadas:
+        requisito = requisitos[evidencia.criterio]
+        if _bloqueado(requisito.id, requisito.descricao, evidencia.trecho):
+            return [], ENCAMINHADO_SENSIVEL
+        motivos.append(
+            MotivoFeedback(
+                criterio=requisito.id,
+                descricao=requisito.descricao,
+                trecho=_para_a_pessoa(evidencia.trecho),
+                fonte=evidencia.fonte,
+                evidencia_faltante=_EVIDENCIA_FALTANTE[MotivoLacuna.NAO_ATENDE],
+                o_que_pode_mudar=(
+                    _DESENVOLVER
+                    if requisito.desenvolvivel
+                    else _O_QUE_PODE_MUDAR[MotivoLacuna.NAO_ATENDE]
+                ),
+            )
+        )
+    return motivos, None
 
 
 def _descricoes_dos_criterios(vaga: Vaga) -> dict[str, str]:
@@ -270,6 +308,8 @@ def responder_pedido_de_feedback(
         encaminhado = ENCAMINHADO_CONTESTACAO
     elif retorno is not None:
         motivos, encaminhado = _motivos_do_destino(retorno, vaga)
+    elif decisao is None and registro is not None:
+        motivos, encaminhado = _motivos_do_corte(registro, vaga)
     elif decisao is None:
         encaminhado = ENCAMINHADO_SEM_DECISAO_FINAL
     else:

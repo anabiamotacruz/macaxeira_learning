@@ -12,8 +12,9 @@ from backend.agente.feedback import (
     FeedbackNegado,
     responder_pedido_de_feedback,
 )
-from backend.agente.regras import FONTE_REGRA
+from backend.agente.regras import FONTE_REGRA, REGRA_FUNIL_REQUISITO
 from backend.contratos.modelos import (
+    Decisao,
     DecisaoFinal,
     DestinoDecisao,
     EventoFluxo,
@@ -24,6 +25,7 @@ from backend.contratos.modelos import (
     Requisito,
     RetornoDestino,
     StatusFeedback,
+    TipoDecisao,
 )
 from tests.agente.test_decisao_final import (
     TRECHO_BACK,
@@ -439,3 +441,95 @@ def test_resposta_ao_pedido_de_quem_aprovou_nao_expoe_destino() -> None:
     )
     assert decisao.destino == DestinoDecisao.APROVAR
     assert "aprovar" not in _responder(decisao).model_dump_json()
+
+
+def _corte_por_requisito(*evidencias: Evidencia) -> Decisao:
+    """Descarte do funil por requisito, como o fluxo registra."""
+    base = como_decisao(_recusa())
+    return base.model_copy(
+        update={
+            "tipo": TipoDecisao.DESCARTAR,
+            "regra": REGRA_FUNIL_REQUISITO,
+            "motivo": "requisitos não atendidos: r1",
+            "entrada": {"fonte": "rede_simulada", "origem": "busca"},
+            "evidencias": [
+                Evidencia(
+                    criterio=REGRA_FUNIL_REQUISITO,
+                    trecho="requisitos não atendidos: r1",
+                    fonte=FONTE_REGRA,
+                ),
+                *evidencias,
+            ],
+        }
+    )
+
+
+def _responder_registro(registro: Decisao, auditoria=None) -> FeedbackCandidato:
+    return responder_pedido_de_feedback(
+        _pedido(),
+        vaga_teste(),
+        "Pessoa Fictícia",
+        registrar=auditoria or _Auditoria(),
+        agora=AGORA,
+        registro=registro,
+    )
+
+
+def test_corte_do_funil_por_requisito_cita_o_requisito_e_o_valor_registrado() -> None:
+    auditoria = _Auditoria()
+    registro = _corte_por_requisito(
+        Evidencia(criterio="r1", trecho="python: nao", fonte="rede_simulada")
+    )
+
+    feedback = _responder_registro(registro, auditoria)
+
+    assert feedback.status == StatusFeedback.GERADO
+    [motivo] = feedback.motivos
+    assert (motivo.criterio, motivo.descricao, motivo.trecho) == (
+        "r1",
+        "Sabe Python",
+        "python: nao",
+    )
+    assert motivo.evidencia_faltante == "O registro mostra que este requisito não foi atendido."
+    assert motivo.o_que_pode_mudar == "Atender a este requisito poderia mudar o resultado."
+    assert 'Sabe Python. Registro: "python: nao"' in feedback.texto
+    assert "criterios=r1" in auditoria.eventos[0].mensagem
+
+
+def test_corte_do_funil_sem_valor_registrado_vai_para_a_pessoa_responsavel() -> None:
+    feedback = _responder_registro(_corte_por_requisito())
+
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == "motivo_sem_trecho_registrado"
+
+
+def test_corte_do_funil_com_valor_sensivel_nao_sai() -> None:
+    registro = _corte_por_requisito(
+        Evidencia(criterio="r1", trecho="python: nao, gestante", fonte="rede_simulada")
+    )
+
+    feedback = _responder_registro(registro)
+
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == "motivo_sensivel"
+
+
+def test_corte_do_funil_por_requisito_desconhecido_na_vaga_nao_vira_motivo() -> None:
+    registro = _corte_por_requisito(
+        Evidencia(criterio="r9", trecho="python: nao", fonte="rede_simulada")
+    )
+
+    feedback = _responder_registro(registro)
+
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == "motivo_sem_trecho_registrado"
+
+
+def test_outro_corte_do_funil_continua_com_a_pessoa_responsavel() -> None:
+    registro = _corte_por_requisito(
+        Evidencia(criterio="r1", trecho="python: nao", fonte="rede_simulada")
+    ).model_copy(update={"regra": "funil:duplicata"})
+
+    feedback = _responder_registro(registro)
+
+    assert feedback.encaminhado_por == ENCAMINHADO_SEM_DECISAO_FINAL

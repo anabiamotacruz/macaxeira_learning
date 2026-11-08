@@ -19,6 +19,7 @@ from backend.agente.regras import (
     contem_termo,
     decidir,
     decisao_sem_analise,
+    evidencias_de_requisito_nao_atendido,
     pode_contatar,
     separar_palavras,
     validar_criterios,
@@ -1061,3 +1062,33 @@ def test_decisao_sem_analise_guarda_o_fato_da_regra() -> None:
     assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
     assert decisao.regra == "analise_invalida"
     assert [e.fonte for e in decisao.evidencias] == [FONTE_REGRA]
+
+
+def test_corte_por_requisito_guarda_o_valor_que_reprovou_cada_requisito():
+    vaga = _vaga(
+        requisitos=[
+            Requisito(id="r1", descricao="Sabe Python", campo="python", valor_esperado="sim"),
+            Requisito(id="r2", descricao="Mora no Brasil", campo="pais", valor_esperado="brasil"),
+            Requisito(id="r3", descricao="Fala inglês", campo="ingles", valor_esperado="sim"),
+        ]
+    )
+    sem_dado = candidato_simulado("c1", "empresa-a", fonte="outra_rede", atributos={})
+    reprovado = candidato_simulado(
+        "c1", "empresa-a", fonte="rede_simulada", atributos={"python": "nao", "pais": "brasil"}
+    )
+
+    evidencias = evidencias_de_requisito_nao_atendido(vaga, [sem_dado, reprovado])
+
+    assert [(e.criterio, e.trecho, e.fonte) for e in evidencias] == [
+        ("r1", "python: nao", "rede_simulada")
+    ]
+
+
+def test_corte_por_requisito_vale_pelo_primeiro_registro_com_o_dado():
+    vaga = _vaga(
+        [Requisito(id="r1", descricao="Sabe Python", campo="python", valor_esperado="sim")]
+    )
+    atende = candidato_simulado("c1", "empresa-a", fonte="a", atributos={"python": "sim"})
+    reprova = candidato_simulado("c1", "empresa-a", fonte="b", atributos={"python": "nao"})
+
+    assert evidencias_de_requisito_nao_atendido(vaga, [atende, reprova]) == []

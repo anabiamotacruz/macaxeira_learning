@@ -184,3 +184,29 @@ def test_canal_e_obrigatorio(cliente, vaga):
     resposta = _pedir(cliente, vaga, pessoa["id"], canal="")
 
     assert resposta.status_code == 422
+
+
+def test_quem_o_funil_cortou_por_requisito_recebe_o_motivo(cliente, vaga):
+    resposta = _pedir(cliente, vaga, "java")
+
+    assert resposta.status_code == 200, resposta.text
+    feedback = resposta.json()["feedback"]
+    assert feedback["status"] == "gerado"
+    assert feedback["saudacao"] == "Olá, Pessoa Fictícia java."
+    [motivo] = feedback["motivos"]
+    assert motivo["criterio"] == "python"
+    assert motivo["descricao"] == "Experiência com Python"
+    assert motivo["trecho"] == "linguagem: java"
+    assert 'Experiência com Python. Registro: "linguagem: java"' in feedback["texto"]
+
+
+def test_corte_por_requisito_guarda_a_evidencia_na_decisao(cliente, vaga):
+    decisao = cliente.get(f"/candidatos/java/decisao?vaga_id={vaga}", headers=SESSAO).json()[
+        "decisao"
+    ]
+
+    assert decisao["tipo"] == "descartar"
+    assert decisao["regra"] == "funil:requisito_nao_atendido"
+    assert {"criterio": "python", "trecho": "linguagem: java", "fonte": "rede_simulada"} in (
+        decisao["evidencias"]
+    )
