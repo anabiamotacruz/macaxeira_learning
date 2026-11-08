@@ -275,7 +275,9 @@ export default function Home() {
                     </span>
                     <p className="text-xs text-[#58716d]"><span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-[#9aa7a4] md:hidden">Candidatos</span>—</p>
                     <p className="text-xs text-[#8b9996]"><span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-[#9aa7a4] md:hidden">Criada em</span>—</p>
-                    <span className="hidden md:block"><Icon name="chevron" size={17} /></span>
+                    <Link aria-label={`Ver candidatos de ${vaga.titulo}`} className="hidden md:block" href={`/vagas/${encodeURIComponent(vaga.id)}/candidatos`}>
+                      <Icon name="chevron" size={17} />
+                    </Link>
                   </article>
                 );
               })

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   analisesIniciais,
@@ -8,21 +8,54 @@ import {
   resultadosNaraIniciais,
   vagasIniciais,
 } from "../lib/dados";
-import type { Candidato, Decisao, TipoDecisao } from "../lib/tipos";
+import { ApiError, listarConvites, modoReservaAtivo, obterDecisaoCandidato, responderConvite } from "../lib/api";
+import type { Candidato, Convite, Decisao, TipoDecisao, TipoResposta } from "../lib/tipos";
 import { Navegacao } from "./Navegacao";
 import { SimuladoBadge } from "./SimuladoBadge";
 
 const REVISOR = "revisor.demo";
 
-export function CandidatoDetalhe({ candidato }: { candidato: Candidato }) {
+export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { candidato: Candidato; vagaId?: string }) {
   const vaga = vagasIniciais[0];
-  const analise = analisesIniciais.find((item) => item.candidato_id === candidato.id);
   const [decisao, setDecisao] = useState<Decisao | undefined>(
-    decisoesIniciais.find((item) => item.candidato_id === candidato.id),
+    candidato ? decisoesIniciais.find((item) => item.candidato_id === candidato.id) : undefined,
   );
   const resultado = resultadosNaraIniciais.find(
-    (item) => item.candidato_id === candidato.id,
+    (item) => item.candidato_id === candidato?.id,
   );
+  const [decisaoApi, setDecisaoApi] = useState<Decisao>();
+  const [convites, setConvites] = useState<Convite[]>([]);
+  const [erroApi, setErroApi] = useState("");
+  const [carregandoApi, setCarregandoApi] = useState(!modoReservaAtivo());
+  const [respostaEnviada, setRespostaEnviada] = useState("");
+  const [exemploFixo, setExemploFixo] = useState(false);
+
+  useEffect(() => {
+    if (modoReservaAtivo()) return;
+    let ativo = true;
+    Promise.all([
+      obterDecisaoCandidato(candidato.id, vagaId),
+      listarConvites(vagaId),
+    ])
+      .then(([decisaoResposta, convitesResposta]) => {
+        if (!ativo) return;
+        setDecisaoApi(decisaoResposta.decisao);
+        setConvites(convitesResposta.itens);
+        setExemploFixo(decisaoResposta.exemplo_fixo === true);
+      })
+      .catch((erro) => {
+        if (ativo) setErroApi(erro instanceof ApiError ? erro.message : "Não foi possível carregar decisão e convites.");
+      })
+      .finally(() => {
+        if (ativo) setCarregandoApi(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [candidato, vagaId]);
+
+  const analise = analisesIniciais.find((item) => item.candidato_id === candidato.id);
+  const decisaoExibida = decisaoApi || decisao;
 
   function registrarDecisao(tipo: TipoDecisao) {
     setDecisao({
@@ -45,6 +78,7 @@ export function CandidatoDetalhe({ candidato }: { candidato: Candidato }) {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <Navegacao />
+      {erroApi && <p className="mx-auto max-w-5xl px-6 pt-6 text-rose-300" role="alert">{erroApi}</p>}
       <div className="mx-auto max-w-5xl px-6 py-10">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -56,7 +90,7 @@ export function CandidatoDetalhe({ candidato }: { candidato: Candidato }) {
               Empresa: {candidato.empresa_id} · Fonte: {candidato.fonte}
             </p>
           </div>
-          <SimuladoBadge />
+          <SimuladoBadge simulado={candidato.simulado} exemplo_fixo={exemploFixo} />
         </header>
 
         <div className="grid gap-5">
@@ -158,10 +192,20 @@ export function CandidatoDetalhe({ candidato }: { candidato: Candidato }) {
               </div>
               <SimuladoBadge />
             </div>
-            {decisao ? (
+            {carregandoApi ? (
+              <p className="mt-4 text-slate-400">Carregando decisão e evidências…</p>
+            ) : decisaoExibida ? (
               <div className="mt-4 rounded-lg bg-slate-950 p-4">
-                <p className="font-semibold">Resultado: {decisao.tipo}</p>
-                <p className="mt-1 text-slate-300">{decisao.motivo}</p>
+                <p className="font-semibold">Resultado: {decisaoExibida.tipo}</p>
+                <p className="mt-1 text-slate-300">{decisaoExibida.motivo}</p>
+                <p className="mt-3 text-sm text-slate-400">Regra aplicada: {decisaoExibida.regra}</p>
+                <ul className="mt-3 space-y-2">
+                  {decisaoExibida.evidencias.map((evidencia) => (
+                    <li className="rounded bg-slate-900 p-3 text-sm" key={`${evidencia.criterio}-${evidencia.trecho}`}>
+                      <strong>{evidencia.criterio}</strong><p className="mt-1 text-slate-300">{evidencia.trecho}</p><p className="mt-1 text-xs text-slate-500">Fonte: {evidencia.fonte}</p>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : (
               <p className="mt-4 text-slate-400">Ainda não há decisão humana registrada.</p>
@@ -183,6 +227,26 @@ export function CandidatoDetalhe({ candidato }: { candidato: Candidato }) {
               </button>
             </div>
           </section>
+
+          {!modoReservaAtivo() && (
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+              <h2 className="text-xl font-semibold">Convites</h2>
+              {convites.length === 0 ? <p className="mt-3 text-slate-400">Nenhum convite disponível para este candidato.</p> : convites.filter((convite) => convite.candidato_id === candidato.id).map((convite) => (
+                <div className="mt-4 rounded-lg bg-slate-950 p-4" key={convite.id}>
+                  <p className="text-sm text-slate-300">{convite.mensagem}</p>
+                  <button className="mt-3 rounded-lg bg-cyan-400 px-4 py-2 font-semibold text-slate-950" onClick={async () => {
+                    try {
+                      await responderConvite(convite.id, { vaga_id: vagaId, tipo: "duvida" as TipoResposta, texto: "Resposta registrada pelo painel." });
+                      setRespostaEnviada("Resposta enviada. Uma nova tentativa reutiliza a mesma chave de idempotência.");
+                    } catch (erro) {
+                      setErroApi(erro instanceof ApiError ? erro.message : "Não foi possível responder ao convite.");
+                    }
+                  }} type="button">Responder convite</button>
+                </div>
+              ))}
+              {respostaEnviada && <p className="mt-3 text-sm text-emerald-300">{respostaEnviada}</p>}
+            </section>
+          )}
 
           <section className="rounded-2xl border border-cyan-800 bg-cyan-950/40 p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
