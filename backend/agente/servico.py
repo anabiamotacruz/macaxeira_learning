@@ -18,6 +18,7 @@ from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
 from backend.agente.configuracao import PerguntaVaga
 from backend.agente.documento import documento_de_ingestao
+from backend.agente.feedback import responder_pedido_de_feedback
 from backend.agente.fluxo import (
     REGRA_REVERSAO,
     FluxoVaga,
@@ -52,7 +53,9 @@ from backend.contratos.modelos import (
     DestinoPessoa,
     EstadoVaga,
     EventoFluxo,
+    FeedbackCandidato,
     Mandato,
+    PedidoFeedback,
     PropostaAjuste,
     RespostaCandidato,
     ResumoExecucao,
@@ -400,6 +403,45 @@ class ServicoVagas:
     def _decisao_na_vaga(self, empresa_id: str, vaga_id: str, candidato_id: str) -> Decisao | None:
         decisoes = self.repositorio.listar_decisoes(empresa_id, vaga_id)
         return decisoes_vigentes(decisoes).get(candidato_id)
+
+    def responder_feedback(
+        self,
+        empresa_id: str,
+        vaga_id: str,
+        candidato_id: str,
+        canal: str,
+        texto: str = "",
+        contestacao: bool = False,
+    ) -> FeedbackCandidato:
+        """Responde ao pedido da pessoa pela decisão vigente no registro, ou o encaminha.
+
+        Só existe a pedido. Quem não tem decisão nesta empresa e vaga não existe para o pedido.
+        """
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        registro = self._decisao_na_vaga(empresa_id, vaga_id, candidato_id)
+        candidato = next(
+            (c for c, _, _ in fluxo.situacao_candidatos() if c.id == candidato_id), None
+        )
+        if registro is None or candidato is None:
+            raise CandidatoInexistente("candidato não encontrado nesta empresa")
+        agora = self._dependencias.relogio()
+        pedido = PedidoFeedback(
+            empresa_id=empresa_id,
+            vaga_id=vaga_id,
+            candidato_id=candidato_id,
+            canal=canal,
+            pedido_em=agora,
+            texto=texto,
+            contestacao=contestacao,
+        )
+        return responder_pedido_de_feedback(
+            pedido,
+            fluxo.vaga,
+            candidato.nome,
+            registrar=self.repositorio.registrar_evento,
+            agora=agora,
+            registro=registro,
+        )
 
     def _exigir_candidato_na_vaga(self, empresa_id: str, vaga_id: str, candidato_id: str) -> None:
         if self._decisao_na_vaga(empresa_id, vaga_id, candidato_id) is None:

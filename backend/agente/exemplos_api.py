@@ -313,6 +313,13 @@ PEDIDO_RESPOSTA = {
     "texto": "",
     "chave_idempotencia": "exemplo-resposta-1",
 }
+PEDIDO_FEEDBACK = {
+    "vaga_id": VAGA_EXEMPLO,
+    "canal": "whatsapp",
+    "texto": "Gostaria de saber por que não segui no processo.",
+    "contestacao": False,
+    "chave_idempotencia": "exemplo-feedback-1",
+}
 PEDIDO_REVISAO = {
     "vaga_id": VAGA_EXEMPLO,
     "decisao": "indicar",

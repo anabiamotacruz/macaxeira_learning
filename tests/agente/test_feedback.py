@@ -4,9 +4,11 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from backend.agente.decisao_final import classificar_destino, confirmar_lapidar
+from backend.agente.decisao_final import classificar_destino, como_decisao, confirmar_lapidar
 from backend.agente.feedback import (
+    ENCAMINHADO_SEM_DECISAO_FINAL,
     ETAPA_FEEDBACK,
+    TEXTO_ENCAMINHADO,
     FeedbackNegado,
     responder_pedido_de_feedback,
 )
@@ -354,6 +356,58 @@ def test_pedido_de_outra_pessoa_vaga_ou_empresa_e_negado(campos: dict) -> None:
 def test_sem_decisao_nem_retorno_e_negado() -> None:
     with pytest.raises(FeedbackNegado):
         _responder()
+
+
+def _registro_sem_decisao_final(**campos):
+    registro = como_decisao(_recusa())
+    entrada = {k: v for k, v in registro.entrada.items() if k != "decisao_final"}
+    return registro.model_copy(update={"entrada": entrada, **campos})
+
+
+def test_decisao_do_registro_usa_a_decisao_final_guardada_nela() -> None:
+    direto = _responder(_recusa())
+    pelo_registro = responder_pedido_de_feedback(
+        _pedido(),
+        vaga_teste(),
+        "Pessoa Fictícia",
+        registrar=_Auditoria(),
+        agora=AGORA,
+        registro=como_decisao(_recusa()),
+    )
+    assert pelo_registro == direto
+
+
+def test_registro_sem_decisao_final_vai_para_a_pessoa_responsavel() -> None:
+    auditoria = _Auditoria()
+    registro = _registro_sem_decisao_final()
+    feedback = responder_pedido_de_feedback(
+        _pedido(),
+        vaga_teste(),
+        "Pessoa Fictícia",
+        registrar=auditoria,
+        agora=AGORA,
+        registro=registro,
+    )
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == ENCAMINHADO_SEM_DECISAO_FINAL
+    assert feedback.texto == TEXTO_ENCAMINHADO
+    assert feedback.responsavel
+    assert len(auditoria.eventos) == 1
+    assert f"regra={registro.regra}" in auditoria.eventos[0].mensagem
+
+
+def test_registro_de_outra_pessoa_e_negado() -> None:
+    auditoria = _Auditoria()
+    with pytest.raises(FeedbackNegado):
+        responder_pedido_de_feedback(
+            _pedido(),
+            vaga_teste(),
+            "Pessoa Fictícia",
+            registrar=auditoria,
+            agora=AGORA,
+            registro=_registro_sem_decisao_final(candidato_id="c2"),
+        )
+    assert auditoria.eventos == []
 
 
 def test_feedback_gera_rastro(rastro) -> None:
