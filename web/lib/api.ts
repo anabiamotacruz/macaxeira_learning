@@ -171,14 +171,7 @@ export async function responderConvite(
   conviteId: string,
   pedido: { vaga_id: string; tipo: TipoResposta; texto: string; chave_idempotencia?: string },
 ): Promise<ApiRespostaResponse> {
-  let chave = pedido.chave_idempotencia;
-  try {
-    const nome = `macaxeira.convite.${conviteId}.idempotencia`;
-    chave = chave || window.localStorage.getItem(nome) || crypto.randomUUID();
-    window.localStorage.setItem(nome, chave);
-  } catch {
-    chave = chave || crypto.randomUUID();
-  }
+  const chave = pedido.chave_idempotencia || crypto.randomUUID();
   return request<ApiRespostaResponse>(`/convites/${encodeURIComponent(conviteId)}/resposta`, {
     method: "POST",
     body: JSON.stringify({ ...pedido, chave_idempotencia: chave }),

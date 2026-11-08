@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   analisesIniciais,
@@ -29,6 +29,7 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
   const [carregandoApi, setCarregandoApi] = useState(!modoReservaAtivo());
   const [respostaEnviada, setRespostaEnviada] = useState("");
   const [exemploFixo, setExemploFixo] = useState(false);
+  const chavesResposta = useRef(new Map<string, string>());
 
   useEffect(() => {
     if (modoReservaAtivo()) return;
@@ -235,8 +236,13 @@ export function CandidatoDetalhe({ candidato, vagaId = vagasIniciais[0].id }: { 
                 <div className="mt-4 rounded-lg bg-slate-950 p-4" key={convite.id}>
                   <p className="text-sm text-slate-300">{convite.mensagem}</p>
                   <button className="mt-3 rounded-lg bg-cyan-400 px-4 py-2 font-semibold text-slate-950" onClick={async () => {
+                    const pedido = { vaga_id: vagaId, tipo: "duvida" as TipoResposta, texto: "Resposta registrada pelo painel." };
+                    const fingerprint = `${convite.id}|${pedido.vaga_id}|${pedido.tipo}|${pedido.texto}`;
+                    const chave = chavesResposta.current.get(fingerprint) || crypto.randomUUID();
+                    chavesResposta.current.set(fingerprint, chave);
                     try {
-                      await responderConvite(convite.id, { vaga_id: vagaId, tipo: "duvida" as TipoResposta, texto: "Resposta registrada pelo painel." });
+                      await responderConvite(convite.id, { ...pedido, chave_idempotencia: chave });
+                      chavesResposta.current.delete(fingerprint);
                       setRespostaEnviada("Resposta enviada. Uma nova tentativa reutiliza a mesma chave de idempotência.");
                     } catch (erro) {
                       setErroApi(erro instanceof ApiError ? erro.message : "Não foi possível responder ao convite.");
