@@ -261,7 +261,7 @@ export default function Home() {
                         <Icon name="briefcase" />
                       </span>
                       <div>
-                        <h2 className="text-sm font-semibold text-[#113b43]">{vaga.titulo}</h2>
+                        <h2 className="text-sm font-semibold text-[#113b43]"><Link className="hover:text-[#fb3c0d]" href={`/vagas/${encodeURIComponent(vaga.id)}`}>{vaga.titulo}</Link></h2>
                         <p className="mt-1 text-xs text-[#82918e]">{vaga.competencias[0]?.nome ?? "Tecnologia"}</p>
                       </div>
                     </div>

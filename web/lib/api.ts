@@ -183,3 +183,157 @@ export async function listarEventos(vagaId: string): Promise<ApiEnvelope & { ite
     `/vagas/${encodeURIComponent(vagaId)}/eventos`,
   );
 }
+
+// Fluxo completo da vaga: mandato, andamento, fila do RH, entrega e retorno depois da entrevista.
+
+/** Erro com a mensagem que a API escreveu para mostrar à pessoa, como a recusa de uma revisão. */
+export class ApiRecusa extends Error {
+  readonly status: number;
+
+  constructor(status: number, mensagem: string) {
+    super(mensagem);
+    this.name = "ApiRecusa";
+    this.status = status;
+  }
+}
+
+async function requestComMotivo<T>(path: string, init?: RequestInit): Promise<T> {
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", "X-Empresa-Id": EMPRESA_ID, ...init?.headers },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(0);
+  }
+  if (resposta.ok) return (await resposta.json()) as T;
+  let mensagem = "";
+  try {
+    const corpo = (await resposta.json()) as { erro?: { mensagem?: string } };
+    mensagem = corpo.erro?.mensagem ?? "";
+  } catch {
+    // Sem corpo legível, vale a mensagem padrão do status.
+  }
+  if (mensagem) throw new ApiRecusa(resposta.status, mensagem);
+  throw new ApiError(resposta.status);
+}
+
+export type PoliticaMandato = {
+  limiar_verde: number;
+  piso_nota: number;
+  max_indicacoes: number;
+  max_ampliacoes: number;
+  aceitar_declarada: boolean;
+};
+
+export type ResumoVaga = {
+  vaga_id: string;
+  estado: EstadoVaga;
+  analisados: number;
+  indicados: number;
+  descartados: number;
+  na_fila_humana: number;
+  gasto_usd: number;
+  limite_gasto_usd: number | null;
+};
+
+export type DuvidaConvite = {
+  pergunta: string;
+  resposta: string | null;
+  encaminhada_a_pessoa: boolean;
+  simulado: boolean;
+  momento: string;
+};
+
+export type RetornoEntrevista = {
+  candidato_id: string;
+  convite_id: string;
+  aprovado: boolean;
+  mensagem: string;
+  enviado: boolean;
+  simulado: boolean;
+  momento: string;
+};
+
+export type ConviteDaVaga = {
+  id: string;
+  candidato_id: string;
+  canal: string;
+  mensagem: string;
+  link_destino: string | null;
+  simulado: boolean;
+  estado: string;
+  tentativa: number;
+  duvidas: DuvidaConvite[];
+  retorno: RetornoEntrevista | null;
+};
+
+export type PacoteEntregue = {
+  candidato_id: string;
+  motivo_por_criterio: Record<string, string>;
+  pontos_a_aprofundar: string[];
+  lacunas: string[];
+};
+
+export type ModeloDeVaga = Omit<Vaga, "id" | "empresa_id" | "aprovada">;
+
+export async function listarModelosDeVaga(): Promise<ModeloDeVaga[]> {
+  return (await request<ApiEnvelope & { itens: ModeloDeVaga[] }>("/vagas/modelos")).itens;
+}
+
+export async function assinarMandato(
+  vagaId: string,
+  assinante: string,
+  politica: PoliticaMandato,
+  limiteGastoUsd = 5,
+): Promise<ApiVagaResponse> {
+  return requestComMotivo<ApiVagaResponse>(`/vagas/${encodeURIComponent(vagaId)}/mandato`, {
+    method: "POST",
+    body: JSON.stringify({ assinante, limite_gasto_usd: limiteGastoUsd, politica }),
+  });
+}
+
+export async function obterResumo(vagaId: string): Promise<ResumoVaga> {
+  return (await request<ApiEnvelope & { resumo: ResumoVaga }>(`/vagas/${encodeURIComponent(vagaId)}/resumo`)).resumo;
+}
+
+export async function listarEventosRecentes(vagaId: string): Promise<EventoFluxo[]> {
+  return (
+    await request<ApiEnvelope & { itens: EventoFluxo[] }>(`/vagas/${encodeURIComponent(vagaId)}/eventos?limite=100`)
+  ).itens;
+}
+
+export async function listarConvitesDaVaga(vagaId: string): Promise<ConviteDaVaga[]> {
+  return (await request<ApiEnvelope & { itens: ConviteDaVaga[] }>(`/vagas/${encodeURIComponent(vagaId)}/convites`)).itens;
+}
+
+export async function listarPacotesEntregues(vagaId: string): Promise<PacoteEntregue[]> {
+  const resposta = await request<ApiEnvelope & { saida: { pacotes: PacoteEntregue[] } }>(
+    `/vagas/${encodeURIComponent(vagaId)}/entrega`,
+  );
+  return resposta.saida.pacotes;
+}
+
+export async function revisarCandidato(
+  candidatoId: string,
+  pedido: { vaga_id: string; decisao: "indicar" | "descartar"; motivo: string; responsavel: string },
+): Promise<ApiDecisaoResponse> {
+  return requestComMotivo<ApiDecisaoResponse>(`/candidatos/${encodeURIComponent(candidatoId)}/revisao`, {
+    method: "POST",
+    body: JSON.stringify({ ...pedido, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export async function avisarResultadosDasEntrevistas(vagaId: string): Promise<RetornoEntrevista[]> {
+  const resposta = await requestComMotivo<ApiEnvelope & { itens: RetornoEntrevista[] }>(
+    `/vagas/${encodeURIComponent(vagaId)}/retornos`,
+    { method: "POST", body: JSON.stringify({ chave_idempotencia: crypto.randomUUID() }) },
+  );
+  return resposta.itens;
+}
+
+export function guardarVagaNoCatalogo(id: string): void {
+  salvarId(id);
+}

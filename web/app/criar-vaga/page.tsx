@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { Sidebar } from "../../components/Sidebar";
 import { ApiError, criarVaga } from "../../lib/api";
 
 export default function CriarVagaPage() {
+  const router = useRouter();
   const [titulo, setTitulo] = useState("");
   const [area, setArea] = useState("");
   const [localizacao, setLocalizacao] = useState("");
@@ -47,7 +49,8 @@ export default function CriarVagaPage() {
         prazo_dias: 7,
         max_tentativas_contato: 2,
       });
-      setSucesso(`Vaga "${resposta.vaga.titulo}" criada como rascunho.`);
+      setSucesso(`Vaga "${resposta.vaga.titulo}" criada. Abrindo o painel para assinar o mandato…`);
+      router.push(`/vagas/${encodeURIComponent(resposta.vaga.id)}`);
     } catch (erroApi) {
       setErro(erroApi instanceof ApiError ? erroApi.message : "Não foi possível criar a vaga.");
     } finally {
@@ -71,6 +74,7 @@ export default function CriarVagaPage() {
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4c8885]">Nova oportunidade</p>
             <h1 className="text-4xl font-semibold tracking-[-0.04em] text-[#0b3038]">Criar vaga</h1>
             <p className="mt-2 text-sm text-[#718784]">Defina o contexto para iniciar uma busca responsável.</p>
+            <p className="mt-2 text-sm text-[#718784]">Quer testar o fluxo completo? <Link className="font-medium text-[#fb3c0d] hover:underline" href="/vagas/modelos">Crie a partir de um modelo de vaga</Link>, que já vem com requisitos eliminatórios.</p>
           </header>
           {erro && <p className="mb-5 rounded-lg border border-[#f0b5aa] bg-[#fff1ee] px-4 py-3 text-sm text-[#a43826]" role="alert">{erro}</p>}
           {sucesso && <p className="mb-5 rounded-lg border border-[#b9dfc5] bg-[#eef9f0] px-4 py-3 text-sm text-[#377b5d]" role="status">{sucesso}</p>}
