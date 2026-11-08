@@ -112,6 +112,8 @@ ProvedorConsultas = Callable[[Vaga, int, Sequence[str]], list[str]]
 
 RegistrarCorte = Callable[[CorteFunil], None]
 Priorizador = Callable[[Vaga, list[Candidato], date, RegistrarCorte], list[Candidato]]
+RedatorConvite = Callable[[Vaga, Candidato, Analise, str | None], str]
+"""Escreve o texto do convite a partir da análise. Sem ele, o convite usa um texto fixo."""
 Reidentificador = Callable[[PacoteContexto, Candidato, Vaga, Decisao], PacoteContexto]
 """Reduz os achados antes das análises e informa quem saiu, por `RegistrarCorte`."""
 
@@ -336,8 +338,10 @@ class ProgressoFluxo(Contrato):
 def exigir_humano(responsavel: str) -> str:
     nome = responsavel.strip()
     palavras = separar_palavras(nome)
-    if not palavras or nome.casefold().startswith("agente") or (
-        palavras[0] in _PALAVRAS_DE_NAO_PESSOA
+    if (
+        not palavras
+        or nome.casefold().startswith("agente")
+        or (palavras[0] in _PALAVRAS_DE_NAO_PESSOA)
     ):
         raise ResponsavelInvalido("esta é uma decisão humana: informe a pessoa responsável")
     return nome
@@ -445,6 +449,7 @@ class FluxoVaga:
         resiliencia: Resiliencia | None = None,
         reidentificador: Reidentificador | None = None,
         concorrencia: int = CONCORRENCIA_PADRAO,
+        redator_convite: RedatorConvite | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -456,6 +461,7 @@ class FluxoVaga:
         self._auditoria = Auditoria(repositorio) if auditoria is None else auditoria
         self._resiliencia = Resiliencia() if resiliencia is None else resiliencia
         self._reidentificador = reidentificador
+        self._redator_convite = redator_convite
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -932,7 +938,8 @@ class FluxoVaga:
         elif estado in (EstadoFluxo.ENTREGANDO, EstadoFluxo.CONCLUIDA):
             if not mandato_valido(self.mandato, self.vaga, self._relogio()):
                 self._evento(
-                    "mandato", "indicação pendente: o mandato não vale, assine um aditivo",
+                    "mandato",
+                    "indicação pendente: o mandato não vale, assine um aditivo",
                     candidato_id,
                 )
                 return
@@ -1760,6 +1767,24 @@ class FluxoVaga:
             if registro.estado == EstadoConvite.A_ENVIAR:
                 self._enviar(progresso, registro)
 
+    def _texto_do_convite(
+        self,
+        progresso: ProgressoFluxo,
+        candidato: Candidato,
+        link: str | None,
+        estado: EstadoConvite,
+    ) -> str:
+        """Texto do redator, quando houver; se ele falhar, o texto fixo segue sem parar o fluxo."""
+        fixo = f"Temos uma vaga de {self.vaga.titulo} que combina com o seu perfil."
+        analise = progresso.analises.get(candidato.id)
+        if self._redator_convite is None or analise is None or estado != EstadoConvite.A_ENVIAR:
+            return fixo
+        try:
+            return self._redator_convite(self.vaga, candidato, analise, link)
+        except Exception:
+            logger.warning("convite da vaga %s usou o texto fixo", self.vaga.id, exc_info=True)
+            return fixo
+
     def _novo_convite(
         self, progresso: ProgressoFluxo, candidato_id: str, tentativa: int
     ) -> RegistroConvite:
@@ -1774,6 +1799,7 @@ class FluxoVaga:
             link = None
             estado = EstadoConvite.ENCERRADO
         identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
+        mensagem = self._texto_do_convite(progresso, atual, link, estado)
         convite = Convite(
             id=f"convite:{identificador}",
             empresa_id=self.vaga.empresa_id,
@@ -1781,7 +1807,7 @@ class FluxoVaga:
             canal=CANAL_CONVITE,
             vaga_id=self.vaga.id,
             candidato_id=candidato_id,
-            mensagem=f"Temos uma vaga de {self.vaga.titulo} que combina com o seu perfil.",
+            mensagem=mensagem,
             link_agendamento=link,
             chave_idempotencia=f"convite:{self.vaga.empresa_id}:{identificador}",
             simulado=candidato.simulado,
