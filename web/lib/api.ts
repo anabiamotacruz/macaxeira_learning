@@ -370,3 +370,54 @@ export async function proporVaga(
   >("/vagas/proposta", { method: "POST", body: JSON.stringify({ descricao }) });
   return { proposta: resposta.proposta, pergunta: resposta.pergunta };
 }
+
+export type ItemTalentGarden = {
+  candidato_id: string;
+  motivo: "nao_agora" | "alem_do_encaminhamento" | string;
+  confirmado: boolean;
+  simulado: boolean;
+};
+
+export type SugestaoTalentGarden = ItemTalentGarden & {
+  nome: string;
+  vaga_origem_id: string;
+  vaga_origem_titulo: string;
+  canal: string;
+};
+
+export async function listarTalentGarden(vagaId: string): Promise<ItemTalentGarden[]> {
+  return (
+    await request<ApiEnvelope & { itens: ItemTalentGarden[] }>(`/vagas/${encodeURIComponent(vagaId)}/talent-garden`)
+  ).itens;
+}
+
+export async function confirmarTalentGarden(candidatoId: string, vagaId: string, responsavel: string): Promise<void> {
+  await requestComMotivo(`/candidatos/${encodeURIComponent(candidatoId)}/destino`, {
+    method: "POST",
+    body: JSON.stringify({
+      vaga_id: vagaId,
+      destino: "talent_garden",
+      responsavel,
+      chave_idempotencia: crypto.randomUUID(),
+    }),
+  });
+}
+
+export async function listarSugestoesDoGarden(vagaId: string): Promise<SugestaoTalentGarden[]> {
+  return (
+    await request<ApiEnvelope & { itens: SugestaoTalentGarden[] }>(
+      `/vagas/${encodeURIComponent(vagaId)}/talent-garden/sugestoes`,
+    )
+  ).itens;
+}
+
+export async function convidarDoGarden(vagaId: string, candidatoIds: string[], responsavel: string): Promise<ConviteDaVaga[]> {
+  const resposta = await requestComMotivo<ApiEnvelope & { itens: ConviteDaVaga[] }>(
+    `/vagas/${encodeURIComponent(vagaId)}/talent-garden/convites`,
+    {
+      method: "POST",
+      body: JSON.stringify({ candidato_ids: candidatoIds, responsavel, chave_idempotencia: crypto.randomUUID() }),
+    },
+  );
+  return resposta.itens;
+}

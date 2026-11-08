@@ -7,10 +7,14 @@ import {
   ApiRecusa,
   assinarMandato,
   avisarResultadosDasEntrevistas,
+  confirmarTalentGarden,
+  convidarDoGarden,
   listarCandidatos,
   listarConvitesDaVaga,
   listarEventosRecentes,
   listarPacotesEntregues,
+  listarSugestoesDoGarden,
+  listarTalentGarden,
   obterDecisao,
   obterDocumentoDeEntrega,
   obterSugestaoDeAjuste,
@@ -19,7 +23,9 @@ import {
   responderConvite,
   revisarCandidato,
   type ConviteDaVaga,
+  type ItemTalentGarden,
   type PacoteEntregue,
+  type SugestaoTalentGarden,
   type ResumoVaga,
   type SugestaoAjuste,
 } from "../lib/api";
@@ -280,6 +286,12 @@ function Conversa({ convite, nome, vagaId, aoMudar }: {
           )}
         </div>
       ))}
+      {convite.estado === "aceito" && convite.link_destino && (
+        <p className={balaoAgente}>
+          Que bom que você aceitou! Para escolher o horário da entrevista, use este link:{" "}
+          <span className="break-all font-mono text-xs">{convite.link_destino}</span>
+        </p>
+      )}
       {convite.retorno && <p className={balaoAgente}>{convite.retorno.mensagem}</p>}
       {convite.estado === "aguardando" && (
         <div className="grid gap-2 border-t border-[#eef2ef] pt-3">
@@ -291,6 +303,7 @@ function Conversa({ convite, nome, vagaId, aoMudar }: {
           <div className="flex flex-wrap gap-2">
             <button className={botao} disabled={enviando} onClick={() => responder("aceite")} type="button">Tenho interesse</button>
             <button className={botao} disabled={enviando} onClick={() => responder("recusa")} type="button">Não tenho interesse</button>
+            <button className={botao} disabled={enviando} onClick={() => responder("recusa", "Agora não, talvez mais para frente")} type="button">Agora não, mais para frente</button>
             <button className={botao} disabled={enviando} onClick={() => responder("silencio")} type="button">Não respondeu</button>
             <button className={botao} disabled={enviando} onClick={() => responder("opt_out")} type="button">Não quero mais contato</button>
           </div>
@@ -298,6 +311,137 @@ function Conversa({ convite, nome, vagaId, aoMudar }: {
       )}
       {erro && <p className="text-sm text-[#a43826]" role="alert">{erro}</p>}
     </article>
+  );
+}
+
+const MOTIVOS_GARDEN: Record<string, string> = {
+  nao_agora: "Disse que agora não pode, mas quer ser lembrada",
+  alem_do_encaminhamento: "Boa para a vaga, mas passou do número de encaminhamento",
+};
+
+function TalentGarden({ vagaId, nomes, responsavel, aoMudar }: {
+  vagaId: string;
+  nomes: Record<string, string>;
+  responsavel: string;
+  aoMudar: () => void;
+}) {
+  const [itens, setItens] = useState<ItemTalentGarden[]>([]);
+  const [sugestoes, setSugestoes] = useState<SugestaoTalentGarden[]>([]);
+  const [escolhidos, setEscolhidos] = useState<string[]>([]);
+  const [erro, setErro] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    try {
+      const [daVaga, deOutras] = await Promise.all([listarTalentGarden(vagaId), listarSugestoesDoGarden(vagaId)]);
+      setItens(daVaga);
+      setSugestoes(deOutras);
+    } catch (erroApi) {
+      setErro(mensagemDeErro(erroApi, "Não foi possível carregar o Talent Garden."));
+    }
+  }, [vagaId]);
+
+  useEffect(() => {
+    const primeira = window.setTimeout(() => void carregar(), 0);
+    const intervalo = window.setInterval(() => void carregar(), 5000);
+    return () => {
+      window.clearTimeout(primeira);
+      window.clearInterval(intervalo);
+    };
+  }, [carregar]);
+
+  async function confirmar(candidatoId: string) {
+    setEnviando(true);
+    setErro("");
+    try {
+      await confirmarTalentGarden(candidatoId, vagaId, responsavel);
+      await carregar();
+    } catch (erroApi) {
+      setErro(mensagemDeErro(erroApi, "Não foi possível confirmar."));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function convidar() {
+    setEnviando(true);
+    setErro("");
+    try {
+      await convidarDoGarden(vagaId, escolhidos, responsavel);
+      setEscolhidos([]);
+      await carregar();
+      aoMudar();
+    } catch (erroApi) {
+      setErro(mensagemDeErro(erroApi, "Não foi possível mandar o convite especial."));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const alternar = (id: string) =>
+    setEscolhidos((atuais) => (atuais.includes(id) ? atuais.filter((x) => x !== id) : [...atuais, id]));
+
+  return (
+    <div className="grid gap-4">
+      <p className="text-sm text-[#526c68]">
+        Quem disse “agora não” ou ficou além do número de encaminhamento não se perde. O agente sugere guardar; quem confirma é o RH.
+      </p>
+      {itens.length ? (
+        <ul className="grid gap-2">
+          {itens.map((item) => (
+            <li className={`${cartao} flex flex-wrap items-center justify-between gap-3`} key={item.candidato_id}>
+              <div>
+                <b className="text-[#113b43]">{nomes[item.candidato_id] ?? item.candidato_id}</b>
+                <p className="text-sm text-[#526c68]">{MOTIVOS_GARDEN[item.motivo] ?? item.motivo}</p>
+              </div>
+              {item.confirmado ? (
+                <span className="rounded-full bg-[#e6f4ec] px-3 py-1 text-xs font-semibold text-[#2f7a53]">No Talent Garden</span>
+              ) : (
+                <button className={botao} disabled={enviando} onClick={() => confirmar(item.candidato_id)} type="button">Guardar no Talent Garden</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-[#81908d]">Ninguém sugerido nesta vaga ainda.</p>
+      )}
+
+      <div className={`${cartao} grid gap-3`}>
+        <h3 className="font-semibold text-[#113b43]">Do Talent Garden de outras vagas</h3>
+        {sugestoes.length ? (
+          <>
+            <p className="text-sm text-[#526c68]">
+              Estas pessoas já tiveram um primeiro contato com a empresa. Quer mandar um convite especial para esta vaga, pelo mesmo canal?
+            </p>
+            <ul className="grid gap-2">
+              {sugestoes.map((sugestao) => (
+                <li className="flex items-start gap-2 text-sm text-[#2c4f55]" key={sugestao.candidato_id}>
+                  <input
+                    checked={escolhidos.includes(sugestao.candidato_id)}
+                    className="mt-1"
+                    id={`garden-${sugestao.candidato_id}`}
+                    onChange={() => alternar(sugestao.candidato_id)}
+                    type="checkbox"
+                  />
+                  <label htmlFor={`garden-${sugestao.candidato_id}`}>
+                    <b>{sugestao.nome}</b> · da vaga {sugestao.vaga_origem_titulo} · {MOTIVOS_GARDEN[sugestao.motivo] ?? sugestao.motivo}
+                    {sugestao.confirmado ? " · confirmada pelo RH" : ""} · canal {sugestao.canal}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div>
+              <button className={botaoPrincipal} disabled={enviando || !escolhidos.length} onClick={convidar} type="button">
+                {enviando ? "Enviando…" : `Mandar convite especial (${escolhidos.length})`}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-[#81908d]">Nenhuma pessoa no Talent Garden de outras vagas desta empresa.</p>
+        )}
+      </div>
+      {erro && <p className="text-sm text-[#a43826]" role="alert">{erro}</p>}
+    </div>
   );
 }
 
@@ -584,6 +728,10 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                 <p className="mt-1">Peso de “{sugestao.criterio}”: de {sugestao.peso_atual} para {sugestao.peso_sugerido}. Quem decide ajustar é o RH.</p>
               </div>
             )}
+          </Secao>
+
+          <Secao numero={8} simulado titulo="Talent Garden">
+            <TalentGarden aoMudar={() => void atualizar()} nomes={nomes} responsavel={responsavel} vagaId={vagaId} />
           </Secao>
         </>
       )}
