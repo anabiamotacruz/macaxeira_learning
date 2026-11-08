@@ -125,6 +125,7 @@ def test_expoe_exatamente_as_rotas_combinadas():
     }
     assert rotas == {
         ("post", "/vagas"),
+        ("get", "/vagas/modelos"),
         ("post", "/vagas/{id}/mandato"),
         ("get", "/vagas/{id}"),
         ("get", "/vagas/{id}/candidatos"),

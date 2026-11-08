@@ -331,6 +331,112 @@
         }
       }
     },
+    "/vagas/modelos": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Listar Modelos De Vaga",
+        "description": "Vagas sintéticas de exemplo. Declarada antes de `/vagas/{id}` para não ser lida como id.",
+        "operationId": "listar_modelos_de_vaga",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaModelosVaga"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "itens": [
+                    {
+                      "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                      "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                      "requisitos": [
+                        {
+                          "id": "python",
+                          "descricao": "Experiência com Python",
+                          "campo": "linguagem",
+                          "valor_esperado": "python",
+                          "desenvolvivel": false
+                        }
+                      ],
+                      "competencias": [
+                        {
+                          "nome": "APIs",
+                          "peso": 1.0
+                        }
+                      ],
+                      "meta_candidatos": 2,
+                      "prazo_dias": 14,
+                      "max_tentativas_contato": 2
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ]
+      }
+    },
     "/vagas/{id}": {
       "get": {
         "tags": [
@@ -3910,6 +4016,37 @@
         ],
         "title": "RespostaMetricas",
         "description": "Taxas da vaga. Sem casos, a taxa aparece como não medida: `valor` nulo."
+      },
+      "RespostaModelosVaga": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/PedidoVaga"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "itens"
+        ],
+        "title": "RespostaModelosVaga",
+        "description": "Vagas de exemplo, sintéticas, para preencher o formulário de `POST /vagas`."
       },
       "RespostaRegistroResposta": {
         "properties": {

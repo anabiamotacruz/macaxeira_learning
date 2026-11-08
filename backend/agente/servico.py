@@ -20,6 +20,7 @@ from backend.agente.fluxo import (
     FluxoVaga,
     Priorizador,
     ProvedorConsultas,
+    RedatorConvite,
     RegistroConvite,
     Reidentificador,
     concorrencia_do_ambiente,
@@ -114,6 +115,7 @@ class DependenciasFluxo:
     resiliencia: Resiliencia = field(default_factory=Resiliencia)
     reidentificador: Reidentificador | None = None
     concorrencia: int = field(default_factory=concorrencia_do_ambiente)
+    redator_convite: RedatorConvite | None = None
 
 
 def _novo_id_de_vaga() -> str:
@@ -130,12 +132,14 @@ class ServicoVagas:
         metricas: ProvedorMetricas | None = None,
         recarregar: Callable[[str], None] | None = None,
         gerar_id: Callable[[], str] = _novo_id_de_vaga,
+        modelos_de_vaga: Sequence[dict] = (),
     ) -> None:
         self._dependencias = dependencias
         self.repositorio = dependencias.repositorio
         self._metricas = metricas
         self._recarregar = recarregar
         self._gerar_id = gerar_id
+        self._modelos_de_vaga = [dict(m) for m in modelos_de_vaga]
         self._auditoria = Auditoria(dependencias.repositorio)
         self._trava_das_travas = threading.Lock()
         self._travas: dict[tuple[str, str], threading.RLock] = {}
@@ -159,6 +163,7 @@ class ServicoVagas:
             resiliencia=d.resiliencia,
             reidentificador=d.reidentificador,
             concorrencia=d.concorrencia,
+            redator_convite=d.redator_convite,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:
@@ -189,6 +194,10 @@ class ServicoVagas:
         fluxo = self._novo_fluxo(vaga)
         fluxo.iniciar()
         return fluxo
+
+    def modelos_de_vaga(self) -> list[dict]:
+        """Vagas de exemplo para preencher o formulário. Sem id nem empresa."""
+        return [dict(m) for m in self._modelos_de_vaga]
 
     def consultar(self, empresa_id: str, vaga_id: str) -> FluxoVaga:
         return self._fluxo(empresa_id, vaga_id)
