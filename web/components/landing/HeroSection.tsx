@@ -43,7 +43,7 @@ export function HeroSection() {
             </span>
             <Link
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#dc3209] px-4 text-sm font-semibold text-white transition hover:bg-[#c42c08]"
-              href="/criar-vaga"
+              href="/vagas/proposta"
             >
               Abra sua primeira vaga <span aria-hidden="true">→</span>
             </Link>
@@ -54,7 +54,7 @@ export function HeroSection() {
           {suggestedBriefings.map((briefing) => (
             <Link
               className="rounded-full border border-[#dfe6e1] bg-white px-3 py-1.5 text-xs text-[#526c68] transition hover:bg-[#eef2ef]"
-              href="/criar-vaga"
+              href="/vagas/proposta"
               key={briefing}
             >
               {briefing}

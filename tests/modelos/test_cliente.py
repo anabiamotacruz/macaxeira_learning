@@ -203,6 +203,17 @@ def test_max_tokens_minimo_1000():
         cliente_com(Transporte(), max_tokens=999)
 
 
+def test_etapa_de_consultas_tem_teto_curto_e_analise_usa_o_limite_cheio():
+    transporte = Transporte(VALIDA, VALIDA)
+    cliente = cliente_com(transporte, max_tokens=8000)
+
+    cliente.completar("Você propõe consultas.", "Vaga.", Resumo, "ampliar_consultas")
+    completar(cliente)
+
+    teto, cheio = (json.loads(p.content)["max_tokens"] for p in transporte.pedidos)
+    assert (teto, cheio) == (1000, 8000)
+
+
 def test_chave_vem_do_ambiente(monkeypatch):
     transporte = Transporte(VALIDA)
 

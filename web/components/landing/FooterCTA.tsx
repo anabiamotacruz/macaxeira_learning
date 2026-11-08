@@ -19,7 +19,7 @@ export function FooterCTA() {
           <div className="flex flex-wrap justify-center gap-3">
             <Link
               className="rounded-lg bg-white px-5 py-3 font-semibold text-[#0b3038] transition hover:bg-[#fff1ea]"
-              href="/criar-vaga"
+              href="/vagas/proposta"
             >
               Abra sua primeira vaga
             </Link>

@@ -35,7 +35,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link className="hidden h-10 items-center rounded-lg border border-[#dfe6e1] bg-white px-3.5 text-sm font-medium sm:inline-flex" href="#acesso">Entrar</Link>
-            <Link className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#dc3209] px-3.5 text-sm font-semibold text-white shadow-[0_3px_7px_rgba(251,60,13,.22)]" href="/criar-vaga"><span aria-hidden="true" className="text-lg leading-none">+</span>Criar vaga</Link>
+            <Link className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#dc3209] px-3.5 text-sm font-semibold text-white shadow-[0_3px_7px_rgba(251,60,13,.22)]" href="/vagas/proposta"><span aria-hidden="true" className="text-lg leading-none">+</span>Criar vaga</Link>
           </div>
         </nav>
       </header>
@@ -65,7 +65,7 @@ function ProductPreview() {
             <span className="flex items-center gap-1.5 text-base font-semibold"><Image alt="" height={25} src="/coral.png" width={24} />CORA</span>
             <span className="hidden gap-0.5 text-[13px] md:flex"><span className="rounded-lg bg-[#eef2ef] px-3 py-1.5 font-semibold">Vagas</span><span className="px-3 py-1.5 text-[#526c68]">Banco de talentos</span><span className="px-3 py-1.5 text-[#526c68]">Empresa</span></span>
             <span className="ml-auto hidden h-8 w-[220px] items-center justify-between rounded-lg bg-[#f1f4f2] px-2.5 text-xs text-[#5e7672] md:flex">Buscar pessoas ou vagas <kbd className="rounded border border-[#dfe6e1] bg-white px-1.5 text-[11px]">⌘K</kbd></span>
-            <Link className="hidden rounded-lg bg-[#dc3209] px-3 py-2 text-[13px] font-semibold text-white sm:inline" href="/criar-vaga">Criar vaga</Link>
+            <Link className="hidden rounded-lg bg-[#dc3209] px-3 py-2 text-[13px] font-semibold text-white sm:inline" href="/vagas/proposta">Criar vaga</Link>
           </div>
           <div className="flex flex-col gap-4 p-5">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-[#5e7672]">Vagas / Backend Sênior</p><h2 className="mt-1 text-[22px] font-semibold tracking-[-.03em]">Pessoa Desenvolvedora Backend Sênior</h2><p className="text-[13px] text-[#5e7672]">Meta: 5 pessoas interessadas na Nara em 7 dias · 2 de 5 entregues</p></div><span className="rounded-full bg-[#fff1cc] px-2.5 py-1 text-xs font-semibold text-[#855a0e]">● Buscando</span></div>

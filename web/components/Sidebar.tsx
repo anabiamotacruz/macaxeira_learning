@@ -45,7 +45,7 @@ export function Sidebar({ active }: Props) {
             <input aria-label="Buscar pessoas ou vagas" className="min-w-0 flex-1 bg-transparent text-[13px] text-[#0b3038] outline-none placeholder:text-[#5e7672]" placeholder="Buscar pessoas ou vagas" type="search" />
             <kbd className="rounded border border-[#dfe6e1] bg-white px-1.5 font-mono text-[11px]">⌘K</kbd>
           </label>
-          <Link className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#dc3209] px-3.5 text-sm font-semibold text-white shadow-[0_3px_7px_rgba(251,60,13,.22)] hover:bg-[#c42c08]" href="/criar-vaga">
+          <Link className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#dc3209] px-3.5 text-sm font-semibold text-white shadow-[0_3px_7px_rgba(251,60,13,.22)] hover:bg-[#c42c08]" href="/vagas/proposta">
             <Plus aria-hidden="true" size={15} />
             Criar vaga
           </Link>
