@@ -443,7 +443,13 @@ def test_indica_sem_aprovar_lote_dentro_do_mandato(tmp_path: Path) -> None:
 
 def test_guarda_uma_decisao_por_candidato(tmp_path: Path) -> None:
     fracos = [*_dois_candidatos(), candidato_exemplo("c3", atributos={"python": "nao"})]
-    m = Montagem(tmp_path, fracos, analisador=AnalisadorComEvidencias(notas={"c2": 0.5}))
+    # Meta de 1: a faixa verde basta, e a de potencial não entra (ver test_faixa_potencial).
+    m = Montagem(
+        tmp_path,
+        fracos,
+        vaga=vaga_exemplo(meta_candidatos=1),
+        analisador=AnalisadorComEvidencias(notas={"c2": 0.5}),
+    )
     fluxo = m.fluxo()
 
     _assinar_fluxo(fluxo)
