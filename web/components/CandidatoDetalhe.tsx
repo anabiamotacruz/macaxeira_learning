@@ -298,10 +298,10 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
     ["Analisada pela CORA", Boolean(decisao || analise)],
     ["Autorizou o contato", candidato.autorizou_contato],
     ["Indicada para contato", decisao?.tipo === "indicar"],
-    ["Convite com link da Nara", Boolean(conviteAtual) || (!usaApi && decisao?.tipo === "indicar")],
+    ["Convite com link de agendamento", Boolean(conviteAtual) || (!usaApi && decisao?.tipo === "indicar")],
     ["Aceitou e foi entregue ao recrutador", Boolean(pacote) || conviteAtual?.estado === "aceito"],
     [
-      resultado ? `Entrevista na Nara: ${resultado.aprovado ? "passou" : "não passou"}` : conviteAtual?.retorno ? `Retorno: ${conviteAtual.retorno.aprovado ? "aprovada" : "não aprovada"}` : "Resultado da entrevista (Nara)",
+      resultado ? `Retorno do recrutador: ${resultado.aprovado ? "passou" : "não passou"}` : conviteAtual?.retorno ? `Retorno: ${conviteAtual.retorno.aprovado ? "aprovada" : "não aprovada"}` : "Resultado da entrevista (Nara)",
       Boolean(resultado || conviteAtual?.retorno),
     ],
   ];
@@ -444,7 +444,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
                     {lacunas.length ? <ul className="m-0 flex flex-col gap-1.5 pl-[18px] text-cora-ink-2">{lacunas.map((l) => <li key={l}>{l}</li>)}</ul> : <p className="m-0 text-[13px] text-cora-muted">{usaApi && !pacote ? "Aparecem quando a pessoa é entregue ao recrutador." : "Nenhuma lacuna registrada."}</p>}
                   </div>
                   <div className="flex flex-col gap-2.5">
-                    <span className="text-[15px] font-semibold">Para a Nara aprofundar</span>
+                    <span className="text-[15px] font-semibold">Para aprofundar na entrevista</span>
                     {aprofundar.length ? <ul className="m-0 flex flex-col gap-1.5 pl-[18px] text-cora-ink-2">{aprofundar.map((p) => <li key={p}>{p}</li>)}</ul> : <p className="m-0 text-[13px] text-cora-muted">Nenhum ponto registrado.</p>}
                   </div>
                   {alertas.length > 0 && (
@@ -478,7 +478,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
                           <span className="text-cora-muted">Para: {email ?? candidato.nome} · Tentativa {convite.tentativa}{vaga ? ` de ${vaga.max_tentativas_contato}` : ""}</span>
                         </div>
                         <p className="m-0 px-4 py-3.5 text-sm text-cora-ink-2">{convite.mensagem}</p>
-                        {convite.link_destino && <p className="m-0 px-4 pb-3.5 text-xs text-cora-muted">Link da Nara (simulado): <span className="font-mono">{convite.link_destino}</span></p>}
+                        {convite.link_destino && <p className="m-0 px-4 pb-3.5 text-xs text-cora-muted">Link de agendamento: <span className="font-mono">{convite.link_destino}</span></p>}
                       </div>
                       {convite.duvidas.map((d) => (
                         <div className="flex flex-col gap-2" key={`${d.momento}-${d.pergunta}`}>
@@ -511,7 +511,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
                   </div>
                 ))}
                 <p className="m-0 flex items-start gap-2.5 rounded-[10px] border border-[#F1D58A] bg-[#FFF8E3] px-3.5 py-3 text-[13px] text-[#6B4A0C]">
-                  Dúvidas fora do material da vaga vão para uma pessoa do RH. O horário da entrevista quem marca é a Nara.
+                  Dúvidas fora do material da vaga vão para uma pessoa do RH. O horário da entrevista quem marca é o recrutador.
                 </p>
               </Cartao>
             )}
@@ -599,7 +599,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
               </Cartao>
             )}
 
-            <Cartao descricao="A entrevista é conduzida pela Nara (simulada); a CORA não agenda reuniões." id="sec-etapas" titulo="Etapas">
+            <Cartao descricao="A entrevista é conduzida pelo recrutador ou pelo agente de entrevista da empresa; a CORA não agenda reuniões." id="sec-etapas" titulo="Etapas">
               <ol className="m-0 flex list-none flex-col gap-3 p-0 text-[13px]">
                 {etapas.map(([rotulo, feita]) => (
                   <li className={`flex items-center gap-2.5 ${feita ? "" : "text-cora-placeholder"}`} key={rotulo}>
