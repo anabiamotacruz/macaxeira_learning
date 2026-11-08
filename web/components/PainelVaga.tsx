@@ -8,9 +8,11 @@ import {
   assinarMandato,
   avisarResultadosDasEntrevistas,
   listarCandidatos,
+  listarConversasWhatsApp,
   listarConvitesDaVaga,
   listarEventosRecentes,
   listarPacotesEntregues,
+  obterAudioWhatsApp,
   obterDecisao,
   obterDocumentoDeEntrega,
   obterSugestaoDeAjuste,
@@ -18,6 +20,7 @@ import {
   obterVaga,
   responderConvite,
   revisarCandidato,
+  type ConversaWhatsApp,
   type ConviteDaVaga,
   type PacoteEntregue,
   type ResumoVaga,
@@ -44,7 +47,7 @@ const ESTADOS: Record<string, string> = {
 const ATIVOS = new Set(["buscando", "analisando", "revisando", "decidindo"]);
 
 const MOTIVOS: Record<string, string> = {
-  nao_priorizado: "Passou do limite de indicações do mandato",
+  alem_do_teto_do_mandato: "Passou do teto de segurança de indicações do mandato",
   perfil_desatualizado: "Perfil desatualizado: confirmar os dados com a pessoa",
   alerta: "Perfil com texto suspeito (instrução escondida)",
   requisito_sem_dado: "Falta informação sobre um requisito eliminatório",
@@ -109,7 +112,7 @@ function Secao({ numero, titulo, children, simulado = false }: {
 function FormMandato({ vaga, aoAssinar }: { vaga: Vaga; aoAssinar: () => void }) {
   const [assinante, setAssinante] = useState("Pessoa do RH (fictícia)");
   const [limiar, setLimiar] = useState("0.7");
-  const [maxIndicacoes, setMaxIndicacoes] = useState(String(vaga.meta_candidatos));
+  const [maxIndicacoes, setMaxIndicacoes] = useState(String(Math.min(50, Math.max(20, 10 * vaga.meta_candidatos))));
   const [declarada, setDeclarada] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
@@ -153,7 +156,7 @@ function FormMandato({ vaga, aoAssinar }: { vaga: Vaga; aoAssinar: () => void })
         <label className="grid gap-1 text-sm text-[#526c68]">Quem assina
           <input className={campo} onChange={(e) => setAssinante(e.target.value)} value={assinante} />
         </label>
-        <label className="grid gap-1 text-sm text-[#526c68]">Indicações sem revisão humana (no máximo)
+        <label className="grid gap-1 text-sm text-[#526c68]">Teto de segurança de indicações (não é a meta)
           <input className={campo} inputMode="numeric" onChange={(e) => setMaxIndicacoes(e.target.value)} value={maxIndicacoes} />
         </label>
         <label className="grid gap-1 text-sm text-[#526c68]">Nota mínima para indicar sozinho (0 a 1)
@@ -237,11 +240,72 @@ function RevisaoRh({ item, vagaId, responsavel, aoMudar }: {
   );
 }
 
-function Conversa({ convite, nome, vagaId, aoMudar }: {
+const URL_NO_TEXTO = /(https?:\/\/[^\s)]+)/g;
+
+/** Texto com os links clicáveis, como o wa.me do convite e o link da Nara. */
+function ComLinks({ texto }: { texto: string }) {
+  return (
+    <>
+      {texto.split(URL_NO_TEXTO).map((parte, indice) =>
+        indice % 2 === 1 ? (
+          <a className="break-all underline" href={parte} key={indice} rel="noreferrer" target="_blank">{parte}</a>
+        ) : (
+          <span key={indice}>{parte}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+function AudioDaResposta({ vagaId, audioId }: { vagaId: string; audioId: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let ativo = true;
+    let criada = "";
+    obterAudioWhatsApp(vagaId, audioId)
+      .then((u) => {
+        criada = u;
+        if (ativo) setUrl(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+      if (criada) URL.revokeObjectURL(criada);
+    };
+  }, [vagaId, audioId]);
+  if (!url) return null;
+  return <audio aria-label="Resposta em voz gerada por IA" className="h-8 w-full max-w-xs" controls src={url} />;
+}
+
+function ConversaNoWhatsApp({ conversa, vagaId }: { conversa: ConversaWhatsApp; vagaId: string }) {
+  const balaoAgente = "max-w-[85%] rounded-2xl rounded-tl-sm bg-[#dcf8c6] px-4 py-2 text-sm text-[#0b3038]";
+  const balaoPessoa = "ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-[#075e54] px-4 py-2 text-sm text-white";
+  return (
+    <div className="grid gap-2 rounded-xl border border-[#cfe6d8] bg-[#f4fbf6] p-3">
+      <p className="text-xs font-semibold text-[#075e54]">
+        WhatsApp real · {conversa.numero_mascarado} · código {conversa.codigo}
+        {conversa.encerrada ? " · pediu para sair" : ""}
+      </p>
+      <p className="text-[11px] text-[#5d7a6b]">Canal e voz reais. O perfil do convite é fictício (dados de demonstração). A voz é gerada por IA.</p>
+      {conversa.mensagens.map((mensagem) => (
+        <div className="grid gap-1" key={mensagem.id}>
+          <p className={mensagem.direcao === "entrada" ? balaoPessoa : balaoAgente}>
+            <ComLinks texto={mensagem.texto} />
+          </p>
+          {mensagem.audio_id && <AudioDaResposta audioId={mensagem.audio_id} vagaId={vagaId} />}
+          {!mensagem.enviada && <p className="text-xs text-[#a43826]">Não saiu pelo WhatsApp. Veja se o celular está pareado.</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Conversa({ convite, nome, vagaId, aoMudar, whatsapp }: {
   convite: ConviteDaVaga;
   nome: string;
   vagaId: string;
   aoMudar: () => void;
+  whatsapp?: ConversaWhatsApp;
 }) {
   const [texto, setTexto] = useState("");
   const [erro, setErro] = useState("");
@@ -269,7 +333,8 @@ function Conversa({ convite, nome, vagaId, aoMudar }: {
         <h3 className="font-semibold text-[#113b43]">{nome}</h3>
         <span className="text-xs uppercase tracking-wide text-[#718784]">{convite.estado} · {convite.canal}</span>
       </div>
-      <p className={balaoAgente}>{convite.mensagem}</p>
+      <p className={balaoAgente}><ComLinks texto={convite.mensagem} /></p>
+      {whatsapp && <ConversaNoWhatsApp conversa={whatsapp} vagaId={vagaId} />}
       {convite.duvidas.map((duvida, indice) => (
         <div className="grid gap-2" key={`${duvida.momento}-${indice}`}>
           <p className={balaoPessoa}>{duvida.pergunta}</p>
@@ -333,6 +398,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
   const [itens, setItens] = useState<Item[]>([]);
   const [decisoes, setDecisoes] = useState<Record<string, Decisao>>({});
   const [convites, setConvites] = useState<ConviteDaVaga[]>([]);
+  const [conversasZap, setConversasZap] = useState<ConversaWhatsApp[]>([]);
   const [pacotes, setPacotes] = useState<PacoteEntregue[]>([]);
   const [eventos, setEventos] = useState<EventoFluxo[]>([]);
   const [erro, setErro] = useState("");
@@ -352,12 +418,13 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
         setResumo(null);
         return;
       }
-      const [novoResumo, candidatos, novosConvites, novosPacotes, novosEventos] = await Promise.all([
+      const [novoResumo, candidatos, novosConvites, novosPacotes, novosEventos, novasConversas] = await Promise.all([
         obterResumo(vagaId),
         listarCandidatos(vagaId, 1, 100),
         listarConvitesDaVaga(vagaId),
         listarPacotesEntregues(vagaId),
         listarEventosRecentes(vagaId),
+        listarConversasWhatsApp(vagaId),
       ]);
       const faltando = candidatos.itens.filter(
         (item) => item.decisao && cacheDecisoes.current[item.candidato.id]?.tipo !== item.decisao,
@@ -370,6 +437,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
       setItens(candidatos.itens);
       setDecisoes({ ...cacheDecisoes.current });
       setConvites(novosConvites);
+      setConversasZap(novasConversas);
       setPacotes(novosPacotes);
       setEventos(novosEventos);
       setErro("");
@@ -534,7 +602,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
             {convites.length ? (
               <div className="grid gap-3">
                 {convites.map((convite) => (
-                  <Conversa aoMudar={() => void atualizar()} convite={convite} key={convite.id} nome={nomes[convite.candidato_id] ?? convite.candidato_id} vagaId={vagaId} />
+                  <Conversa aoMudar={() => void atualizar()} convite={convite} key={convite.id} nome={nomes[convite.candidato_id] ?? convite.candidato_id} vagaId={vagaId} whatsapp={conversasZap.find((c) => c.candidato_id === convite.candidato_id)} />
                 ))}
               </div>
             ) : (

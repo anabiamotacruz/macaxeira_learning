@@ -136,7 +136,7 @@ def requisitos_sem_valor(vaga: Vaga) -> list[str]:
 
 
 def validar_criterios(vaga: Vaga) -> list[str]:
-    """Lista os problemas da vaga: critérios, título e descrição com dado sensível.
+    """Lista os problemas da vaga: critérios, título, descrição e palavras-chave com dado sensível.
 
     Título e descrição são texto livre e costumam trazer aviso de não discriminação, que cita
     esses mesmos termos: só a frase que restringe quem concorre, como `apenas homens`, é problema.
@@ -146,6 +146,9 @@ def validar_criterios(vaga: Vaga) -> list[str]:
         problemas.append(f"título usa dado sensível: {', '.join(termos_sensiveis(vaga.titulo))}")
     for _, termos in frases_restritivas(vaga.descricao):
         problemas.append(f"descrição restringe por dado sensível: {', '.join(termos)}")
+    for palavra in vaga.palavras_chave:
+        if termos := termos_sensiveis(palavra):
+            problemas.append(f"palavra-chave usa dado sensível: {', '.join(termos)}")
     return problemas
 
 
@@ -196,6 +199,41 @@ def autorizacao_ativa(candidato: Candidato, hoje: date) -> bool:
     )
 
 
+MAX_CONTATOS_PELO_PUBLICADO = 2
+"""E-mail inicial e um único lembrete, como em `backend/contato/email_inicial.py`."""
+
+
+def externo_sem_autorizacao(candidato: Candidato) -> bool:
+    """Veio de fonte externa e nunca registrou autorização: pode ser analisada (decisão de 8/11).
+
+    É como `candidato_de_item` entrega quem vem da busca real: dado real, pendente, sem
+    autorização e sem validade. Opt-out, remoção e autorização que existiu e venceu ficam de fora
+    e continuam cortando. O contato dessa pessoa só sai pelo e-mail que ela mesma publicou
+    (`pode_contatar_pelo_publicado`), e o aceite do convite registra a autorização.
+
+    Limites conhecidos:
+    - A autorização vencida só corta quando o registro do banco tem o mesmo `id` do registro
+      externo. Casar a mesma pessoa entre fontes com ids diferentes depende da resolução de
+      identidade (spec 004, T044); até lá, um registro externo de id novo segue para a análise.
+    - A busca real só gera convite quando a fonte traz um e-mail publicado pela própria pessoa.
+      O e-mail de provedor vem marcado como não publicado. Com `ENVO_API_KEY`, o fluxo consulta
+      a EnvoAPI pelo e-mail que a pessoa publicou no LinkedIn, só para quem indicou. Sem ele, a
+      pessoa fica indicada e o motivo `contato_nao_publicado` vai para os eventos.
+    """
+    return (
+        not candidato.simulado
+        and not candidato.opt_out
+        and not candidato.autorizou_contato
+        and candidato.autorizacao_valida_ate is None
+        and candidato.estado == EstadoBanco.PENDENTE
+    )
+
+
+def pode_ir_ao_modelo(candidato: Candidato, hoje: date) -> bool:
+    """Autorização ativa ou pessoa externa que nunca teve autorização registrada."""
+    return autorizacao_ativa(candidato, hoje) or externo_sem_autorizacao(candidato)
+
+
 @dataclass(frozen=True)
 class CorteDeAutorizacao:
     """Saída de quem não pode ir ao modelo, para o fluxo sem funil. Sem dados do perfil."""
@@ -218,6 +256,8 @@ def corte_de_autorizacao(candidato: Candidato, hoje: date) -> CorteDeAutorizacao
         return corte("opt_out", "a pessoa pediu para não ser contatada")
     if candidato.estado == EstadoBanco.REMOVIDO:
         return corte("estado_bloqueado", "perfil removido")
+    if externo_sem_autorizacao(candidato):
+        return None
     if not candidato.autorizou_contato or validade is None:
         return corte("sem_autorizacao", "sem autorização registrada")
     if validade < hoje:
@@ -234,6 +274,18 @@ def pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga, hoje: date)
     """
     _exigir_mesma_empresa(vaga, candidato)
     return autorizacao_ativa(candidato, hoje) and 0 <= tentativas < vaga.max_tentativas_contato
+
+
+def pode_contatar_pelo_publicado(
+    candidato: Candidato, tentativas: int, vaga: Vaga, *, tem_contato_publicado: bool
+) -> bool:
+    """Contato de quem nunca autorizou: só pelo e-mail que a pessoa publicou, no máximo duas vezes.
+
+    `tem_contato_publicado` vem de `contato_publicado`: contato inferido ou de provedor não vale.
+    """
+    _exigir_mesma_empresa(vaga, candidato)
+    limite = min(vaga.max_tentativas_contato, MAX_CONTATOS_PELO_PUBLICADO)
+    return tem_contato_publicado and externo_sem_autorizacao(candidato) and 0 <= tentativas < limite
 
 
 def _trecho_no_perfil(trecho: str, perfil: str) -> bool:
@@ -441,7 +493,7 @@ def classificar_faixa(
             sinais=sinais,
         )
 
-    if not autorizacao_ativa(candidato, hoje):
+    if not pode_ir_ao_modelo(candidato, hoje):
         return faixa(TipoDecisao.DESCARTAR, "sem_autorizacao")
     reprovados = sorted(i for i, s in requisitos.items() if s == StatusRequisito.NAO_ATENDE)
     if reprovados:
@@ -575,13 +627,42 @@ def decidir(
     )
 
 
-def nao_priorizada(decisao: Decisao, limite: int) -> Decisao:
-    """Passa à fila quem ficou na faixa verde além de `max_indicacoes`, sem descartar ninguém."""
+def alem_do_teto(decisao: Decisao, limite: int) -> Decisao:
+    """Segura quem estava na faixa verde além do teto de segurança do mandato.
+
+    Não vai a uma pessoa: fica registrada como descarte com a nota e o teto, para o RH reverter.
+    """
+    nota = decisao.entrada.get("nota")
+    nota_texto = f"nota {float(nota):.2f}" if nota is not None else "nota não informada"
     return decisao.model_copy(
         update={
-            "tipo": TipoDecisao.PEDIR_HUMANO,
-            "regra": "nao_priorizado",
-            "motivo": f"dentro da faixa verde, além do limite de {limite} indicações do mandato",
+            "tipo": TipoDecisao.DESCARTAR,
+            "regra": "alem_do_teto_do_mandato",
+            "motivo": (
+                f"estava na faixa verde ({nota_texto}), mas o teto de segurança do mandato "
+                f"é de {limite} indicações; o RH pode reverter"
+            ),
+        }
+    )
+
+
+def fora_da_taxa_verde(decisao: Decisao, vagas: int, analisados: int) -> Decisao:
+    """Segura quem estava na faixa verde quando ela ficou cheia demais.
+
+    O agente fica mais seletivo sozinho, nunca menos que o mandato: mantém as `vagas` melhores
+    notas e registra os demais como descarte com a nota e o corte, para o RH reverter.
+    """
+    nota = decisao.entrada.get("nota")
+    nota_texto = f"nota {float(nota):.2f}" if nota is not None else "nota não informada"
+    return decisao.model_copy(
+        update={
+            "tipo": TipoDecisao.DESCARTAR,
+            "regra": "fora_da_taxa_verde",
+            "motivo": (
+                f"estava na faixa verde ({nota_texto}), mas a faixa ficou cheia demais para "
+                f"{analisados} analisados; o agente ficou com as {vagas} melhores notas "
+                "(empate decidido pelo id); o RH pode reverter"
+            ),
         }
     )
 

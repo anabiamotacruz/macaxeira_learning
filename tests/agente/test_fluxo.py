@@ -806,7 +806,20 @@ def test_autorizacao_vencida_na_hora_do_convite_bloqueia_contato(tmp_path: Path)
     assert fluxo.estado is E.CONCLUIDA
 
 
-def test_excedentes_da_faixa_verde_ficam_nao_priorizados(tmp_path: Path) -> None:
+def test_faixa_verde_acima_da_meta_indica_todos(tmp_path: Path) -> None:
+    candidatos = [candidato_exemplo(c) for c in ("c1", "c2", "c3")]
+    notas = {"c1": 0.8, "c2": 0.9, "c3": 0.8}
+    m = Montagem(tmp_path, candidatos, analisador=AnalisadorComEvidencias(notas=notas))
+
+    _assinar_fluxo(m.fluxo(), max_indicacoes=10)
+
+    decisoes = {d.candidato_id: d for d in m.repo.listar_decisoes("empresa-a", "v1")}
+    assert all(d.tipo is TipoDecisao.INDICAR for d in decisoes.values())
+    assert all(d.regra != "nao_priorizado" for d in decisoes.values())
+    assert set(_convites_por_candidato(m)) == {"c1", "c2", "c3"}
+
+
+def test_acima_do_teto_explicito_descarta_com_regra_propria(tmp_path: Path) -> None:
     candidatos = [candidato_exemplo(c) for c in ("c1", "c2", "c3")]
     notas = {"c1": 0.8, "c2": 0.9, "c3": 0.8}
     m = Montagem(tmp_path, candidatos, analisador=AnalisadorComEvidencias(notas=notas))
@@ -816,8 +829,9 @@ def test_excedentes_da_faixa_verde_ficam_nao_priorizados(tmp_path: Path) -> None
     decisoes = {d.candidato_id: d for d in m.repo.listar_decisoes("empresa-a", "v1")}
     assert decisoes["c2"].tipo is TipoDecisao.INDICAR
     assert decisoes["c1"].tipo is TipoDecisao.INDICAR
-    assert decisoes["c3"].tipo is TipoDecisao.PEDIR_HUMANO
-    assert decisoes["c3"].regra == "nao_priorizado"
+    assert decisoes["c3"].tipo is TipoDecisao.DESCARTAR
+    assert decisoes["c3"].regra == "alem_do_teto_do_mandato"
+    assert "faixa verde" in decisoes["c3"].motivo and "2" in decisoes["c3"].motivo
     assert set(_convites_por_candidato(m)) == {"c1", "c2"}
 
 
@@ -1659,27 +1673,55 @@ def _dez_candidatos() -> list[Candidato]:
     return [candidato_exemplo(f"c{i:02d}") for i in range(10)]
 
 
-def test_faixa_verde_demais_pausa_por_taxa_anomala(tmp_path: Path) -> None:
+def test_faixa_verde_demais_fica_mais_seletiva_sem_pausar(tmp_path: Path) -> None:
+    """Com mais de 80% na faixa verde, o agente fica com as melhores notas e segue sozinho."""
+    notas = {f"c{i:02d}": 0.9 - i / 100 for i in range(10)}
+    m = Montagem(tmp_path, _dez_candidatos(), analisador=AnalisadorComEvidencias(notas=notas))
+    fluxo = m.fluxo()
+
+    _assinar_fluxo(fluxo, max_indicacoes=10)
+
+    assert fluxo.estado is E.CONVIDANDO
+    assert _execucao(m).motivo is None
+    decisoes = _decisoes(m)
+    indicados = sorted(c for c, d in decisoes.items() if d.tipo == TipoDecisao.INDICAR)
+    assert indicados == [f"c{i:02d}" for i in range(8)]
+    for cortado in ("c08", "c09"):
+        decisao = decisoes[cortado]
+        assert decisao.tipo == TipoDecisao.DESCARTAR
+        assert decisao.regra == "fora_da_taxa_verde"
+        assert "8 melhores notas" in decisao.motivo
+        assert "RH pode reverter" in decisao.motivo
+    assert set(m.mensageiro.enviados) and len(_convites_por_candidato(m)) == 8
+    eventos = [e.mensagem for e in m.repo.listar_eventos("empresa-a", "v1")]
+    assert any("mais seletivo" in e for e in eventos)
+
+
+def test_faixa_verde_cheia_com_empate_corta_pelo_id(tmp_path: Path) -> None:
     m = Montagem(tmp_path, _dez_candidatos())
     fluxo = m.fluxo()
 
     _assinar_fluxo(fluxo)
 
-    assert _execucao(m).motivo == MotivoPausa.TAXA_ANOMALA
-    assert _execucao(m).estado_anterior == "decidindo"
-    assert m.mensageiro.enviados == {}
-
-    fluxo.retomar()
-
+    decisoes = _decisoes(m)
     assert fluxo.estado is E.CONVIDANDO
+    assert [c for c, d in sorted(decisoes.items()) if d.regra == "fora_da_taxa_verde"] == [
+        "c08",
+        "c09",
+    ]
 
 
-def test_nenhum_na_faixa_verde_pausa_por_taxa_anomala(tmp_path: Path) -> None:
+def test_faixa_verde_vazia_amplia_a_busca_sem_pausar(tmp_path: Path) -> None:
     m = Montagem(tmp_path, _dez_candidatos(), analisador=AnalisadorComEvidencias(nota_padrao=0.1))
+    fluxo = m.fluxo()
 
-    _assinar_fluxo(m.fluxo())
+    _assinar_fluxo(fluxo)
 
-    assert _execucao(m).motivo == MotivoPausa.TAXA_ANOMALA
+    assert _execucao(m).motivo is None
+    assert fluxo.estado is not E.PAUSADA
+    eventos = [e.mensagem for e in m.repo.listar_eventos("empresa-a", "v1")]
+    assert any("faixa verde vazia" in e for e in eventos)
+    assert m.mensageiro.enviados == {}
 
 
 def test_taxa_de_oitenta_por_cento_nao_pausa(tmp_path: Path) -> None:

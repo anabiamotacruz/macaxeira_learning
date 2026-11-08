@@ -6,7 +6,8 @@ com os mesmos dados sintéticos. `montar_servico` escolhe: o modelo só entra co
 `AGENTE_COM_MODELO=1` e a chave do provedor no ambiente. Com `NARA_MCP_URL`, a entrega, o link e
 o resultado da entrevista passam pelo servidor MCP da Nara simulada, um conector por empresa.
 Com `AGENTE_BUSCA_REAL=1`, a busca também usa as fontes externas da Frente 2 (Brave, Bright Data e
-PDL, cada uma só com a sua chave); quem vem delas chega sem autorização e o funil o segura.
+PDL, cada uma só com a sua chave); quem vem delas chega sem autorização, é analisado como os
+demais e só recebe convite pelo e-mail que a própria pessoa publicou (`agente/contato_publicado`).
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """
@@ -23,6 +24,7 @@ from pathlib import Path
 
 from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
 from backend.agente.configuracao import PerguntaVaga, propor_configuracao
+from backend.agente.contato_publicado import ContatoPorEmpresa
 from backend.agente.fluxo import (
     Priorizador,
     ProvedorConsultas,
@@ -32,6 +34,7 @@ from backend.agente.fluxo import (
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
+from backend.agente.whatsapp import linha_do_convite
 from backend.contato.conversa import contem_instrucao, material_da_vaga, responder_duvida
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contato.pos_entrevista import mensagem_pos_entrevista
@@ -61,7 +64,9 @@ from backend.fontes.anonimizador import (
 from backend.fontes.consultas import ETAPA_GERAR, ampliar_consultas, gerar_consultas
 from backend.fontes.funil import priorizar
 from backend.fontes.provedores.configuracao import montar_fonte_externa
+from backend.fontes.provedores.envoapi import BuscadorContatoEnvo
 from backend.fontes.provedores.fonte import SupressaoPorBanco
+from backend.fontes.provedores.transporte import TransporteHttp
 from backend.fontes.revisor import RevisorIndependente
 from backend.modelos.cliente import ClienteFeatherless
 from backend.nara_simulada.mcp import configuracao_destino
@@ -75,6 +80,7 @@ TETO_DO_FUNIL = 50
 COM_MODELO = "AGENTE_COM_MODELO"
 NARA_MCP_URL = "NARA_MCP_URL"
 BUSCA_REAL = "AGENTE_BUSCA_REAL"
+ENVO_API_KEY = "ENVO_API_KEY"
 CONCORRENCIA_COM_MODELO = 5
 """Análises simultâneas com o modelo ligado. A conta aguenta 25; `CONCORRENCIA_MODELO` sobrepõe."""
 
@@ -318,7 +324,7 @@ def redigir_convite(vaga: Vaga, candidato: Candidato, analise: Analise, link: st
         ClienteModeloSimulado(),
         preferencias=PreferenciasContato(personalizar=False),
     )
-    return convite.mensagem
+    return convite.mensagem + linha_do_convite(vaga.empresa_id, vaga.id, candidato.id)
 
 
 def redigir_retorno(vaga: Vaga, candidato: Candidato, resultado: ResultadoEntrevista) -> str:
@@ -407,6 +413,7 @@ def _montar(
     fonte_extra: FonteExtra | None = None,
     propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None,
     concorrencia: int | None = None,
+    buscador_contato: ContatoPorEmpresa | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
@@ -434,6 +441,7 @@ def _montar(
             respondedor_duvida=respondedor_duvida,
             redator_retorno=redigir_retorno,
             propositor_vaga=propositor_vaga,
+            buscador_contato=buscador_contato,
             **extras,
         ),
         recarregar=fonte.dados.recarregar,
@@ -458,13 +466,25 @@ def busca_real(ambiente: Mapping[str, str]) -> FonteExtra:
     return criar
 
 
+def contato_envo(ambiente: Mapping[str, str]) -> ContatoPorEmpresa | None:
+    """O e-mail publicado pela EnvoAPI, só com `ENVO_API_KEY`. A chave não sai daqui."""
+    chave = ambiente.get(ENVO_API_KEY, "").strip()
+    if not chave:
+        return None
+    return ContatoPorEmpresa(BuscadorContatoEnvo(chave, TransporteHttp()))
+
+
 def montar_demo(
     caminho: str | Path | None = None,
     *,
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
+    buscador_contato: ContatoPorEmpresa | None = None,
 ) -> ServicoVagas:
-    """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
+    """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária.
+
+    Sem busca real, `buscador_contato` fica vazio: a demo sintética nunca chama a EnvoAPI.
+    """
     return _montar(
         caminho,
         analisador=AnalisadorDemo(),
@@ -476,6 +496,7 @@ def montar_demo(
         respondedor_duvida=responder_duvida_demo,
         destino=destino,
         fonte_extra=fonte_extra,
+        buscador_contato=buscador_contato,
     )
 
 
@@ -486,6 +507,7 @@ def montar_com_modelo(
     medidor_gasto: Callable[[], float],
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
+    buscador_contato: ContatoPorEmpresa | None = None,
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
 
@@ -511,6 +533,7 @@ def montar_com_modelo(
             descricao, empresa_id, cliente, campos_do_banco=campos_do_banco_demo()
         ),
         concorrencia=concorrencia,
+        buscador_contato=buscador_contato,
     )
 
 
@@ -526,17 +549,23 @@ def montar_servico(
     url_nara = ambiente.get(NARA_MCP_URL, "").strip()
     destino = nara_por_mcp(url_nara) if url_nara else None
     extra = criar_busca(ambiente) if ambiente.get(BUSCA_REAL, "").strip() == "1" else None
+    contato = None if extra is None else contato_envo(ambiente)
     if ambiente.get(COM_MODELO, "").strip() != "1":
-        return montar_demo(caminho, destino=destino, fonte_extra=extra)
+        return montar_demo(caminho, destino=destino, fonte_extra=extra, buscador_contato=contato)
     try:
         cliente = criar_cliente()
     except ModeloIndisponivel as erro:
         logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
-        return montar_demo(caminho, destino=destino, fonte_extra=extra)
+        return montar_demo(caminho, destino=destino, fonte_extra=extra, buscador_contato=contato)
 
     def gasto() -> float:
         return float(getattr(cliente, "custo_total_usd", 0.0))
 
     return montar_com_modelo(
-        caminho, cliente=cliente, medidor_gasto=gasto, destino=destino, fonte_extra=extra
+        caminho,
+        cliente=cliente,
+        medidor_gasto=gasto,
+        destino=destino,
+        fonte_extra=extra,
+        buscador_contato=contato,
     )

@@ -38,6 +38,15 @@ from backend.agente.auditoria import (
     decisoes_vigentes,
     rastreado,
 )
+from backend.agente.contato_publicado import (
+    EMAIL_PUBLICADO_ENVO,
+    ORIGEM_AUTORIZACAO_PELO_ACEITE,
+    ContatoPorEmpresa,
+    contato_publicado,
+    mensagem_pelo_contato_publicado,
+    motivo_sem_contato,
+    usuario_para_consulta,
+)
 from backend.agente.mandato import (
     Mandato,
     MandatoInvalido,
@@ -48,6 +57,7 @@ from backend.agente.mandato import (
     mandato_valido,
 )
 from backend.agente.maquina import ESTADOS_ATIVOS, TRANSICOES
+from backend.agente.palavras_chave import consulta_do_recrutador
 from backend.agente.persistencia import Repositorio, resumos_da_pessoa
 from backend.agente.regras import (
     CORTES_POR_AUTORIZACAO,
@@ -56,6 +66,7 @@ from backend.agente.regras import (
     CorteFunil,
     StatusRequisito,
     TipoEvidencia,
+    alem_do_teto,
     autorizacao_ativa,
     avaliar_requisitos,
     classificar_evidencia,
@@ -65,12 +76,15 @@ from backend.agente.regras import (
     decisao_de_corte,
     decisao_por_novos_requisitos,
     decisao_sem_analise,
-    nao_priorizada,
+    externo_sem_autorizacao,
+    fora_da_taxa_verde,
     parece_instrucao,
     pode_contatar,
+    pode_contatar_pelo_publicado,
     separar_palavras,
     validar_criterios,
 )
+from backend.contato.cadastro import incluir_no_banco
 from backend.contratos.criterios import tem_termo_sensivel
 from backend.contratos.erros import (
     ErroContrato,
@@ -182,7 +196,8 @@ CONSULTA_TODO_O_BANCO = ""
 LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
-REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
+REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "alem_do_teto_do_mandato"})
+ETAPA_DECIDINDO = "decidindo"
 REGRA_REVERSAO = "reversao_humana"
 VALIDADE_DA_RESERVA = timedelta(minutes=5)
 """Por quanto tempo uma ação reservada segura as outras execuções, caso a primeira tenha caído."""
@@ -358,6 +373,8 @@ class ProgressoFluxo(Contrato):
     convites: list[RegistroConvite] = []
     entregues: list[str] = []
     destinos: dict[str, DestinoPessoa] = {}
+    contatos_envo: dict[str, str] = {}
+    """E-mail publicado achado pela EnvoAPI por pessoa; vazio quando a consulta não trouxe nada."""
 
     def candidato(self, candidato_id: str) -> Candidato:
         for candidato in (*self.candidatos, *self.cortados):
@@ -416,6 +433,12 @@ def _pedir_consultas(
     consultas: ProvedorConsultas, vaga: Vaga, rodada: int, anteriores: Sequence[str]
 ) -> list[str]:
     return consultas(vaga, rodada, anteriores)
+
+
+@rastreado("consulta_recrutador")
+def _consulta_do_recrutador(vaga: Vaga) -> str | None:
+    """O rastro guarda que a consulta do recrutador entrou; o texto fica no evento da vaga."""
+    return consulta_do_recrutador(vaga)
 
 
 @rastreado("busca_fonte")
@@ -483,6 +506,7 @@ class FluxoVaga:
         redator_convite: RedatorConvite | None = None,
         respondedor_duvida: RespondedorDuvida | None = None,
         redator_retorno: RedatorRetorno | None = None,
+        buscador_contato: ContatoPorEmpresa | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -497,6 +521,7 @@ class FluxoVaga:
         self._redator_convite = redator_convite
         self._respondedor_duvida = respondedor_duvida
         self._redator_retorno = redator_retorno
+        self._buscador_contato = buscador_contato
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -649,6 +674,8 @@ class FluxoVaga:
                 self._registrar_opt_out(candidato_id)
             else:
                 self._aplicar_resposta(resposta.convite_id, resposta.tipo)
+                if resposta.tipo == TipoResposta.ACEITE:
+                    self._autorizar_pelo_aceite(self._progresso(), candidato_id)
                 if resposta.tipo == TipoResposta.DUVIDA:
                     self._tratar_duvida(resposta.convite_id, resposta.texto)
 
@@ -1185,7 +1212,18 @@ class FluxoVaga:
             atual = candidato
         if candidato.opt_out or self._tem_opt_out(candidato):
             atual = atual.model_copy(update={"opt_out": True})
-        return atual
+        return self._com_contato_envo(atual, progresso)
+
+    @staticmethod
+    def _com_contato_envo(candidato: Candidato, progresso: ProgressoFluxo) -> Candidato:
+        """O e-mail da EnvoAPI só vem do progresso, gravado pelo fluxo: o da fonte é descartado."""
+        atributos = {k: v for k, v in candidato.atributos.items() if k != EMAIL_PUBLICADO_ENVO}
+        email = progresso.contatos_envo.get(candidato.id, "")
+        if email:
+            atributos[EMAIL_PUBLICADO_ENVO] = email
+        if atributos == candidato.atributos:
+            return candidato
+        return candidato.model_copy(update={"atributos": atributos})
 
     def _ja_chegou_ao_destino(self, progresso: ProgressoFluxo, candidato_id: str) -> bool:
         """Inclui a entrega em curso: uma queda pode ter deixado o pacote lá sem registro aqui."""
@@ -1461,7 +1499,11 @@ class FluxoVaga:
         return list(lidos.values())
 
     def _consultas_da_rodada(self, progresso: ProgressoFluxo) -> list[str]:
-        """Pede as consultas uma vez por rodada: retomar não paga pelo modelo de novo."""
+        """Pede as consultas uma vez por rodada: retomar não paga pelo modelo de novo.
+
+        As palavras-chave do recrutador, quando há, vão primeiro em toda rodada, seguidas das
+        consultas do provedor. Assim a ampliação também lê a página seguinte da consulta dele.
+        """
         rodada = progresso.ampliacoes
         if rodada not in progresso.consultas_por_rodada:
             self._conferir_gasto()
@@ -1473,6 +1515,11 @@ class FluxoVaga:
                 )
             )
             geradas = _pedir_consultas(self._consultas, self.vaga, rodada, anteriores)
+            if self.vaga.palavras_chave:
+                principal = _consulta_do_recrutador(self.vaga)
+                if principal is not None:
+                    geradas = [principal, *geradas]
+                    self._evento("busca", f"consulta principal do recrutador: {principal}")
             permitidas = [c for c in dict.fromkeys(geradas) if not tem_termo_sensivel(c)]
             if len(permitidas) != len(dict.fromkeys(geradas)):
                 self._evento("busca", "consulta com dado sensível recusada")
@@ -1779,30 +1826,67 @@ class FluxoVaga:
             for candidato in progresso.candidatos
             if candidato.id not in decididos
         ]
+        decisoes = self._conferir_taxa_verde(progresso, mandato, decisoes)
         limite = mandato.politica.max_indicacoes
         indicados = len(self._indicados())
         for decisao in sorted(decisoes, key=_ordem_de_decisao):
             self._conferir_execucao()
             if decisao.tipo == TipoDecisao.INDICAR:
                 if indicados >= limite:
-                    decisao = nao_priorizada(decisao, limite)
+                    decisao = alem_do_teto(decisao, limite)
                 else:
                     indicados += 1
             self._registrar_decisao(decisao)
-        if not progresso.taxa_aceita and self._taxa_anomala(progresso, mandato):
-            raise _PausaNecessaria(MotivoPausa.TAXA_ANOMALA)
+        if self._mede_taxa(progresso, mandato) and not any(
+            decisao.regra in REGRAS_DA_FAIXA_VERDE for decisao in self._ultimas_decisoes().values()
+        ):
+            self._evento(
+                ETAPA_DECIDINDO,
+                f"faixa verde vazia em {len(progresso.analises)} analisados: "
+                "o agente amplia a busca dentro do mandato, sem pausar",
+            )
         self._avaliar_meta(progresso, mandato)
         return True
 
-    def _taxa_anomala(self, progresso: ProgressoFluxo, mandato: Mandato) -> bool:
-        """Faixa verde vazia ou cheia demais sugere problema na regra ou nos dados."""
+    def _mede_taxa(self, progresso: ProgressoFluxo, mandato: Mandato) -> bool:
+        return (
+            not progresso.taxa_aceita
+            and mandato.politica.limiar_verde is not None
+            and len(progresso.analises) >= MINIMO_PARA_MEDIR_TAXA
+        )
+
+    def _conferir_taxa_verde(
+        self, progresso: ProgressoFluxo, mandato: Mandato, decisoes: list[Decisao]
+    ) -> list[Decisao]:
+        """Faixa verde cheia demais: o agente fica mais seletivo sozinho, em vez de pausar.
+
+        Só aperta, nunca afrouxa o mandato. Fica com as melhores notas até `TAXA_VERDE_MAXIMA`
+        dos analisados; os demais viram descarte com regra própria, que o RH pode reverter.
+        A faixa vazia segue para a ampliação de busca em `_avaliar_meta`.
+        """
+        if not self._mede_taxa(progresso, mandato):
+            return decisoes
         analisados = len(progresso.analises)
-        if mandato.politica.limiar_verde is None or analisados < MINIMO_PARA_MEDIR_TAXA:
-            return False
-        verdes = sum(
+        vagas = int(TAXA_VERDE_MAXIMA * analisados + 1e-9)
+        ja_verdes = sum(
             decisao.regra in REGRAS_DA_FAIXA_VERDE for decisao in self._ultimas_decisoes().values()
         )
-        return verdes == 0 or verdes / analisados > TAXA_VERDE_MAXIMA
+        novos_verdes = sorted(
+            (d for d in decisoes if d.tipo == TipoDecisao.INDICAR), key=_ordem_de_decisao
+        )
+        if ja_verdes + len(novos_verdes) <= vagas:
+            return decisoes
+        restantes = max(0, vagas - ja_verdes)
+        cortados = {d.candidato_id for d in novos_verdes[restantes:]}
+        self._evento(
+            ETAPA_DECIDINDO,
+            f"faixa verde cheia demais ({ja_verdes + len(novos_verdes)} de {analisados}): "
+            f"o agente ficou mais seletivo e manteve as {vagas} melhores notas, sem pausar",
+        )
+        return [
+            fora_da_taxa_verde(d, vagas, analisados) if d.candidato_id in cortados else d
+            for d in decisoes
+        ]
 
     def _meta_efetiva(self, mandato: Mandato) -> int:
         return min(self.vaga.meta_candidatos, mandato.politica.max_indicacoes)
@@ -1883,6 +1967,10 @@ class FluxoVaga:
         registros = [r for r in progresso.convites if r.convite.candidato_id == candidato_id]
         ultimo = registros[-1] if registros else None
         with self._contexto(progresso, candidato_id):
+            if ultimo is None or ultimo.estado == EstadoConvite.CANCELADO:
+                progresso = self._contato_publicado_envo(progresso, candidato_id)
+                if self._sem_contato_publicado(progresso, candidato_id):
+                    return
             if ultimo is None:
                 registro = self._novo_convite(progresso, candidato_id, tentativa=1)
             elif ultimo.estado == EstadoConvite.CANCELADO:
@@ -1894,16 +1982,87 @@ class FluxoVaga:
             if registro.estado == EstadoConvite.A_ENVIAR:
                 self._enviar(progresso, registro)
 
+    def _contato_publicado_envo(
+        self, progresso: ProgressoFluxo, candidato_id: str
+    ) -> ProgressoFluxo:
+        """Consulta a EnvoAPI pelo e-mail que a pessoa publicou no LinkedIn, uma vez só.
+
+        Só para quem está indicado agora, veio da busca real, nunca autorizou, não saiu (opt-out,
+        bloqueio da empresa ou remoção, conferidos em `_candidato_atual`), não tem contato
+        publicado e tem o usuário do LinkedIn. Sem buscador (sem `ENVO_API_KEY`), nada muda. O
+        resultado fica no progresso, e o buscador guarda por empresa: nenhuma pessoa é paga duas
+        vezes. Falha vira "sem e-mail", com o motivo nos eventos, e a vaga segue.
+        """
+        if self._buscador_contato is None or candidato_id in progresso.contatos_envo:
+            return progresso
+        decisao = self._ultimas_decisoes().get(candidato_id)
+        if decisao is None or decisao.tipo != TipoDecisao.INDICAR:
+            return progresso
+        atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+        usuario = usuario_para_consulta(atual)
+        if not externo_sem_autorizacao(atual) or usuario is None or contato_publicado(atual):
+            return progresso
+        try:
+            emails = self._buscador_contato.emails_publicados(self.vaga.empresa_id, usuario)
+            resultado = "e-mail publicado encontrado" if emails else "nenhum e-mail publicado"
+        except Exception as erro:
+            emails = []
+            resultado = f"sem resposta ({type(erro).__name__})"
+            logger.warning("EnvoAPI sem resposta na vaga %s: %s", self.vaga.id, type(erro).__name__)
+        email = emails[0] if emails else ""
+
+        def guardar(atual_progresso: ProgressoFluxo) -> None:
+            atual_progresso.contatos_envo.setdefault(candidato_id, email)
+
+        self._mudar(guardar)
+        self._evento("convite", f"contato consultado na EnvoAPI: {resultado}", candidato_id)
+        return self._progresso()
+
+    def _sem_contato_publicado(self, progresso: ProgressoFluxo, candidato_id: str) -> bool:
+        """Quem nunca autorizou e não publicou e-mail fica indicada, sem convite por outro meio.
+
+        O motivo vai uma vez para os eventos da vaga, com a pessoa. Não há fila manual aqui: a de
+        `backend/contato/canal.py` é só de memória e não chega à API do agente.
+        """
+        atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+        if not externo_sem_autorizacao(atual) or contato_publicado(atual) is not None:
+            return False
+        mensagem = (
+            f"sem convite: {motivo_sem_contato(atual).value}; a pessoa segue indicada e não é "
+            "contatada por outro meio"
+        )
+        if not any(e.candidato_id == candidato_id and e.mensagem == mensagem for e in self.eventos):
+            self._evento("convite", mensagem, candidato_id)
+        return True
+
+    def _pode_contatar(self, candidato: Candidato, tentativas: int) -> bool:
+        """Autorização ativa, ou o e-mail que a própria pessoa publicou, se ela nunca autorizou."""
+        if pode_contatar(candidato, tentativas, self.vaga, self._relogio().date()):
+            return True
+        publicado = contato_publicado(candidato) is not None
+        return pode_contatar_pelo_publicado(
+            candidato, tentativas, self.vaga, tem_contato_publicado=publicado
+        )
+
     def _texto_do_convite(
         self,
         progresso: ProgressoFluxo,
         candidato: Candidato,
         link: str | None,
         estado: EstadoConvite,
+        tentativa: int = 1,
     ) -> str:
-        """Texto do redator, quando houver; se ele falhar, o texto fixo segue sem parar o fluxo."""
+        """Texto do redator, quando houver; se ele falhar, o texto fixo segue sem parar o fluxo.
+
+        Quem nunca autorizou recebe o texto fixo do contato publicado, com origem e saída.
+        """
         fixo = f"Temos uma vaga de {self.vaga.titulo} que combina com o seu perfil."
         analise = progresso.analises.get(candidato.id)
+        contato = contato_publicado(candidato) if externo_sem_autorizacao(candidato) else None
+        if contato is not None and estado == EstadoConvite.A_ENVIAR:
+            return mensagem_pelo_contato_publicado(
+                self.vaga, candidato, analise, contato, link, tentativa
+            )
         if self._redator_convite is None or analise is None or estado != EstadoConvite.A_ENVIAR:
             return fixo
         try:
@@ -1918,15 +2077,16 @@ class FluxoVaga:
         """Grava o convite antes do envio. Pessoa bloqueada não tem nem o link pedido ao destino."""
         candidato = progresso.candidato(candidato_id)
         atual = self._candidato_atual(candidato, progresso)
-        hoje = self._relogio().date()
-        if pode_contatar(atual, tentativa - 1, self.vaga, hoje):
+        if self._pode_contatar(atual, tentativa - 1):
             link = self._link_de_agendamento(candidato_id)
             estado = EstadoConvite.A_ENVIAR
         else:
             link = None
             estado = EstadoConvite.ENCERRADO
         identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
-        mensagem = self._texto_do_convite(progresso, atual, link, estado)
+        mensagem = self._texto_do_convite(progresso, atual, link, estado, tentativa)
+        # O e-mail de quem nunca autorizou sai pelo mensageiro simulado: é simulação e diz isso.
+        simulado = candidato.simulado or externo_sem_autorizacao(atual)
         convite = Convite(
             id=f"convite:{identificador}",
             empresa_id=self.vaga.empresa_id,
@@ -1937,7 +2097,7 @@ class FluxoVaga:
             mensagem=mensagem,
             link_agendamento=link,
             chave_idempotencia=f"convite:{self.vaga.empresa_id}:{identificador}",
-            simulado=candidato.simulado,
+            simulado=simulado,
         )
         registro = RegistroConvite(convite=convite, tentativa=tentativa, estado=estado)
 
@@ -1999,8 +2159,7 @@ class FluxoVaga:
         """Confere a situação da pessoa imediatamente antes do envio."""
         candidato = progresso.candidato(registro.convite.candidato_id)
         atual = self._candidato_atual(candidato, progresso)
-        hoje = self._relogio().date()
-        if not pode_contatar(atual, registro.tentativa - 1, self.vaga, hoje):
+        if not self._pode_contatar(atual, registro.tentativa - 1):
             self._mudar_convite(registro, EstadoConvite.ENCERRADO)
             self._evento("convite", "contato bloqueado pelas regras", candidato.id)
             return
@@ -2120,7 +2279,7 @@ class FluxoVaga:
         """Deixa o convite a enviar. Quem envia é a execução, que confere estado e mandato."""
         progresso = self._progresso()
         atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
-        if pode_contatar(atual, tentativa, self.vaga, self._relogio().date()):
+        if self._pode_contatar(atual, tentativa):
             self._novo_convite(progresso, candidato_id, tentativa + 1)
 
     def _registrar_opt_out(self, candidato_id: str) -> None:
@@ -2197,13 +2356,45 @@ class FluxoVaga:
             ]
         return [c for c in base if c in indicados and c not in progresso.entregues]
 
+    def _autorizar_pelo_aceite(self, progresso: ProgressoFluxo, candidato_id: str) -> Candidato:
+        """O aceite de quem nunca autorizou registra a autorização, e devolve a situação de agora.
+
+        Só vale para quem foi convidado pelo e-mail que publicou e cujo último convite está aceito:
+        recusa, silêncio e opt-out não autorizam nada, e quem saiu não volta. O registro usa o
+        caminho da Frente 3 (`incluir_no_banco`), com a validade padrão dela. Também roda antes da
+        entrega, para refazer o registro que o banco não aceitou na hora do aceite.
+        """
+        atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+        ultimo = self._ultimo_convite(progresso, candidato_id)
+        if (
+            not externo_sem_autorizacao(atual)
+            or contato_publicado(atual) is None
+            or ultimo is None
+            or ultimo.estado != EstadoConvite.ACEITO
+        ):
+            return atual
+        try:
+            incluir_no_banco(self._banco, atual, autorizou=True, hoje=self._relogio().date())
+        except (KeyError, ValueError) as erro:
+            self._evento("autorizacao", f"autorização não registrada: {erro}", candidato_id)
+            return atual
+        except Exception as erro:
+            self._evento("autorizacao", f"banco sem resposta: {type(erro).__name__}", candidato_id)
+            raise _PausaNecessaria(MotivoPausa.BANCO_INDISPONIVEL) from erro
+        self._evento(
+            "autorizacao",
+            f"autorização registrada: {ORIGEM_AUTORIZACAO_PELO_ACEITE}",
+            candidato_id,
+        )
+        return self._candidato_atual(progresso.candidato(candidato_id), progresso)
+
     def _entregar_pendentes(self) -> None:
         """Entrega quem falta. Falha do destino pausa a vaga, com a entrega ainda pendente."""
         progresso = self._progresso()
         hoje = self._relogio().date()
         for candidato_id in self._a_entregar(progresso):
             self._conferir_execucao()
-            atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+            atual = self._autorizar_pelo_aceite(progresso, candidato_id)
             if autorizacao_ativa(atual, hoje):
                 self._entregar(progresso, atual)
             else:

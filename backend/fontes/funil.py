@@ -23,6 +23,7 @@ from datetime import date
 from enum import StrEnum
 from fractions import Fraction
 
+from backend.agente.regras import externo_sem_autorizacao
 from backend.contratos.criterios import sem_genero, tem_termo_sensivel
 from backend.contratos.interfaces import Analisador
 from backend.contratos.modelos import Analise, Candidato, EstadoBanco, Vaga
@@ -196,21 +197,27 @@ def _separar_duplicatas(
 
 
 def _regra_de_autorizacao(registros: list[Candidato], hoje: date) -> tuple[RegraCorte, str] | None:
-    """Vale a regra mais restritiva: um registro novo de outra fonte não anula uma restrição."""
+    """Vale a regra mais restritiva: um registro novo de outra fonte não anula uma restrição.
+
+    O registro de fonte externa que nunca teve autorização (`externo_sem_autorizacao`) segue para
+    a análise: o contato dele só sai pelo e-mail que a pessoa publicou. Opt-out, remoção e uma
+    autorização vencida em qualquer registro continuam cortando.
+    """
     if any(r.opt_out for r in registros):
         return RegraCorte.OPT_OUT, "a pessoa pediu para não ser contatada"
     if any(r.estado == EstadoBanco.REMOVIDO for r in registros):
         return RegraCorte.ESTADO_BLOQUEADO, "perfil removido"
-    for registro in registros:
+    controlados = [r for r in registros if not externo_sem_autorizacao(r)]
+    for registro in controlados:
         if not registro.autorizou_contato or registro.autorizacao_valida_ate is None:
             return RegraCorte.SEM_AUTORIZACAO, "sem autorização registrada"
-    for registro in registros:
+    for registro in controlados:
         if registro.autorizacao_valida_ate < hoje:
             return (
                 RegraCorte.AUTORIZACAO_VENCIDA,
                 f"autorização vencida em {registro.autorizacao_valida_ate.isoformat()}",
             )
-    for registro in registros:
+    for registro in controlados:
         if registro.estado in (EstadoBanco.PENDENTE, EstadoBanco.EXPIRADO):
             return RegraCorte.ESTADO_BLOQUEADO, f"perfil com estado {registro.estado.value}"
     return None

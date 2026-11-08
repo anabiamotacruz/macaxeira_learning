@@ -1,8 +1,8 @@
 """Campanha única com os números que o recrutador assina.
 
-O encaminhamento (max_indicacoes) é quem segue para a próxima fase, não uma
-lista de contratação. Quem fica além desse número continua disponível para o RH.
-A meta é quantas posições a mesma campanha preenche.
+O teto (max_indicacoes) é só uma trava de segurança: todos acima do limiar são
+indicados e quem passa do teto fica registrado para o RH reverter.
+A meta é um piso: quantas posições a campanha quer preencher.
 """
 
 import pytest
@@ -50,9 +50,7 @@ def _itens(cliente: TestClient, vaga: str) -> list[dict]:
 
 
 def _regra(cliente: TestClient, vaga: str, candidato_id: str) -> str:
-    resposta = cliente.get(
-        f"/candidatos/{candidato_id}/decisao?vaga_id={vaga}", headers=SESSAO
-    )
+    resposta = cliente.get(f"/candidatos/{candidato_id}/decisao?vaga_id={vaga}", headers=SESSAO)
     assert resposta.status_code == 200, resposta.text
     return resposta.json()["decisao"]["regra"]
 
@@ -82,19 +80,14 @@ def test_encaminhamento_nao_passa_do_numero_do_recrutador(cliente):
     assert len(convites.json()["itens"]) <= ENCAMINHAR
 
 
-def test_quem_passa_do_encaminhamento_fica_com_o_rh(cliente):
+def test_quem_passa_do_teto_fica_registrado_sem_ir_a_uma_pessoa(cliente):
     vaga = _campanha(cliente)
     itens = _itens(cliente, vaga)
 
     for item in itens:
-        if item["decisao"] != "pedir_humano":
-            continue
-        regra = _regra(cliente, vaga, item["candidato"]["id"])
-        if regra != "nao_priorizado":
-            continue
-        assert item["decisao"] != "descartar"
-
-    assert any(i["decisao"] == "pedir_humano" for i in itens)
+        if _regra(cliente, vaga, item["candidato"]["id"]) == "alem_do_teto_do_mandato":
+            assert item["decisao"] == "descartar"
+    assert all(_regra(cliente, vaga, i["candidato"]["id"]) != "nao_priorizado" for i in itens)
 
 
 def test_outra_empresa_nao_ve_a_campanha(cliente):
