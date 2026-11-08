@@ -72,10 +72,11 @@ def _fits(analise: Analise, nome: str) -> list[tuple[str, str]]:
 
 
 def _criterios_atendidos(vaga: Vaga, analise: Analise) -> list[str]:
+    """Critérios com evidência ou requisito cumprido, pela descrição e sem repetir."""
     descricoes = {r.id: r.descricao for r in vaga.requisitos}
-    criterios = [e.criterio for e in analise.evidencias if e.trecho.strip()]
-    criterios += [descricoes.get(rid, rid) for rid, ok in analise.requisitos_ok.items() if ok]
-    return list(dict.fromkeys(criterios))
+    ids = [e.criterio for e in analise.evidencias if e.trecho.strip()]
+    ids += [rid for rid, ok in analise.requisitos_ok.items() if ok]
+    return list(dict.fromkeys(descricoes.get(i, i) for i in ids))
 
 
 def mensagem_padrao(vaga: Vaga, analise: Analise, tem_link: bool) -> str:
