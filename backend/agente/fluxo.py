@@ -39,10 +39,13 @@ from backend.agente.auditoria import (
     rastreado,
 )
 from backend.agente.contato_publicado import (
+    EMAIL_PUBLICADO_ENVO,
     ORIGEM_AUTORIZACAO_PELO_ACEITE,
+    ContatoPorEmpresa,
     contato_publicado,
     mensagem_pelo_contato_publicado,
     motivo_sem_contato,
+    usuario_para_consulta,
 )
 from backend.agente.mandato import (
     Mandato,
@@ -367,6 +370,8 @@ class ProgressoFluxo(Contrato):
     convites: list[RegistroConvite] = []
     entregues: list[str] = []
     destinos: dict[str, DestinoPessoa] = {}
+    contatos_envo: dict[str, str] = {}
+    """E-mail publicado achado pela EnvoAPI por pessoa; vazio quando a consulta não trouxe nada."""
 
     def candidato(self, candidato_id: str) -> Candidato:
         for candidato in (*self.candidatos, *self.cortados):
@@ -492,6 +497,7 @@ class FluxoVaga:
         redator_convite: RedatorConvite | None = None,
         respondedor_duvida: RespondedorDuvida | None = None,
         redator_retorno: RedatorRetorno | None = None,
+        buscador_contato: ContatoPorEmpresa | None = None,
     ) -> None:
         if medidor_gasto is None:
             raise ValueError("sem medidor, o limite de gasto do mandato não seria aplicado")
@@ -506,6 +512,7 @@ class FluxoVaga:
         self._redator_convite = redator_convite
         self._respondedor_duvida = respondedor_duvida
         self._redator_retorno = redator_retorno
+        self._buscador_contato = buscador_contato
         self._banco = banco
         self._fontes = fontes
         self._analisador = analisador
@@ -1196,7 +1203,18 @@ class FluxoVaga:
             atual = candidato
         if candidato.opt_out or self._tem_opt_out(candidato):
             atual = atual.model_copy(update={"opt_out": True})
-        return atual
+        return self._com_contato_envo(atual, progresso)
+
+    @staticmethod
+    def _com_contato_envo(candidato: Candidato, progresso: ProgressoFluxo) -> Candidato:
+        """O e-mail da EnvoAPI só vem do progresso, gravado pelo fluxo: o da fonte é descartado."""
+        atributos = {k: v for k, v in candidato.atributos.items() if k != EMAIL_PUBLICADO_ENVO}
+        email = progresso.contatos_envo.get(candidato.id, "")
+        if email:
+            atributos[EMAIL_PUBLICADO_ENVO] = email
+        if atributos == candidato.atributos:
+            return candidato
+        return candidato.model_copy(update={"atributos": atributos})
 
     def _ja_chegou_ao_destino(self, progresso: ProgressoFluxo, candidato_id: str) -> bool:
         """Inclui a entrega em curso: uma queda pode ter deixado o pacote lá sem registro aqui."""
@@ -1895,6 +1913,7 @@ class FluxoVaga:
         ultimo = registros[-1] if registros else None
         with self._contexto(progresso, candidato_id):
             if ultimo is None or ultimo.estado == EstadoConvite.CANCELADO:
+                progresso = self._contato_publicado_envo(progresso, candidato_id)
                 if self._sem_contato_publicado(progresso, candidato_id):
                     return
             if ultimo is None:
@@ -1907,6 +1926,42 @@ class FluxoVaga:
                 return
             if registro.estado == EstadoConvite.A_ENVIAR:
                 self._enviar(progresso, registro)
+
+    def _contato_publicado_envo(
+        self, progresso: ProgressoFluxo, candidato_id: str
+    ) -> ProgressoFluxo:
+        """Consulta a EnvoAPI pelo e-mail que a pessoa publicou no LinkedIn, uma vez só.
+
+        Só para quem está indicado agora, veio da busca real, nunca autorizou, não saiu (opt-out,
+        bloqueio da empresa ou remoção, conferidos em `_candidato_atual`), não tem contato
+        publicado e tem o usuário do LinkedIn. Sem buscador (sem `ENVO_API_KEY`), nada muda. O
+        resultado fica no progresso, e o buscador guarda por empresa: nenhuma pessoa é paga duas
+        vezes. Falha vira "sem e-mail", com o motivo nos eventos, e a vaga segue.
+        """
+        if self._buscador_contato is None or candidato_id in progresso.contatos_envo:
+            return progresso
+        decisao = self._ultimas_decisoes().get(candidato_id)
+        if decisao is None or decisao.tipo != TipoDecisao.INDICAR:
+            return progresso
+        atual = self._candidato_atual(progresso.candidato(candidato_id), progresso)
+        usuario = usuario_para_consulta(atual)
+        if not externo_sem_autorizacao(atual) or usuario is None or contato_publicado(atual):
+            return progresso
+        try:
+            emails = self._buscador_contato.emails_publicados(self.vaga.empresa_id, usuario)
+            resultado = "e-mail publicado encontrado" if emails else "nenhum e-mail publicado"
+        except Exception as erro:
+            emails = []
+            resultado = f"sem resposta ({type(erro).__name__})"
+            logger.warning("EnvoAPI sem resposta na vaga %s: %s", self.vaga.id, type(erro).__name__)
+        email = emails[0] if emails else ""
+
+        def guardar(atual_progresso: ProgressoFluxo) -> None:
+            atual_progresso.contatos_envo.setdefault(candidato_id, email)
+
+        self._mudar(guardar)
+        self._evento("convite", f"contato consultado na EnvoAPI: {resultado}", candidato_id)
+        return self._progresso()
 
     def _sem_contato_publicado(self, progresso: ProgressoFluxo, candidato_id: str) -> bool:
         """Quem nunca autorizou e não publicou e-mail fica indicada, sem convite por outro meio.

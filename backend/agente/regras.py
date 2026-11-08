@@ -213,9 +213,9 @@ def externo_sem_autorizacao(candidato: Candidato) -> bool:
       externo. Casar a mesma pessoa entre fontes com ids diferentes depende da resolução de
       identidade (spec 004, T044); até lá, um registro externo de id novo segue para a análise.
     - A busca real só gera convite quando a fonte traz um e-mail publicado pela própria pessoa.
-      Hoje nenhuma fonte ligada à busca real extrai isso: o e-mail de provedor vem marcado como
-      não publicado. Sem ele, a pessoa fica indicada e o motivo `contato_nao_publicado` vai para
-      os eventos.
+      O e-mail de provedor vem marcado como não publicado. Com `ENVO_API_KEY`, o fluxo consulta
+      a EnvoAPI pelo e-mail que a pessoa publicou no LinkedIn, só para quem indicou. Sem ele, a
+      pessoa fica indicada e o motivo `contato_nao_publicado` vai para os eventos.
     """
     return (
         not candidato.simulado

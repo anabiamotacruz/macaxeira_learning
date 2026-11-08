@@ -7,7 +7,9 @@ a abertura é a de `backend/contato/email_inicial.py`, e o resto é texto fixo.
 """
 
 import re
+import threading
 from datetime import UTC, datetime, time
+from typing import Protocol
 
 from backend.contato.canal import MotivoSemCanal
 from backend.contato.email_inicial import (
@@ -19,6 +21,7 @@ from backend.contato.email_inicial import (
 )
 from backend.contato.prompts import AVISO_SIMULACAO, MARCADOR_NOME, PALAVRA_SAIDA
 from backend.contratos.modelos import Analise, Candidato, Vaga
+from backend.fontes.provedores.envoapi import email_valido, url_perfil_linkedin, usuario_de
 
 ORIGEM_AUTORIZACAO_PELO_ACEITE = "aceite do convite enviado ao contato publicado"
 """De onde vem a autorização de quem aceitou o convite: fica no evento da vaga."""
@@ -27,6 +30,57 @@ BOTAO_SAIDA = "Não quero mais contato"
 CONFIANCA_INFERIDA = "inferido"
 _EMAIL = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
 _URL = re.compile(r"https?://[^\s<>\"']+")
+USUARIO_LINKEDIN = "usuario_linkedin"
+"""Gravado pela LinkdAPI: é por ele que a EnvoAPI acha o perfil."""
+EMAIL_PUBLICADO_ENVO = "email_publicado_envo"
+"""Só o fluxo grava este atributo, com o resultado guardado da EnvoAPI. O que vier da fonte cai."""
+DESCRICAO_ORIGEM_LINKEDIN = "seu perfil público do LinkedIn"
+
+
+class BuscadorContato(Protocol):
+    """`BuscadorContatoEnvo`, de `backend/fontes/provedores/envoapi.py`."""
+
+    def emails_publicados(self, usuario_ou_url: str) -> list[str]: ...
+
+
+class ContatoPorEmpresa:
+    """Consulta o e-mail publicado uma vez por empresa e pessoa, e guarda o resultado.
+
+    Cada consulta custa um crédito, mesmo vazia. A trava segura a consulta: duas vagas da mesma
+    empresa não pagam pela mesma pessoa ao mesmo tempo. Falha também fica guardada, como vazia.
+    """
+
+    def __init__(self, buscador: BuscadorContato) -> None:
+        self._buscador = buscador
+        self._guardados: dict[tuple[str, str], list[str]] = {}
+        self._trava = threading.Lock()
+
+    def __repr__(self) -> str:
+        return f"ContatoPorEmpresa(guardados={len(self._guardados)})"
+
+    def emails_publicados(self, empresa_id: str, usuario: str) -> list[str]:
+        chave = (empresa_id, usuario)
+        with self._trava:
+            if chave in self._guardados:
+                return list(self._guardados[chave])
+            self._guardados[chave] = []
+            emails = [e for e in self._buscador.emails_publicados(usuario) if email_valido(e)]
+            self._guardados[chave] = emails
+            return list(emails)
+
+
+def usuario_para_consulta(candidato: Candidato) -> str | None:
+    """O usuário do LinkedIn no formato aceito, ou `None`: sem ele, nada é consultado."""
+    return usuario_de(candidato.atributos.get(USUARIO_LINKEDIN, ""))
+
+
+def _contato_envo(candidato: Candidato) -> tuple[str, str] | None:
+    """E-mail que a pessoa publicou no LinkedIn, achado pela EnvoAPI, e a página do perfil."""
+    email = email_valido(candidato.atributos.get(EMAIL_PUBLICADO_ENVO, ""))
+    usuario = usuario_para_consulta(candidato)
+    if email is None or usuario is None:
+        return None
+    return email, url_perfil_linkedin(usuario)
 
 
 def _url_de_origem(candidato: Candidato) -> str | None:
@@ -59,7 +113,21 @@ def _coletado_em(candidato: Candidato) -> datetime:
 
 
 def contato_publicado(candidato: Candidato) -> ContatoPublicado | None:
-    """O e-mail que a pessoa publicou, com a página de origem. `None` se não houver os dois."""
+    """O e-mail que a pessoa publicou, com a página de origem. `None` se não houver os dois.
+
+    O e-mail da EnvoAPI vale mesmo com o perfil marcado como inferido: a marca é do perfil, e o
+    endpoint de contato devolve só o que a pessoa publicou no LinkedIn.
+    """
+    envo = _contato_envo(candidato)
+    if envo is not None:
+        return ContatoPublicado(
+            canal=CANAL_EMAIL,
+            endereco=envo[0],
+            url_origem=envo[1],
+            descricao_origem=DESCRICAO_ORIGEM_LINKEDIN,
+            coletado_em=_coletado_em(candidato),
+            publicado_para_contato=True,
+        )
     email = _email_publicado(candidato)
     url = _url_de_origem(candidato)
     if email is None or url is None:

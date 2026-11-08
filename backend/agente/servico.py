@@ -17,6 +17,7 @@ from typing import Any
 from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
 from backend.agente.configuracao import PerguntaVaga
+from backend.agente.contato_publicado import ContatoPorEmpresa
 from backend.agente.documento import documento_de_ingestao
 from backend.agente.fluxo import (
     REGRA_REVERSAO,
@@ -131,6 +132,8 @@ class DependenciasFluxo:
     redator_retorno: RedatorRetorno | None = None
     propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None
     """Recebe a descrição e a empresa. Sem ele, a proposta de critérios fica indisponível."""
+    buscador_contato: ContatoPorEmpresa | None = None
+    """EnvoAPI, só com a busca real e `ENVO_API_KEY`. Guarda o resultado por empresa e pessoa."""
 
 
 def _novo_id_de_vaga() -> str:
@@ -181,6 +184,7 @@ class ServicoVagas:
             redator_convite=d.redator_convite,
             respondedor_duvida=d.respondedor_duvida,
             redator_retorno=d.redator_retorno,
+            buscador_contato=d.buscador_contato,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:

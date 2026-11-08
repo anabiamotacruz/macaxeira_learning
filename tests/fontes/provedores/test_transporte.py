@@ -92,3 +92,26 @@ def test_repr_do_pedido_nao_expoe_chave_nem_corpo():
     )
     assert TOKEN_BRIGHT not in texto
     assert "ficticio" not in texto
+
+
+def test_pedido_sem_user_agent_sai_com_o_do_projeto():
+    """O firewall da EnvoAPI devolve 403 ao agente de usuário padrão do Python."""
+    vistos = []
+
+    def tratar(requisicao: httpx2.Request) -> httpx2.Response:
+        vistos.append(requisicao.headers["user-agent"])
+        return httpx2.Response(200)
+
+    transporte_com(tratar).enviar(pedido())
+    assert vistos == ["macaxeira-learning/0.1"]
+
+
+def test_user_agent_do_pedido_e_mantido():
+    vistos = []
+
+    def tratar(requisicao: httpx2.Request) -> httpx2.Response:
+        vistos.append(requisicao.headers["user-agent"])
+        return httpx2.Response(200)
+
+    transporte_com(tratar).enviar(pedido(cabecalhos={"user-agent": "outro/1.0"}))
+    assert vistos == ["outro/1.0"]
