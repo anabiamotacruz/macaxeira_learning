@@ -655,7 +655,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
 
   return (
     <div className="flex flex-col gap-[22px]">
-      {estadoAtivo && progresso && progresso.consultas_total >= 0 && (
+      {estadoAtivo && progresso && (
         <section aria-label="Progresso da busca" className={`flex flex-col gap-2 ${cartao} p-4`}>
           <div className="flex items-center justify-between gap-3">
             <h2 className="m-0 text-[15px] font-semibold">Coletando perfis</h2>
