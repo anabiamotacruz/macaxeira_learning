@@ -58,7 +58,7 @@ O fluxo pede o texto em `_texto_do_convite`, com o convite em `A_ENVIAR` e anál
 
 Devolve `Convite` com `tipo=TipoConvite.VAGA`, `canal` das preferências, `simulado=True` e chave `{empresa}:{vaga}:{candidato}:vaga:{tentativa}`. O texto é a redação do modelo ou a mensagem padrão, já com o nome e, se houver, o link no lugar de `{link_agendamento}`.
 
-A origem do contato no texto do convite ainda está na PR #87 (`frente/contato-convite-origem`), aberta. Na `main`, a mensagem traz o título e `SAIR`, e o link quando ele existe. `fonte`, `origem` e o aviso de simulação ficam fora desse texto.
+Depois da redação, o código acrescenta o rodapé de `rodape(candidato)`: a origem do contato (`fonte` e `origem` do candidato) e `AVISO_SIMULACAO`. O rodapé não passa pelo modelo.
 
 Levanta `ValueError` se vaga, candidato e análise não forem da mesma empresa, ou se a análise não for desta vaga e desta pessoa. `ModeloIndisponivel` e `RespostaInvalida` não sobem: a função usa a mensagem padrão.
 
@@ -213,6 +213,22 @@ modelo = ClienteModeloSimulado(
     }
 )
 resposta = responder_duvida(vaga, "A vaga é remota?", modelo)
+```
+
+## `mensagem_duvida_encaminhada`
+
+```python
+def mensagem_duvida_encaminhada(vaga: Vaga) -> str:
+```
+
+Use quando `responder_duvida` devolve `None`: avisa a pessoa que a dúvida sobre a vaga foi passada para alguém da equipe. Texto fixo, com `{nome}`, `SAIR` e o aviso de simulação. Não promete prazo, entrevista nem contratação.
+
+Modelo: não.
+
+```python
+from backend.contato.conversa import mensagem_duvida_encaminhada
+
+texto = mensagem_duvida_encaminhada(vaga).replace("{nome}", candidato.nome)
 ```
 
 ## `mensagem_pos_entrevista`
@@ -442,7 +458,10 @@ class NaraSimulada:
     def entregar(self, pacote: PacoteContexto) -> bool: ...
     def entregues(self, empresa_id: str) -> list[PacoteContexto]: ...
     def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoEntrevista]: ...
+    def resumo_resultado(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str: ...
 ```
+
+`resumo_resultado` devolve uma frase para o painel ("A entrevista simulada recomendou seguir." ou o contrário), sem nota nem identificador. Levanta `ValueError` se não houver pacote entregue para a pessoa.
 
 Tudo isto é simulado. O fluxo usa o destino em `_link_de_agendamento` e em `_entregar`. A demonstração injeta `NaraSimulada()`.
 
@@ -501,6 +520,7 @@ configuracao_destino("empresa-demo", "http://127.0.0.1:8765/mcp")
 | `criar_email` | sim, `redigir_email`, na tentativa 1 com `personalizar` | `ContatoBloqueado` |
 | `ContatoBloqueado` | não | é a exceção |
 | `responder_duvida` | sim, `responder_duvida` | nenhuma; `None` encaminha a uma pessoa |
+| `mensagem_duvida_encaminhada` | não | nenhuma |
 | `mensagem_pos_entrevista` | não | `ValueError` |
 | `decidir_lembrete` | não | nenhuma |
 | `AgendaLembretes.processar` | não | nenhuma; `ContatoBloqueado` vira decisão |
