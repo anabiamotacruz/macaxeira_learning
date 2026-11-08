@@ -7,6 +7,123 @@
   },
   "paths": {
     "/vagas": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Listar Vagas",
+        "description": "Lista as vagas da empresa da sessão, com o estado e o mandato de cada uma.",
+        "operationId": "listar_vagas",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaListaVagas"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "itens": [
+                    {
+                      "simulado": true,
+                      "exemplo_fixo": false,
+                      "vaga": {
+                        "id": "vaga-exemplo-1",
+                        "empresa_id": "empresa-exemplo",
+                        "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                        "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                        "requisitos": [
+                          {
+                            "id": "python",
+                            "descricao": "Experiência com Python",
+                            "campo": "linguagem",
+                            "valor_esperado": "python",
+                            "desenvolvivel": false
+                          }
+                        ],
+                        "competencias": [
+                          {
+                            "nome": "APIs",
+                            "peso": 1.0
+                          }
+                        ],
+                        "meta_candidatos": 2,
+                        "prazo_dias": 14,
+                        "max_tentativas_contato": 2,
+                        "aprovada": true,
+                        "palavras_chave": []
+                      },
+                      "estado": "decidindo",
+                      "mandato": {
+                        "id": "mandato-exemplo-1",
+                        "versao": 1,
+                        "empresa_id": "empresa-exemplo",
+                        "vaga_id": "vaga-exemplo-1",
+                        "hash_vaga": "hash-de-exemplo",
+                        "assinante": "Pessoa Responsável Fictícia",
+                        "limite_gasto_usd": 5.0,
+                        "politica": {
+                          "limiar_verde": 0.8,
+                          "piso_nota": 0.5,
+                          "max_indicacoes": 2,
+                          "max_ampliacoes": 1,
+                          "modo_entrega": "apos_aceite",
+                          "aceitar_declarada": false,
+                          "lapidar_exige_confirmacao": true,
+                          "prazo_garden_dias": 180
+                        },
+                        "assinado_em": "2026-11-07T12:00:00Z",
+                        "valido_ate": "2026-11-21T12:00:00Z"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "vagas"
@@ -5254,6 +5371,36 @@
         ],
         "title": "RespostaFeedback",
         "description": "`responsavel` e `encaminhado_por` orientam o canal e não são mostrados à pessoa."
+      },
+      "RespostaListaVagas": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/RespostaVaga"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "itens"
+        ],
+        "title": "RespostaListaVagas"
       },
       "RespostaMandato": {
         "properties": {

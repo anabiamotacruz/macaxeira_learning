@@ -125,6 +125,7 @@ def test_expoe_exatamente_as_rotas_combinadas():
     }
     assert rotas == {
         ("post", "/vagas"),
+        ("get", "/vagas"),
         ("get", "/vagas/modelos"),
         ("post", "/vagas/proposta"),
         ("post", "/vagas/{id}/mandato"),
@@ -156,6 +157,18 @@ def test_respostas_identificam_simulacao_e_so_as_metricas_seguem_fixas(cliente, 
     assert resposta.status_code == rota[3], resposta.text
     assert resposta.json()["simulado"] is True
     assert resposta.json()["exemplo_fixo"] is rota[1].endswith("/metricas")
+
+
+def test_lista_so_as_vagas_da_empresa_da_sessao(cliente):
+    vaga = _criar_vaga(cliente)
+    outra = {**SESSAO, "X-Empresa-Id": "outra-empresa"}
+    _criar_vaga(cliente, outra)
+    resposta = cliente.get("/vagas", headers=SESSAO)
+    assert resposta.status_code == 200, resposta.text
+    corpo = resposta.json()
+    assert corpo["simulado"] is True
+    assert [item["vaga"]["id"] for item in corpo["itens"]] == [vaga]
+    assert corpo["itens"][0]["estado"] == "aguardando_mandato"
 
 
 def test_criar_e_assinar_nao_sao_exemplo_fixo(cliente):

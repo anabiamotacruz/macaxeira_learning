@@ -1,72 +1,104 @@
 "use client";
 
 import Link from "next/link";
-import { BriefcaseBusiness, ChevronRight, Filter, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { Sidebar } from "../components/Sidebar";
+import { AppHeader, AppMain } from "../components/AppHeader";
 import { SimuladoBadge } from "../components/SimuladoBadge";
-import { ApiError, listarVagas, modoReservaAtivo } from "../lib/api";
+import { ApiError, listarVagas, modoReservaAtivo, obterResumo, type ResumoVaga } from "../lib/api";
 import { vagasIniciais } from "../lib/dados";
-import type { Vaga } from "../lib/tipos";
+import type { EstadoVaga, Vaga } from "../lib/tipos";
 
-const REVISOR = "revisor.demo";
+const REVISOR = "Ana Ribeiro";
 
-type VagaExibida = Vaga & {
-  codigo: string;
-  area: string;
-  local: string;
-  modelo: string;
-  progresso: string;
-  pessoas: string;
-  criada: string;
-  percentual: number;
-  status: "Buscando" | "Rascunho" | "Concluída";
-};
+type Grupo = "buscando" | "concluida" | "rascunho";
+type Filtro = "todas" | Grupo;
 
-const vagaBase = vagasIniciais[0];
-const vagasDaReferencia: VagaExibida[] = [
-  { ...vagaBase, id: "vaga-014", codigo: "014", titulo: "Pessoa Desenvolvedora Backend Sênior", area: "Tecnologia", local: "Remoto", modelo: "Encontro mensal em Recife", progresso: "1 de 5 entregues à Nara", pessoas: "23", criada: "07/11/2026", percentual: 20, status: "Buscando", aprovada: true },
-  { ...vagaBase, id: "vaga-013", codigo: "013", titulo: "Product Designer Pleno", area: "Produto", local: "Recife, PE", modelo: "Híbrido, 2 dias no escritório", progresso: "2 de 4 entregues à Nara", pessoas: "17", criada: "05/11/2026", percentual: 50, status: "Buscando", aprovada: true },
-  { ...vagaBase, id: "vaga-015", codigo: "015", titulo: "Pessoa Engenheira de Plataforma", area: "Tecnologia", local: "Remoto", modelo: "Remoto", progresso: "Critérios aguardam sua aprovação", pessoas: "–", criada: "08/11/2026", percentual: 0, status: "Rascunho", aprovada: false },
-  { ...vagaBase, id: "vaga-012", codigo: "012", titulo: "Analista de Dados Pleno", area: "Dados", local: "Remoto", modelo: "Remoto", progresso: "3 de 3 entregues à Nara", pessoas: "31", criada: "21/10/2026", percentual: 100, status: "Concluída", aprovada: true },
-  { ...vagaBase, id: "vaga-011", codigo: "011", titulo: "Analista de People Ops", area: "Pessoas", local: "Recife, PE", modelo: "Presencial", progresso: "2 de 2 entregues à Nara", pessoas: "12", criada: "02/10/2026", percentual: 100, status: "Concluída", aprovada: true },
+type Linha = { vaga: Vaga; estado: EstadoVaga; resumo: ResumoVaga | null };
+
+const FILTROS: Array<[Filtro, string]> = [
+  ["todas", "Todas"],
+  ["buscando", "Buscando"],
+  ["concluida", "Concluídas"],
+  ["rascunho", "Rascunhos"],
 ];
 
-function statusDaVaga(vaga: Vaga) {
-  if ("status" in vaga) {
-    const exibida = vaga as VagaExibida;
-    return exibida.status === "Buscando"
-      ? { label: exibida.status, className: "bg-[#eef2ef] text-[#2c4f55]" }
-      : exibida.status === "Concluída"
-        ? { label: exibida.status, className: "bg-[#e3f3e8] text-[#2f6e52]" }
-        : { label: exibida.status, className: "bg-[#fff1cc] text-[#855a0e]" };
-  }
-  if (vaga.id === "vaga-referencia-buscando") {
-    return { label: "Buscando", className: "bg-[#fff1cc] text-[#a06b13]" };
-  }
-  return vaga.aprovada
-    ? { label: "Concluída", className: "bg-[#e3f3e8] text-[#377b5d]" }
-    : { label: "Rascunho", className: "bg-[#edf0ef] text-[#788887]" };
+const GRADE = "grid-cols-[minmax(280px,2.4fr)_1.3fr_1fr_1.5fr_0.7fr_0.8fr_36px]";
+
+function grupoDoEstado(estado: EstadoVaga): Grupo {
+  if (estado === "concluida") return "concluida";
+  if (estado === "rascunho" || estado === "aguardando_mandato") return "rascunho";
+  return "buscando";
+}
+
+function rotuloDoEstado(estado: EstadoVaga): string {
+  if (estado === "concluida") return "Concluída";
+  if (estado === "rascunho") return "Rascunho";
+  if (estado === "aguardando_mandato") return "Aguarda mandato";
+  if (estado === "pausada") return "Pausada";
+  return "Buscando";
+}
+
+function estiloDoEstado(estado: EstadoVaga): string {
+  const grupo = grupoDoEstado(estado);
+  if (grupo === "concluida") return "border-[#CDE6D5] bg-cora-ok-bg text-cora-ok-ink";
+  if (grupo === "rascunho" || estado === "pausada") return "border-[#F1D58A] bg-cora-warn-bg text-cora-warn-ink";
+  return "border-cora-line-2 bg-cora-muted-bg text-cora-ink-2";
+}
+
+function progresso({ vaga, estado, resumo }: Linha): { pct: number; texto: string } {
+  if (estado === "rascunho") return { pct: 0, texto: "Critérios aguardam sua aprovação" };
+  if (estado === "aguardando_mandato") return { pct: 0, texto: "Mandato aguarda assinatura" };
+  if (!resumo) return { pct: 0, texto: "Resumo indisponível" };
+  const meta = Math.max(vaga.meta_candidatos, 1);
+  const pct = Math.min(100, Math.round((resumo.indicados / meta) * 100));
+  return { pct, texto: `${resumo.indicados} de ${vaga.meta_candidatos} entregues à Nara` };
+}
+
+function IconeMaleta() {
+  return (
+    <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 16 16" width="18">
+      <rect height="8" rx="1.5" width="13" x="1.5" y="5" />
+      <path d="M5.5 5V3.8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V5M1.5 8.5h13" />
+    </svg>
+  );
 }
 
 export default function Home() {
-  const [vagas, setVagas] = useState<VagaExibida[]>(vagasDaReferencia);
-  const [carregando, setCarregando] = useState(false);
+  const [linhas, setLinhas] = useState<Linha[]>([]);
+  const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<Filtro>("todas");
   const [filtroAberto, setFiltroAberto] = useState(false);
-  const [filtroStatus, setFiltroStatus] = useState<"todas" | "buscando" | "concluida" | "rascunho">("todas");
 
   useEffect(() => {
     let ativo = true;
     async function carregar() {
       try {
+        if (modoReservaAtivo()) {
+          if (ativo) {
+            setLinhas(
+              vagasIniciais.map((vaga) => ({ vaga, estado: vaga.aprovada ? "buscando" : "rascunho", resumo: null })),
+            );
+          }
+          return;
+        }
         const respostas = await listarVagas();
-        if (!ativo) return;
-        if (respostas.length > 0) setVagas(respostas.map((resposta) => ({ ...vagasDaReferencia[0], ...resposta.vaga, codigo: "API", area: "Tecnologia", local: "Não informado", modelo: "Não informado", progresso: "Em andamento", pessoas: "—", criada: "Hoje", percentual: 0, status: resposta.vaga.aprovada ? "Concluída" : "Rascunho" })));
+        const comResumo = await Promise.all(
+          respostas.map(async (r) => {
+            let resumo: ResumoVaga | null = null;
+            try {
+              resumo = await obterResumo(r.vaga.id);
+            } catch {
+              // Sem resumo, a linha mostra a vaga e o estado; os números ficam como indisponíveis.
+            }
+            return { vaga: r.vaga, estado: resumo?.estado ?? r.estado, resumo };
+          }),
+        );
+        if (ativo) setLinhas(comResumo);
       } catch (erroApi) {
-        if (ativo && !(erroApi instanceof ApiError && erroApi.status === 0)) setErro(erroApi instanceof ApiError ? erroApi.message : "Não foi possível carregar as vagas.");
+        if (ativo) setErro(erroApi instanceof ApiError ? erroApi.message : "Não foi possível carregar as vagas.");
       } finally {
         if (ativo) setCarregando(false);
       }
@@ -77,143 +109,219 @@ export default function Home() {
     };
   }, []);
 
-  const vagasFiltradas = useMemo(() => {
+  const totais = useMemo(() => {
+    const buscando = linhas.filter((l) => grupoDoEstado(l.estado) === "buscando");
+    return {
+      buscando: buscando.length,
+      rascunhos: linhas.filter((l) => grupoDoEstado(l.estado) === "rascunho").length,
+      perfis: buscando.reduce((s, l) => s + (l.resumo?.analisados ?? 0), 0),
+      fila: linhas.reduce((s, l) => s + (l.resumo?.na_fila_humana ?? 0), 0),
+      entregues: buscando.reduce((s, l) => s + (l.resumo?.indicados ?? 0), 0),
+      metas: buscando.reduce((s, l) => s + l.vaga.meta_candidatos, 0),
+      porGrupo: {
+        todas: linhas.length,
+        buscando: buscando.length,
+        concluida: linhas.filter((l) => grupoDoEstado(l.estado) === "concluida").length,
+        rascunho: linhas.filter((l) => grupoDoEstado(l.estado) === "rascunho").length,
+      } as Record<Filtro, number>,
+    };
+  }, [linhas]);
+
+  const visiveis = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return vagas.filter((vaga) => {
-      const combinaStatus = filtroStatus === "todas" || (filtroStatus === "buscando" ? vaga.status === "Buscando" : filtroStatus === "rascunho" ? vaga.status === "Rascunho" : vaga.status === "Concluída");
-      return combinaStatus && (!termo || vaga.titulo.toLowerCase().includes(termo) || vaga.descricao.toLowerCase().includes(termo));
-    });
-  }, [busca, filtroStatus, vagas]);
+    return linhas.filter(
+      (l) =>
+        (filtro === "todas" || grupoDoEstado(l.estado) === filtro) &&
+        (!termo || l.vaga.titulo.toLowerCase().includes(termo) || l.vaga.descricao.toLowerCase().includes(termo)),
+    );
+  }, [busca, filtro, linhas]);
 
   return (
-    <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
-      <Sidebar active="catalogo" count={vagas.length} />
+    <div className="flex min-h-screen flex-col">
+      <AppHeader aoBuscar={setBusca} ativo="vagas" />
+      <AppMain>
+        {modoReservaAtivo() && (
+          <p className="rounded-lg border border-[#f1c36a] bg-[#fff7df] px-4 py-3 text-sm text-[#805d16]">
+            Dados locais de reserva
+          </p>
+        )}
+        {erro && (
+          <p className="rounded-lg border border-[#f0b5aa] bg-cora-coral-bg px-4 py-3 text-sm text-cora-coral-ink" role="alert">
+            {erro}
+          </p>
+        )}
 
-      <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-5 py-8 pb-14 sm:px-6">
-          {modoReservaAtivo() && (
-            <p className="mb-5 rounded-lg border border-[#f1c36a] bg-[#fff7df] px-4 py-3 text-sm text-[#805d16]">
-              Dados locais de reserva
-            </p>
-          )}
-          {erro && (
-            <p className="mb-5 rounded-lg border border-[#f0b5aa] bg-[#fff1ee] px-4 py-3 text-sm text-[#a43826]" role="alert">
-              {erro}
-            </p>
-          )}
-          <header className="flex flex-wrap items-end justify-between gap-5">
-            <div>
-              <h1 className="text-[30px] font-semibold leading-[1.15] tracking-[-0.04em] text-[#0b3038]">Vagas</h1>
-              <p className="mt-1.5 text-[15px] text-[#526c68]">Acompanhe as buscas da sua empresa e o quanto falta para cada meta.</p>
-            </div>
-            <Link
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-[#dfe6e1] bg-white px-3.5 text-sm font-medium text-[#0b3038] transition hover:bg-[#eef2ef]"
-              href="/vagas/modelos"
-            >
-              Criar a partir de um modelo
-            </Link>
-          </header>
-
-          <section aria-label="Resumo" className="grid gap-3 md:grid-cols-4">
-            <Metric label="Vagas buscando" value="2" caption="1 rascunho aguarda aprovação dos critérios" />
-            <Metric label="Perfis encontrados" value="40" caption="nas vagas buscando, cada um com a origem" />
-            <Metric label="Aguardando autorização" value="5" caption="só são abordadas depois de autorizar" />
-            <Metric label="Entregues à Nara" value="3 de 9" caption="soma das metas das vagas buscando" />
-          </section>
-
-          <section className="overflow-hidden rounded-xl border border-[#dfe7e2] bg-white shadow-[0_1px_2px_rgba(29,55,47,.02)]">
-            <div className="flex flex-wrap items-center gap-3 border-b border-[#e8eeea] p-4">
-              <div className="flex flex-wrap gap-0.5 rounded-[9px] bg-[#eaf0ec] p-[3px]" role="tablist" aria-label="Filtrar por status">
-                {([["todas", "Todas", 5], ["buscando", "Buscando", 2], ["concluida", "Concluídas", 2], ["rascunho", "Rascunhos", 1]] as const).map(([valor, label, total]) => (
-                  <button aria-selected={filtroStatus === valor} className={`rounded-md px-3 py-1.5 text-xs ${filtroStatus === valor ? "bg-white font-semibold text-[#0b3038] shadow-sm" : "font-medium text-[#526c68]"}`} key={valor} onClick={() => setFiltroStatus(valor)} role="tab" type="button">{label} <span className="ml-1">{total}</span></button>
-                ))}
-              </div>
-              <div className="flex h-10 min-w-[250px] flex-1 items-center gap-3 rounded-lg border border-[#dce5e0] px-3 text-sm text-[#90a09c]">
-                <Search aria-hidden="true" size={17} />
-                <input
-                  aria-label="Buscar por vaga"
-                  className="w-full bg-transparent outline-none placeholder:text-[#9aa8a6]"
-                  onChange={(evento) => setBusca(evento.target.value)}
-                  placeholder="Buscar por vaga"
-                  value={busca}
-                />
-              </div>
-              <button
-                className={`flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition ${filtroAberto ? "border-[#fb3c0d] bg-[#fff3ef] text-[#d83b18]" : "border-[#dce5e0] text-[#54706b] hover:bg-[#f7faf8]"}`}
-                onClick={() => setFiltroAberto((aberto) => !aberto)}
-                type="button"
-              >
-                <Filter aria-hidden="true" size={17} />
-                Filtros
-              </button>
-            </div>
-            {filtroAberto && (
-              <div className="border-b border-[#e8eeea] bg-[#fbfcfa] px-4 py-3 text-xs text-[#718784]">
-                Filtro visual ativo: digite o título ou a descrição da vaga.
-              </div>
-            )}
-            <div className="hidden min-w-[980px] grid-cols-[minmax(280px,2.4fr)_1.3fr_1fr_1.5fr_.7fr_.8fr_36px] gap-4 border-b border-[#edf1ee] bg-[#fcfdfc] px-4 py-3 text-[10px] font-semibold uppercase tracking-wide text-[#80908d] md:grid">
-              <span>Vaga</span>
-              <span>Local e modelo</span>
-              <span>Status</span>
-              <span>Progresso da meta</span>
-              <span>Pessoas</span>
-              <span>Criada em</span>
-              <span />
-            </div>
-            {carregando ? (
-              <p className="p-10 text-center text-sm text-[#81908d]">Carregando vagas…</p>
-            ) : vagasFiltradas.length === 0 ? (
-              <p className="p-10 text-center text-sm text-[#81908d]">Nenhuma vaga encontrada.</p>
-            ) : (
-              vagasFiltradas.map((vaga) => {
-                const status = statusDaVaga(vaga);
-                return (
-                  <article className="grid gap-3 border-b border-[#edf1ee] px-4 py-4 last:border-b-0 md:grid-cols-[minmax(280px,2.4fr)_1.3fr_1fr_1.5fr_.7fr_.8fr_36px] md:items-center md:gap-4" key={vaga.id}>
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#eaf4ef] text-[#83a39b]">
-                        <BriefcaseBusiness aria-hidden="true" size={16} />
-                      </span>
-                      <div>
-                        <h2 className="text-sm font-semibold text-[#113b43]"><Link className="hover:text-[#fb3c0d]" href={`/vagas/${encodeURIComponent(vaga.id)}`}>{vaga.titulo}</Link></h2>
-                        <p className="mt-1 text-xs text-[#82918e]"><span className="font-mono">vaga {(vaga as VagaExibida).codigo}</span> · {(vaga as VagaExibida).area}</p>
-                      </div>
-                    </div>
-                    <div className="text-xs text-[#58716d]">
-                      <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-[#9aa7a4] md:hidden">Local</span>
-                      <p>{(vaga as VagaExibida).local}</p>
-                      <p className="mt-1 text-[10px] text-[#9aa7a4]">{(vaga as VagaExibida).modelo}</p>
-                    </div>
-                    <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-semibold ${status.className}`}>
-                      <span className="mr-1">•</span>{status.label}
-                    </span>
-                    <div className="flex flex-col gap-1.5 text-xs text-[#58716d]"><span className="h-1.5 rounded-full bg-[#edf1ee]"><span className="block h-full rounded-full bg-[#fb3c0d]" style={{ width: `${(vaga as VagaExibida).percentual}%` }} /></span><span>{(vaga as VagaExibida).progresso}</span></div>
-                    <p className="text-xs text-[#58716d]">{(vaga as VagaExibida).pessoas}</p>
-                    <p className="text-xs text-[#8b9996]">{(vaga as VagaExibida).criada}</p>
-                    <Link aria-label={`Ver candidatos de ${vaga.titulo}`} className="hidden md:block" href={`/vagas/${encodeURIComponent(vaga.id)}/candidatos`}>
-                      <ChevronRight aria-hidden="true" size={17} />
-                    </Link>
-                  </article>
-                );
-              })
-            )}
-          </section>
-
-          <div className="mt-5 flex items-center justify-between">
-            <SimuladoBadge />
-            <p className="text-[11px] text-[#8b9996]">Dados sintéticos · revisão humana: {REVISOR}</p>
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <h1 className="m-0 text-[30px] font-semibold leading-[1.15] tracking-[-0.04em]">Vagas</h1>
+            <p className="m-0 text-[15px] text-cora-muted">Acompanhe as buscas da sua empresa e o quanto falta para cada meta.</p>
           </div>
+          <Link className="cora-btn cora-btn-outline" href="/vagas/modelos">
+            Criar a partir de um modelo
+          </Link>
         </div>
 
-    </main>
+        <section aria-label="Resumo" className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-3">
+          <Metrica
+            legenda={`${totais.rascunhos} rascunho(s) aguardam aprovação dos critérios`}
+            rotulo="Vagas buscando"
+            valor={String(totais.buscando)}
+          />
+          <Metrica legenda="nas vagas buscando, cada um com a origem" rotulo="Perfis encontrados" valor={String(totais.perfis)} />
+          <Metrica legenda="decisões esperando revisão humana" rotulo="Aguardando autorização" valor={String(totais.fila)} />
+          <Metrica
+            complemento={`de ${totais.metas}`}
+            legenda="soma das metas das vagas buscando"
+            rotulo="Entregues à Nara"
+            valor={String(totais.entregues)}
+          />
+        </section>
+
+        <section aria-label="Vagas" className="overflow-hidden rounded-xl border border-cora-line-2 bg-cora-surface shadow-[0_1px_2px_rgba(11,48,56,0.06)]">
+          <div className="flex flex-wrap items-center gap-3 border-b border-[#EDF1EE] px-4 py-3.5">
+            <div aria-label="Filtrar por status" className="inline-flex flex-wrap gap-0.5 rounded-[9px] bg-[#EAF0EC] p-[3px]" role="tablist">
+              {FILTROS.map(([chave, rotulo]) => {
+                const ativo = filtro === chave;
+                return (
+                  <button
+                    aria-selected={ativo}
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-[7px] border-0 px-3 text-[13px] ${
+                      ativo ? "bg-cora-surface font-semibold text-cora-ink shadow-[0_1px_2px_rgba(11,48,56,0.1)]" : "bg-transparent font-medium text-cora-muted"
+                    }`}
+                    key={chave}
+                    onClick={() => setFiltro(chave)}
+                    role="tab"
+                    type="button"
+                  >
+                    {rotulo} <span className="num text-xs font-medium text-cora-muted">{totais.porGrupo[chave]}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <label className="flex h-[38px] flex-[1_1_240px] items-center gap-2.5 rounded-lg border border-cora-line-2 px-3 text-cora-muted">
+              <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" viewBox="0 0 16 16" width="15"><circle cx="7" cy="7" r="4.3" /><path d="m10.4 10.4 3.1 3.1" /></svg>
+              <span className="sr-only">Buscar por vaga</span>
+              <input
+                className="min-w-0 flex-1 border-0 bg-transparent text-sm text-cora-ink outline-none"
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por vaga"
+                type="search"
+                value={busca}
+              />
+            </label>
+            <button
+              aria-expanded={filtroAberto}
+              className="cora-btn cora-btn-outline h-[38px]"
+              onClick={() => setFiltroAberto((v) => !v)}
+              type="button"
+            >
+              <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" viewBox="0 0 16 16" width="15"><path d="M3 4h10M5 8h6M7 12h2" /></svg>
+              Filtros
+            </button>
+          </div>
+          {filtroAberto && (
+            <div className="border-b border-[#EDF1EE] bg-cora-row px-4 py-3 text-xs text-cora-muted">
+              Filtre pelo status nas abas ou digite o título ou a descrição da vaga.
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <div aria-label="Lista de vagas" className="min-w-[980px]" role="table">
+              <div className={`grid ${GRADE} gap-4 border-b border-[#EDF1EE] bg-cora-row px-4 py-2.5 text-xs font-medium text-cora-placeholder`} role="row">
+                <span role="columnheader">Vaga</span>
+                <span role="columnheader">Prazo e meta</span>
+                <span role="columnheader">Status</span>
+                <span role="columnheader">Progresso da meta</span>
+                <span role="columnheader">Pessoas</span>
+                <span role="columnheader">Na revisão</span>
+                <span role="columnheader"><span className="sr-only">Abrir</span></span>
+              </div>
+              {carregando ? (
+                <p className="m-0 px-4 py-10 text-center text-cora-muted">Carregando vagas…</p>
+              ) : visiveis.length === 0 ? (
+                <p className="m-0 px-4 py-10 text-center text-cora-muted">
+                  {linhas.length === 0 ? "Nenhuma vaga ainda. Crie a primeira em “Criar vaga”." : "Nenhuma vaga com esse status."}
+                </p>
+              ) : (
+                visiveis.map((linha) => {
+                  const { vaga, estado, resumo } = linha;
+                  const href = `/vagas/${encodeURIComponent(vaga.id)}`;
+                  const prog = progresso(linha);
+                  const buscando = grupoDoEstado(estado) === "buscando" && estado !== "pausada";
+                  return (
+                    <div className={`cora-row grid ${GRADE} items-center gap-4 border-b border-cora-subtle px-4 py-3.5`} key={vaga.id} role="row">
+                      <div className="flex min-w-0 items-center gap-3" role="cell">
+                        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] bg-cora-muted-bg text-cora-ink-2">
+                          <IconeMaleta />
+                        </span>
+                        <span className="flex min-w-0 flex-col">
+                          <Link className="truncate text-sm font-semibold text-cora-ink no-underline hover:text-cora-primary" href={href}>
+                            {vaga.titulo}
+                          </Link>
+                          <span className="truncate text-xs text-cora-placeholder">
+                            <span className="font-mono">{vaga.id}</span>
+                            {vaga.competencias[0] ? ` · ${vaga.competencias[0].nome}` : ""}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex flex-col text-[13px]" role="cell">
+                        <span>Prazo de {vaga.prazo_dias} dias</span>
+                        <span className="text-xs text-cora-placeholder">Meta de {vaga.meta_candidatos} pessoas</span>
+                      </div>
+                      <div role="cell">
+                        <span className={`inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-xs font-semibold ${estiloDoEstado(estado)}`}>
+                          {buscando && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-cora-accent" />}
+                          {rotuloDoEstado(estado)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1.5" role="cell">
+                        <span className="h-1.5 overflow-hidden rounded-[3px] bg-[#EDF1EE]">
+                          <span
+                            className={`block h-full rounded-[3px] ${estado === "concluida" ? "bg-cora-ok-ink" : "bg-cora-accent"}`}
+                            style={{ width: `${prog.pct}%` }}
+                          />
+                        </span>
+                        <span className="text-xs text-cora-muted">{prog.texto}</span>
+                      </div>
+                      <div className="num text-[13px]" role="cell">{resumo ? resumo.analisados : "–"}</div>
+                      <div className="num text-[13px] text-cora-muted" role="cell">{resumo ? resumo.na_fila_humana : "–"}</div>
+                      <div role="cell">
+                        <Link
+                          aria-label={`Abrir ${vaga.titulo}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-cora-muted hover:bg-cora-subtle"
+                          href={href}
+                        >
+                          <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 16 16" width="16"><path d="m6 4 4 4-4 4" /></svg>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </section>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-xs text-cora-placeholder">
+            Critérios e primeiro lote de convites de cada vaga passam por revisão humana: {REVISOR}
+          </span>
+          <SimuladoBadge />
+        </div>
+      </AppMain>
+    </div>
   );
 }
 
-function Metric({ label, value, caption }: { label: string; value: string; caption: string }) {
+function Metrica({ rotulo, valor, legenda, complemento }: { rotulo: string; valor: string; legenda: string; complemento?: string }) {
   return (
-    <div className="rounded-xl border border-[#dfe7e2] bg-white p-5">
-      <p className="text-xs text-[#718784]">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-[#0b3038]">{value}</p>
-      <p className="mt-1 text-[11px] text-[#8b9996]">{caption}</p>
+    <div className="flex flex-col gap-1.5 rounded-xl border border-cora-line-2 bg-cora-surface px-5 py-[18px] shadow-[0_1px_2px_rgba(11,48,56,0.06)]">
+      <span className="text-[13px] text-cora-muted">{rotulo}</span>
+      <span className="num text-[30px] font-semibold leading-[1.1] tracking-[-0.03em]">
+        {valor}
+        {complemento && <span className="ml-1 text-base font-medium text-cora-muted">{complemento}</span>}
+      </span>
+      <span className="text-xs text-cora-placeholder">{legenda}</span>
     </div>
   );
 }

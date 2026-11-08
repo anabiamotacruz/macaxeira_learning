@@ -365,6 +365,10 @@ class RespostaVaga(RespostaSimulada):
     mandato: Mandato | None
 
 
+class RespostaListaVagas(RespostaSimulada):
+    itens: list[RespostaVaga]
+
+
 class RespostaMandato(RespostaSimulada):
     mandato: Mandato
     estado: EstadoVaga
@@ -647,6 +651,21 @@ def criar_vaga(
     """Cria a vaga da empresa da sessão, que espera o mandato."""
     fluxo = servico.criar_vaga(empresa, pedido.model_dump())
     return RespostaVaga(vaga=fluxo.vaga, estado=fluxo.estado, mandato=fluxo.mandato)
+
+
+@rotas.get(
+    "/vagas",
+    tags=["vagas"],
+    response_model=RespostaListaVagas,
+    responses=_respostas(RespostaListaVagas(itens=[_resposta_vaga()]), erros=(401,)),
+)
+def listar_vagas(empresa: EmpresaDaSessao, servico: Servico) -> RespostaListaVagas:
+    """Lista as vagas da empresa da sessão, com o estado e o mandato de cada uma."""
+    itens = []
+    for vaga in servico.vagas(empresa):
+        fluxo = servico.consultar(empresa, vaga.id)
+        itens.append(RespostaVaga(vaga=fluxo.vaga, estado=fluxo.estado, mandato=fluxo.mandato))
+    return RespostaListaVagas(itens=itens)
 
 
 @rotas.post(
