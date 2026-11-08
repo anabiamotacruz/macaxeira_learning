@@ -63,6 +63,7 @@ from backend.agente.persistencia import Repositorio, resumos_da_pessoa
 from backend.agente.regras import (
     CORTES_POR_AUTORIZACAO,
     CORTES_SEM_DECISAO,
+    REGRA_ABAIXO_DO_LIMIAR,
     RESSALVA_REVISOR_INVALIDO,
     CorteFunil,
     StatusRequisito,
@@ -79,6 +80,7 @@ from backend.agente.regras import (
     decisao_sem_analise,
     externo_sem_autorizacao,
     fora_da_taxa_verde,
+    na_faixa_potencial,
     parece_instrucao,
     pode_contatar,
     pode_contatar_pelo_publicado,
@@ -1913,9 +1915,13 @@ class FluxoVaga:
             self._avancar(EstadoFluxo.META_EM_RISCO)
 
     def _passo_meta_em_risco(self) -> bool:
-        """Avisa quem recruta e segue com quem houver: a meta em risco não para a vaga."""
+        """Completa com a faixa de potencial; se ainda faltar, avisa e segue com quem houver."""
         mandato = self.mandato
+        self._completar_com_potencial(mandato)
         indicados = len(self._indicados())
+        if indicados >= self._meta_efetiva(mandato):
+            self._avancar(self._estado_de_saida(mandato))
+            return True
         self._evento("aviso_rh", f"meta em risco: {indicados} de {self.vaga.meta_candidatos}")
         if indicados:
             self._avancar(self._estado_de_saida(mandato))
@@ -1923,6 +1929,45 @@ class FluxoVaga:
         self._evento("resultado", "sem indicação para esta vaga")
         self._ir(EstadoFluxo.CONCLUIDA)
         return False
+
+    def _completar_com_potencial(self, mandato: Mandato) -> None:
+        """Busca e ampliações acabaram abaixo da meta: os melhores abaixo do limiar completam.
+
+        Só entra descarte `abaixo_do_limiar` com evidência conferida em todos os critérios, da
+        maior nota para a menor, empate pelo `id`, até a meta efetiva. Repetir não indica de novo.
+        """
+        faltam = self._meta_efetiva(mandato) - len(self._indicados())
+        if faltam <= 0:
+            return
+        progresso = self._progresso()
+        candidatas = sorted(
+            (
+                d
+                for d in self._ultimas_decisoes().values()
+                if d.regra == REGRA_ABAIXO_DO_LIMIAR and self._tem_evidencia(progresso, d)
+            ),
+            key=lambda d: (-float(d.entrada["nota"]), d.candidato_id),
+        )[:faltam]
+        if not candidatas:
+            return
+        for decisao in candidatas:
+            self._conferir_execucao()
+            self._registrar_decisao(
+                na_faixa_potencial(decisao, self.vaga.meta_candidatos, self._relogio())
+            )
+        self._evento(
+            ETAPA_DECIDINDO,
+            f"faixa de potencial: {len(candidatas)} pessoas abaixo do limiar e acima do piso "
+            f"completam a meta ({len(self._indicados())} de {self.vaga.meta_candidatos}); "
+            "o RH pode reverter",
+        )
+
+    def _tem_evidencia(self, progresso: ProgressoFluxo, decisao: Decisao) -> bool:
+        analise = progresso.analises.get(decisao.candidato_id)
+        if analise is None:
+            return False
+        candidato = self._candidato_atual(progresso.candidato(decisao.candidato_id), progresso)
+        return not criterios_sem_evidencia(self.vaga, candidato, analise)
 
     def _decidir_candidato(
         self, progresso: ProgressoFluxo, candidato: Candidato, mandato: Mandato, agora: datetime

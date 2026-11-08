@@ -69,7 +69,7 @@ Não rode `specify init` de novo. Implemente uma tarefa por vez, como `/speckit-
 ## Tecnologia e prazos
 
 - Python 3.12, FastAPI e Pydantic em `backend/`; Next e TypeScript em `web/`.
-- Modelos pela API compatível com a OpenAI: base `https://api.featherless.ai/v1`, modelo `zai-org/GLM-5.2`, chave em `FEATHERLESS_API_KEY` e `max_tokens` de pelo menos 1000.
+- Modelos pela API compatível com a OpenAI: base `https://api.featherless.ai/v1`, modelo `zai-org/GLM-5.2`, chave em `FEATHERLESS_API_KEY` e `max_tokens` de pelo menos 1000. Na demo, o `./dev.sh` usa `Qwen/Qwen3-30B-A3B-Instruct-2507` (`MODELO_PADRAO`), cerca de 5 vezes mais rápido por chamada, por decisão do Bruno em 8/11.
 - Código do projeto a partir de 7/11/2026, às 10h. Parar funcionalidades novas em 8/11, às 11h. Submissão até 8/11, às 13h.
 - Se faltar tempo, corte nesta ordem: vaga fora de tech, GitHub real, MCP, retomada automática e aprendizado automático.
 
