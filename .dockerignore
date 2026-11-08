@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.specify
+.venv
+**/__pycache__
+**/*.pyc
+**/*.db
+.env
+.env.*
+!.env.example
+web
+docs
+specs
+tests
+evals

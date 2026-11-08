@@ -1,0 +1,27 @@
+# Blueprint do Render para a API. O painel vai para a Vercel (docs/deploy.md).
+# Valores marcados com `sync: false` são pedidos no painel do Render e nunca ficam no repositório.
+services:
+  - type: web
+    name: macaxeira-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # O plano gratuito dorme após 15 min sem uso e leva perto de 1 min para acordar.
+    # Para o Demo Day, use starter ou mantenha o serviço acordado.
+    plan: starter
+    region: virginia
+    healthCheckPath: /docs
+    autoDeploy: false
+    envVars:
+      # Domínio do painel na Vercel, sem barra no fim. Separe vários por vírgula.
+      - key: ORIGENS_PAINEL
+        sync: false
+      # Sem modelo no link público: a demonstração é determinística e não gasta crédito.
+      # Só ligue (1) depois de existir limite de gasto por sessão.
+      - key: AGENTE_COM_MODELO
+        value: ""
+      - key: AGENTE_BUSCA_REAL
+        value: ""
+      - key: MODO_DADOS
+        value: sinteticos
+      - key: FEATHERLESS_API_KEY
+        sync: false
