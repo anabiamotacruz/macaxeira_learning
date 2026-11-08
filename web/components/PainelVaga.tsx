@@ -13,6 +13,7 @@ import {
   listarPacotesEntregues,
   obterDecisao,
   obterDocumentoDeEntrega,
+  obterSugestaoDeAjuste,
   obterResumo,
   obterVaga,
   responderConvite,
@@ -20,6 +21,7 @@ import {
   type ConviteDaVaga,
   type PacoteEntregue,
   type ResumoVaga,
+  type SugestaoAjuste,
 } from "../lib/api";
 import type { Candidato, Decisao, EventoFluxo, TipoResposta, Vaga } from "../lib/tipos";
 import { SimuladoBadge } from "./SimuladoBadge";
@@ -335,6 +337,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
   const [erro, setErro] = useState("");
   const [responsavel, setResponsavel] = useState("Ana do RH (fictícia)");
   const [avisando, setAvisando] = useState(false);
+  const [sugestao, setSugestao] = useState<SugestaoAjuste | null>(null);
   const cacheDecisoes = useRef<Record<string, Decisao>>({});
   const ocupado = useRef(false);
 
@@ -390,6 +393,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
     try {
       await avisarResultadosDasEntrevistas(vagaId);
       await atualizar();
+      setSugestao(await obterSugestaoDeAjuste(vagaId).catch(() => null));
     } catch (erroApi) {
       setErro(mensagemDeErro(erroApi, "Não foi possível buscar os resultados das entrevistas."));
     } finally {
@@ -562,6 +566,13 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                   </li>
                 ))}
               </ul>
+            )}
+            {sugestao && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p className="font-semibold">Sugestão para a próxima vaga (o agente não muda nada sozinho)</p>
+                <p className="mt-1">{sugestao.motivo}.</p>
+                <p className="mt-1">Peso de “{sugestao.criterio}”: de {sugestao.peso_atual} para {sugestao.peso_sugerido}. Quem decide ajustar é o RH.</p>
+              </div>
             )}
           </Secao>
         </>

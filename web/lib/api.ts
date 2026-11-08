@@ -344,3 +344,20 @@ export async function obterDocumentoDeEntrega(vagaId: string, candidatoId: strin
   );
   return resposta.documento;
 }
+
+export type SugestaoAjuste = {
+  criterio: string;
+  peso_atual: number;
+  peso_sugerido: number;
+  motivo: string;
+  reprovacoes: number;
+  resultados_lidos: number;
+  aplicada: false;
+};
+
+export async function obterSugestaoDeAjuste(vagaId: string): Promise<SugestaoAjuste | null> {
+  const resposta = await request<ApiEnvelope & { sugestao: SugestaoAjuste | null }>(
+    `/vagas/${encodeURIComponent(vagaId)}/ajuste`,
+  );
+  return resposta.sugestao;
+}
