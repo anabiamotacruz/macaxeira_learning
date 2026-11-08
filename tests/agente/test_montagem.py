@@ -8,7 +8,7 @@ from backend.agente import fluxo as modulo_fluxo
 from backend.agente.montagem import consultas_por_modelo, priorizador_do_funil
 from backend.agente.regras import CORTES_QUE_DESCARTAM, CORTES_SEM_DECISAO, decisao_de_corte
 from backend.contratos.erros import LimiteGastoAtingido
-from backend.contratos.modelos import Requisito, TipoDecisao
+from backend.contratos.modelos import Competencia, Requisito, TipoDecisao
 from backend.contratos.simulacoes import ClienteModeloSimulado
 from backend.fontes.consultas import ETAPA_AMPLIAR, ETAPA_GERAR
 from backend.fontes.funil import Corte, RegraCorte
@@ -36,9 +36,36 @@ def test_primeira_rodada_gera_e_as_seguintes_ampliam_sem_perder_as_anteriores():
     primeira = consultas(vaga, 0, [])
     segunda = consultas(vaga, 1, primeira)
 
-    assert primeira == [vaga.titulo, "desenvolvedora python"]
+    competencias = [c.nome for c in vaga.competencias]
+    assert primeira == [vaga.titulo, "desenvolvedora python", *competencias]
     assert segunda == ["programadora", *primeira]
     assert [chamada["etapa"] for chamada in cliente.chamadas] == [ETAPA_GERAR, ETAPA_AMPLIAR]
+
+
+def test_cada_competencia_vira_consulta_propria_sem_repetir():
+    """O modelo tende a gerar títulos de cargo com várias palavras, e a fonte exige todas.
+
+    Cada competência da vaga também vira consulta, para a busca não depender só da forma
+    que o modelo escolheu. Competência que já é consulta não se repete.
+    """
+    cliente = ClienteModeloSimulado(
+        {ETAPA_GERAR: {"consultas": ["Engenheiro Python Pleno", "Python"]}}
+    )
+    vaga = vaga_exemplo(
+        competencias=[
+            Competencia(nome="Python", peso=2.0),
+            Competencia(nome="Kafka", peso=1.0),
+            Competencia(nome="kafka", peso=1.0),
+        ]
+    )
+
+    consultas = consultas_por_modelo(cliente)(vaga, 0, [])
+
+    assert consultas[1] == "Engenheiro Python Pleno"
+    assert consultas[-1] == "Kafka"
+    normalizadas = [c.casefold() for c in consultas]
+    assert normalizadas.count("python") == 1
+    assert normalizadas.count("kafka") == 1
 
 
 def test_consulta_sensivel_do_modelo_nao_passa():
@@ -53,7 +80,13 @@ def test_consulta_sensivel_do_modelo_nao_passa():
 def test_modelo_com_falha_cai_nas_consultas_basicas():
     vaga = vaga_exemplo()
 
-    assert consultas_por_modelo(ClienteModeloSimulado())(vaga, 0, []) == [vaga.titulo]
+    consultas = consultas_por_modelo(ClienteModeloSimulado())(vaga, 0, [])
+
+    assert consultas[0] == vaga.titulo
+    assert {c.casefold() for c in consultas} == {
+        vaga.titulo.casefold(),
+        *(c.nome.casefold() for c in vaga.competencias),
+    }
 
 
 def test_limite_de_gasto_sobe_para_o_fluxo_pausar():
