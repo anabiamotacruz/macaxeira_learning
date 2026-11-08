@@ -1,155 +1,121 @@
-"""Revisão independente de evidências, sem decidir indicação (T2.4)."""
+"""Revisa a análise de forma independente (T2.4), em uma chamada separada ao modelo.
 
-import json
-import logging
-import math
-from datetime import date
+O revisor só acrescenta ressalvas: nunca muda nota, evidência ou requisito. Ressalva leva a
+decisão a uma pessoa e não descarta ninguém. Resposta inválida não vira aprovação: o erro segue
+para `FluxoVaga`, que marca a ressalva e conta as inválidas seguidas para pausar a vaga.
+"""
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
+from pydantic import BaseModel
 
-from backend.contratos.erros import ModeloIndisponivel, RespostaInvalida
+from backend.agente.prompts import como_dado
+from backend.agente.regras import criterios_sem_evidencia
 from backend.contratos.interfaces import ClienteModelo
-from backend.contratos.modelos import Analise, Candidato, Evidencia, Vaga
-from backend.fontes.analisador import _perfil_seguro
-from backend.fontes.consultas import _normalizar
-from backend.fontes.funil import priorizar
-from backend.fontes.prompts import SISTEMA_REVISAO
+from backend.contratos.modelos import Analise, Candidato, Vaga
+from backend.fontes.analisador import (
+    PerfilPreparado,
+    como_no_perfil,
+    criterio_citado,
+    criterios_da_vaga,
+    descrever_vaga,
+    preparar_perfil,
+    texto_permitido,
+    trecho_confere,
+)
+from backend.fontes.anonimizador import Pseudonimizador, termos_preservados_da_vaga
+from backend.fontes.prompts import SISTEMA_REVISAO, USUARIO_REVISAO
 
-logger = logging.getLogger(__name__)
+ETAPA_REVISAO = "revisao"
 
+RESSALVA_SEM_TRECHO = "revisor_ressalva_sem_trecho"
+"""Ressalva que o código não confirmou: o texto sai, e a decisão vai a uma pessoa."""
 
-class RessalvaProposta(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    criterio: StrictStr = Field(min_length=1, max_length=500)
-    trecho: StrictStr = Field(min_length=1, max_length=30000)
-    motivo: StrictStr = Field(min_length=1, max_length=1000)
-
-
-class PropostaRevisao(BaseModel):
-    """O revisor produz sua própria leitura, não recebe a análise original."""
-
-    model_config = ConfigDict(extra="forbid")
-    evidencias: list[Evidencia] = Field(max_length=100)
-    ressalvas: list[RessalvaProposta] = Field(max_length=30)
+RESSALVA_NOTA_SEM_EVIDENCIA = "nota_sem_evidencia"
 
 
-def _registrar(vaga: Vaga, candidato: Candidato, regra: str) -> None:
-    logger.info(
-        "Revisão de perfil registrada",
-        extra={"empresa_id": vaga.empresa_id, "vaga_id": vaga.id,
-               "candidato_id": candidato.id, "etapa": "revisar_perfil", "regra": regra},
-    )
+class RessalvaModelo(BaseModel):
+    criterio: str
+    problema: str
+    trecho: str
 
 
-def _evidencia_valida(
-    evidencia: Evidencia, criterios: set[str], candidato: Candidato, texto: str
-) -> bool:
-    return (
-        evidencia.criterio in criterios and bool(evidencia.trecho.strip())
-        and evidencia.trecho in candidato.perfil_texto and evidencia.trecho in texto
-        and evidencia.fonte == candidato.fonte
-    )
+class RespostaRevisao(BaseModel):
+    """`ressalvas` é obrigatório: resposta sem o campo não pode contar como análise sem problema."""
+
+    ressalvas: list[RessalvaModelo]
 
 
-def _conferir_analise(
-    vaga: Vaga, candidato: Candidato, analise: Analise, texto: str
-) -> list[str]:
-    criterios = {r.id for r in vaga.requisitos} | {c.nome for c in vaga.competencias}
-    competencias = {c.nome for c in vaga.competencias}
-    ressalvas = []
-    validas = set()
-    for evidencia in analise.evidencias:
-        if _evidencia_valida(evidencia, criterios, candidato, texto):
-            validas.add(evidencia.criterio)
-        else:
-            ressalvas.append("Análise contém evidência sem trecho, critério ou fonte válida.")
-    for criterio, nota in analise.notas.items():
-        if criterio not in competencias or not math.isfinite(nota) or not 0 <= nota <= 1:
-            ressalvas.append("Análise contém nota ou competência inválida: requer revisão humana.")
-        elif criterio not in validas:
-            ressalvas.append(f"Nota sem evidência verificável para {criterio}.")
-    requisitos = {
-        r.id: _normalizar(candidato.atributos.get(r.campo, "")) == _normalizar(r.valor_esperado)
-        for r in vaga.requisitos
-    }
-    if analise.requisitos_ok != requisitos:
-        ressalvas.append("Resultado de requisitos diverge da verificação determinística.")
-    return ressalvas
+class RevisorIndependente:
+    """Implementa `Revisor`. Falhas do cliente seguem para o fluxo, que sabe tratá-las."""
 
-
-class Revisor:
-    """Devolve cópia da análise com ressalvas e alertas adicionais.
-
-    Notas originais são preservadas para avaliação humana. A ausência de
-    evidência independente é inconclusiva, nunca reprovação automática.
-    """
-
-    def __init__(self, cliente_modelo: ClienteModelo, *, hoje: date | None = None) -> None:
-        self.cliente = cliente_modelo
-        self.hoje = hoje
+    def __init__(
+        self, cliente: ClienteModelo, pseudonimizador: Pseudonimizador | None = None
+    ) -> None:
+        self._cliente = cliente
+        self._pseudonimizador = pseudonimizador or Pseudonimizador()
 
     def revisar(self, vaga: Vaga, candidato: Candidato, analise: Analise) -> Analise:
-        if (analise.empresa_id != vaga.empresa_id or candidato.empresa_id != vaga.empresa_id
-                or analise.vaga_id != vaga.id or analise.candidato_id != candidato.id):
-            _registrar(vaga, candidato, "escopo_invalido")
-            raise ValueError("análise e perfil precisam pertencer ao escopo da vaga")
-        if not priorizar(vaga, [candidato], limite=1, hoje=self.hoje):
-            _registrar(vaga, candidato, "perfil_nao_elegivel")
-            raise ValueError("perfil não é elegível para revisão desta vaga")
-        texto, suspeita = _perfil_seguro(candidato)
-        if len(texto) > 30000:
-            raise ValueError("perfil excede o limite de texto para revisão")
-        dados = {
-            "requisitos": [{"id": r.id, "descricao": r.descricao} for r in vaga.requisitos],
-            "competencias": [c.nome for c in vaga.competencias],
-            "perfil_texto": texto, "fonte": candidato.fonte,
-        }
-        pedido = json.dumps(dados, ensure_ascii=True).replace("<", "\\u003c")
-        proposta = None
-        for _ in range(2):
-            _registrar(vaga, candidato, "solicitar_revisao_independente")
-            try:
-                resposta = self.cliente.completar(
-                    sistema=SISTEMA_REVISAO, usuario=f"<dados_revisao>\n{pedido}\n</dados_revisao>",
-                    esquema=PropostaRevisao, etapa="revisar_perfil",
-                )
-                proposta = PropostaRevisao.model_validate(resposta.model_dump())
-                break
-            except (RespostaInvalida, ModeloIndisponivel, ValidationError):
-                _registrar(vaga, candidato, "resposta_indisponivel_ou_invalida")
-        ressalvas = _conferir_analise(vaga, candidato, analise, texto)
-        criterios = {r.id for r in vaga.requisitos} | {c.nome for c in vaga.competencias}
-        independentes = set()
-        if proposta is None:
-            ressalvas.append("Revisão indisponível ou inválida: requer revisão humana.")
-        else:
-            for evidencia in proposta.evidencias:
-                if _evidencia_valida(evidencia, criterios, candidato, texto):
-                    independentes.add(evidencia.criterio)
-                else:
-                    ressalvas.append("Evidência independente inválida: requer revisão humana.")
-            for ressalva in proposta.ressalvas:
-                if (ressalva.criterio in criterios and ressalva.trecho.strip()
-                        and ressalva.motivo.strip() and ressalva.trecho in texto
-                        and ressalva.trecho in candidato.perfil_texto):
-                    ressalvas.append(
-                        f"{ressalva.criterio}: {ressalva.motivo} Trecho: {ressalva.trecho}"
-                    )
-                else:
-                    ressalvas.append("Ressalva independente inválida: requer revisão humana.")
-            for criterio in sorted(set(analise.notas) - independentes):
-                ressalvas.append(
-                    f"Revisão inconclusiva para {criterio}: falta evidência independente."
-                )
-        resultado = analise.model_copy(deep=True)
-        resultado.ressalvas_revisor = list(dict.fromkeys([
-            *analise.ressalvas_revisor, *ressalvas,
-        ]))
-        if suspeita:
-            resultado.alertas = list(dict.fromkeys([
-                *resultado.alertas, "Possível instrução no currículo removida da revisão.",
-            ]))
-        _registrar(
-            vaga, candidato, "com_ressalvas" if resultado.ressalvas_revisor else "sem_ressalvas"
+        self._exigir_mesma_execucao(vaga, candidato, analise)
+        perfil = preparar_perfil(
+            candidato,
+            pseudonimizador=self._pseudonimizador,
+            preservar=termos_preservados_da_vaga(vaga),
         )
-        return resultado
+        usuario = USUARIO_REVISAO.format(
+            vaga=descrever_vaga(vaga),
+            perfil=como_dado(perfil.texto),
+            analise=como_dado(self._descrever_analise(candidato, analise, perfil)),
+        )
+        resposta = self._cliente.completar(SISTEMA_REVISAO, usuario, RespostaRevisao, ETAPA_REVISAO)
+        ressalvas = [
+            *analise.ressalvas_revisor,
+            *self._notas_sem_evidencia(vaga, candidato, analise),
+            *self._ressalvas_conferidas(vaga, candidato, perfil, resposta),
+        ]
+        return analise.model_copy(update={"ressalvas_revisor": ressalvas})
+
+    @staticmethod
+    def _exigir_mesma_execucao(vaga: Vaga, candidato: Candidato, analise: Analise) -> None:
+        if vaga.empresa_id != candidato.empresa_id or analise.empresa_id != vaga.empresa_id:
+            raise ValueError("vaga, candidato e análise precisam ser da mesma empresa")
+        if analise.vaga_id != vaga.id or analise.candidato_id != candidato.id:
+            raise ValueError("análise precisa ser da mesma vaga e do mesmo candidato")
+
+    @staticmethod
+    def _descrever_analise(candidato: Candidato, analise: Analise, perfil: PerfilPreparado) -> str:
+        """Só nota e trecho conferido. Lacunas e perguntas são a leitura do analisador."""
+        linhas = [f"Nota de {nome}: {nota}" for nome, nota in analise.notas.items()]
+        linhas += [
+            f'Trecho citado para {e.criterio}: "{e.trecho}"'
+            for e in analise.evidencias
+            if trecho_confere(e.trecho, candidato, perfil)
+        ]
+        return "\n".join(linhas)
+
+    @staticmethod
+    def _notas_sem_evidencia(vaga: Vaga, candidato: Candidato, analise: Analise) -> list[str]:
+        faltando = criterios_sem_evidencia(vaga, candidato, analise)
+        return [
+            f"{RESSALVA_NOTA_SEM_EVIDENCIA}: {criterio}"
+            for criterio in faltando
+            if criterio in analise.notas
+        ]
+
+    @staticmethod
+    def _ressalvas_conferidas(
+        vaga: Vaga, candidato: Candidato, perfil: PerfilPreparado, resposta: RespostaRevisao
+    ) -> list[str]:
+        criterios = criterios_da_vaga(vaga)
+        conferidas = []
+        recusou = False
+        for ressalva in resposta.ressalvas:
+            criterio = criterio_citado(criterios, ressalva.criterio)
+            trecho = como_no_perfil(ressalva.trecho).strip()
+            if (
+                criterio is not None
+                and texto_permitido(ressalva.problema)
+                and trecho_confere(trecho, candidato, perfil)
+            ):
+                conferidas.append(f'{criterio}: {ressalva.problema} Trecho: "{trecho}"')
+            else:
+                recusou = True
+        return [*conferidas, RESSALVA_SEM_TRECHO] if recusou else conferidas
