@@ -24,7 +24,13 @@ from pathlib import Path
 from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
 from backend.agente.configuracao import PerguntaVaga, propor_configuracao
 from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
-from backend.agente.interpretacao import MODELO_INTERPRETACAO_PADRAO, interpretar_com_modelo
+from backend.agente.interpretacao import (
+    CHAVE_JEV,
+    MODELO_INTERPRETACAO_PADRAO,
+    DecisorJev,
+    interpretar_com_jev,
+    interpretar_com_modelo,
+)
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
@@ -435,6 +441,7 @@ def montar_demo(
     *,
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
+    interpretador: Callable[[str], TipoResposta | str | None] | None = None,
 ) -> ServicoVagas:
     """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
     return _montar(
@@ -448,6 +455,7 @@ def montar_demo(
         respondedor_duvida=responder_duvida_demo,
         destino=destino,
         fonte_extra=fonte_extra,
+        interpretador=interpretador,
     )
 
 
@@ -459,6 +467,7 @@ def montar_com_modelo(
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
     cliente_interpretacao: ClienteModelo | None = None,
+    interpretador: Callable[[str], TipoResposta | str | None] | None = None,
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
 
@@ -480,8 +489,11 @@ def montar_com_modelo(
         propositor_vaga=lambda descricao, empresa_id: propor_configuracao(
             descricao, empresa_id, cliente, campos_do_banco=campos_do_banco_demo()
         ),
-        interpretador=lambda texto: interpretar_com_modelo(
-            texto, cliente if cliente_interpretacao is None else cliente_interpretacao
+        interpretador=interpretador
+        or (
+            lambda texto: interpretar_com_modelo(
+                texto, cliente if cliente_interpretacao is None else cliente_interpretacao
+            )
         ),
     )
 
@@ -492,19 +504,21 @@ def montar_servico(
     ambiente: Mapping[str, str] | None = None,
     criar_cliente: Callable[..., ClienteModelo] = ClienteFeatherless,
     criar_busca: Callable[[Mapping[str, str]], FonteExtra] = busca_real,
+    criar_jev: Callable[[str], DecisorJev] = DecisorJev,
 ) -> ServicoVagas:
     """Escolhe a montagem pelo ambiente. Sem opt-in ou sem chave, fica a demonstração sem modelo."""
     ambiente = os.environ if ambiente is None else ambiente
     url_nara = ambiente.get(NARA_MCP_URL, "").strip()
     destino = nara_por_mcp(url_nara) if url_nara else None
     extra = criar_busca(ambiente) if ambiente.get(BUSCA_REAL, "").strip() == "1" else None
+    jev = _interpretador_jev(ambiente, criar_jev)
     if ambiente.get(COM_MODELO, "").strip() != "1":
-        return montar_demo(caminho, destino=destino, fonte_extra=extra)
+        return montar_demo(caminho, destino=destino, fonte_extra=extra, interpretador=jev)
     try:
         cliente = criar_cliente()
     except ModeloIndisponivel as erro:
         logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
-        return montar_demo(caminho, destino=destino, fonte_extra=extra)
+        return montar_demo(caminho, destino=destino, fonte_extra=extra, interpretador=jev)
 
     interpretacao = _cliente_de_interpretacao(criar_cliente, ambiente, cliente)
 
@@ -519,7 +533,23 @@ def montar_servico(
         destino=destino,
         fonte_extra=extra,
         cliente_interpretacao=interpretacao,
+        interpretador=jev,
     )
+
+
+def _interpretador_jev(
+    ambiente: Mapping[str, str], criar_jev: Callable[[str], DecisorJev]
+) -> Callable[[str], TipoResposta | str | None] | None:
+    """Com a chave da TypeSafe, o Jev decide a intenção onde as regras não decidem."""
+    chave = ambiente.get(CHAVE_JEV, "").strip()
+    if not chave:
+        return None
+    try:
+        decisor = criar_jev(chave)
+    except ModeloIndisponivel as erro:
+        logger.warning("Jev indisponível, a interpretação segue sem ele: %s", erro)
+        return None
+    return lambda texto: interpretar_com_jev(texto, decisor)
 
 
 MODELO_INTERPRETACAO = "MODELO_INTERPRETACAO"

@@ -4,6 +4,7 @@ Uso, a partir da raiz do repositório:
 
     python -m evals.interpretacao_conversa             # só regras, sem custo
     python -m evals.interpretacao_conversa --modelo    # regras + modelo (precisa da chave)
+    python -m evals.interpretacao_conversa --jev       # regras + Jev (precisa de TYPESAFE_API_KEY)
 
 O modelo é `MODELO_INTERPRETACAO` ou, sem ela, o padrão de `backend.agente.interpretacao`.
 Nenhuma mensagem é de pessoa real.
@@ -20,8 +21,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 from backend.agente.interpretacao import (
+    CHAVE_JEV,
     MODELO_INTERPRETACAO_PADRAO,
     NAO_AGORA,
+    DecisorJev,
+    interpretar_com_jev,
     interpretar_com_modelo,
     interpretar_mensagem,
 )
@@ -96,9 +100,14 @@ def main() -> None:
     argumentos.add_argument(
         "--modelo", action="store_true", help="usa o modelo onde as regras não decidem"
     )
+    argumentos.add_argument(
+        "--jev", action="store_true", help="usa o Jev (TypeSafe) onde as regras não decidem"
+    )
     opcoes = argumentos.parse_args()
 
     _imprimir("só regras", avaliar(interpretar_mensagem))
+    if opcoes.jev:
+        _rodar_jev()
     if not opcoes.modelo:
         return
     if not os.environ.get("FEATHERLESS_API_KEY", "").strip():
@@ -112,6 +121,17 @@ def main() -> None:
     resultado["custo_usd"] = round(cliente.custo_total_usd, 6)
     resultado["modelo"] = modelo
     _imprimir(f"regras + modelo ({modelo})", resultado)
+
+
+def _rodar_jev() -> None:
+    if not os.environ.get(CHAVE_JEV, "").strip():
+        print(f"\nSem {CHAVE_JEV} no ambiente: a rodada com o Jev não foi feita.")
+        return
+    decisor = DecisorJev()
+    resultado = avaliar(lambda texto: interpretar_com_jev(texto, decisor))
+    resultado["chamadas"] = decisor.chamadas
+    resultado["modelo"] = f"{decisor.modelo} ({decisor.tokens_entrada} tokens de entrada)"
+    _imprimir("regras + Jev", resultado)
 
 
 if __name__ == "__main__":
