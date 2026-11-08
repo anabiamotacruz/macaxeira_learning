@@ -796,3 +796,27 @@ def test_falha_do_modelo_e_limite_de_gasto_seguem_para_o_fluxo(erro):
 
     with pytest.raises(erro):
         AnalisadorPorModelo(ClienteQueFalha()).analisar(_vaga(), _candidato())
+
+
+def test_competencia_sem_trecho_proprio_aproveita_trecho_do_requisito_que_a_cita():
+    vaga = _vaga(competencias=[Competencia(nome="Python", peso=1.0)])
+    resposta = _resposta(
+        notas={"Python": 1.0}, evidencias=[{"criterio": "producao", "trecho": TRECHO_PRODUCAO}]
+    )
+    analisador = AnalisadorPorModelo(ClienteModeloSimulado({ETAPA_ANALISE: resposta}))
+
+    analise = analisador.analisar(vaga, _candidato())
+
+    assert ("Python", TRECHO_PRODUCAO) in [(e.criterio, e.trecho) for e in analise.evidencias]
+
+
+def test_trecho_que_nao_cita_a_competencia_nao_e_aproveitado():
+    vaga = _vaga(competencias=[Competencia(nome="Kubernetes", peso=1.0)])
+    resposta = _resposta(
+        notas={"Kubernetes": 0.9}, evidencias=[{"criterio": "producao", "trecho": TRECHO_PRODUCAO}]
+    )
+    analisador = AnalisadorPorModelo(ClienteModeloSimulado({ETAPA_ANALISE: resposta}))
+
+    analise = analisador.analisar(vaga, _candidato())
+
+    assert "Kubernetes" not in {e.criterio for e in analise.evidencias}

@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppHeader, AppMain } from "./AppHeader";
-import { ApiError, ApiRecusa, criarVaga, proporVaga } from "../lib/api";
+import { ApiError, ApiRecusa, criarVaga, listarCamposDoBanco, proporVaga } from "../lib/api";
 import type { Competencia, Requisito } from "../lib/tipos";
 
 type ItemEliminatorio = Requisito & { aprovado: boolean };
@@ -15,6 +15,21 @@ const CARTAO = "rounded-xl border border-cora-line-2 bg-cora-surface shadow-[0_1
 const ROTULO = "flex flex-col gap-1.5 text-[13px] font-medium text-cora-ink-2";
 const CAMPO = "h-10 box-border rounded-lg border border-cora-line-2 bg-cora-surface px-3 text-sm text-cora-ink";
 const ID_CRITERIO = "rounded-[5px] bg-cora-muted-bg px-1.5 py-0.5 font-mono text-xs font-medium text-cora-ink-2";
+
+// Nome legível dos atributos do banco. Atributo novo aparece pelo próprio nome.
+const ROTULO_CAMPO: Record<string, string> = {
+  cloud: "Experiência com cloud",
+  lideranca_tecnica: "Liderança técnica",
+  linguagem: "Linguagem principal",
+  negocio_3_anos: "3 anos ou mais na área de negócio",
+  presencial_sp: "Trabalho presencial em São Paulo",
+  producao: "Experiência com software em produção",
+};
+const ROTULO_VALOR: Record<string, string> = { sim: "Sim", nao: "Não" };
+
+function rotuloCampo(campo: string): string {
+  return ROTULO_CAMPO[campo] ?? campo.replaceAll("_", " ");
+}
 
 function mensagemDeErro(erro: unknown, padrao: string): string {
   return erro instanceof ApiRecusa || erro instanceof ApiError ? erro.message : padrao;
@@ -36,6 +51,14 @@ export function CriarVaga({ descricaoInicial = "" }: { descricaoInicial?: string
   const [eliminatorios, setEliminatorios] = useState<ItemEliminatorio[]>([]);
   const [desejaveis, setDesejaveis] = useState<ItemDesejavel[]>([]);
   const [novaCompetencia, setNovaCompetencia] = useState("");
+  const [camposDoBanco, setCamposDoBanco] = useState<Record<string, string[]>>({});
+  const [novoCampo, setNovoCampo] = useState("");
+  const [novoValor, setNovoValor] = useState("");
+  const [observacoes, setObservacoes] = useState<string[]>([]);
+
+  useEffect(() => {
+    listarCamposDoBanco().then(setCamposDoBanco);
+  }, []);
   const [meta, setMeta] = useState("5");
   const [prazo, setPrazo] = useState("7");
   const [tentativas, setTentativas] = useState("2");
@@ -58,9 +81,11 @@ export function CriarVaga({ descricaoInicial = "" }: { descricaoInicial?: string
     setPropondo(true);
     setErro("");
     setPergunta("");
+    setObservacoes([]);
     try {
       const resultado = await proporVaga(descricao.trim());
       setPergunta(resultado.pergunta ?? "");
+      setObservacoes(resultado.observacoes);
       const proposta = resultado.proposta;
       if (proposta) {
         if (!titulo.trim()) setTitulo(proposta.titulo);
@@ -83,6 +108,20 @@ export function CriarVaga({ descricaoInicial = "" }: { descricaoInicial?: string
     if (!nome) return;
     setDesejaveis((atual) => [...atual, { nome, peso: 3, aprovado: true, manual: true }]);
     setNovaCompetencia("");
+  }
+
+  function adicionarEliminatorio() {
+    const valores = camposDoBanco[novoCampo] ?? [];
+    const valor = novoValor || (valores.length === 1 ? valores[0] : "");
+    if (!novoCampo || !valor) return;
+    const textoValor = ROTULO_VALOR[valor] ?? valor;
+    const descricaoRequisito = valor === "sim" ? rotuloCampo(novoCampo) : `${rotuloCampo(novoCampo)}: ${textoValor}`;
+    setEliminatorios((atual) => [
+      ...atual.filter((r) => r.campo !== novoCampo),
+      { id: `manual-${novoCampo}`, descricao: descricaoRequisito, campo: novoCampo, valor_esperado: valor, aprovado: true },
+    ]);
+    setNovoCampo("");
+    setNovoValor("");
   }
 
   function aprovarTodos() {
@@ -201,6 +240,14 @@ export function CriarVaga({ descricaoInicial = "" }: { descricaoInicial?: string
                   A CORA precisa de uma resposta antes de propor: {pergunta}
                 </p>
               )}
+              {observacoes.length > 0 && (
+                <div className="flex flex-col gap-1 rounded-lg border border-[#F1D58A] bg-cora-warn-bg px-3.5 py-2.5 text-[13px] text-cora-warn-ink" role="status">
+                  <span className="font-semibold">O que a CORA assumiu. Revise antes de aprovar:</span>
+                  <ul className="m-0 list-disc pl-5">
+                    {observacoes.map((o, i) => <li key={i}>{o}</li>)}
+                  </ul>
+                </div>
+              )}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-xs text-cora-placeholder">
                   {propostaEm ? `Proposta gerada às ${propostaEm}` : "Nenhuma proposta ainda"}
@@ -242,6 +289,50 @@ export function CriarVaga({ descricaoInicial = "" }: { descricaoInicial?: string
                   <BotaoRemover rotulo={`Remover critério E-${String(i + 1).padStart(2, "0")}`} onClick={() => setEliminatorios((a) => a.filter((_, j) => j !== i))} />
                 </div>
               ))}
+
+              {Object.keys(camposDoBanco).length > 0 && (
+                <div className="flex flex-wrap items-end gap-3 border-b border-cora-subtle px-6 py-3.5">
+                  <label className={`${ROTULO} flex-[2_1_220px]`}>
+                    Adicionar eliminatório
+                    <select
+                      className={CAMPO}
+                      onChange={(e) => {
+                        setNovoCampo(e.target.value);
+                        setNovoValor("");
+                      }}
+                      value={novoCampo}
+                    >
+                      <option value="">Escolha o que a pessoa precisa ter</option>
+                      {Object.keys(camposDoBanco).map((campo) => (
+                        <option key={campo} value={campo}>{rotuloCampo(campo)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {novoCampo && (camposDoBanco[novoCampo]?.length ?? 0) > 1 && (
+                    <label className={`${ROTULO} flex-[1_1_140px]`}>
+                      Valor exigido
+                      <select className={CAMPO} onChange={(e) => setNovoValor(e.target.value)} value={novoValor}>
+                        <option value="">Escolha</option>
+                        {camposDoBanco[novoCampo].map((valor) => (
+                          <option key={valor} value={valor}>{ROTULO_VALOR[valor] ?? valor}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    className="cora-btn cora-btn-outline h-10"
+                    disabled={!novoCampo || ((camposDoBanco[novoCampo]?.length ?? 0) > 1 && !novoValor)}
+                    onClick={adicionarEliminatorio}
+                    type="button"
+                  >
+                    <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" viewBox="0 0 16 16" width="15"><path d="M8 3v10M3 8h10" /></svg>
+                    Adicionar
+                  </button>
+                  <p className="m-0 w-full text-xs text-cora-placeholder">
+                    Só entra como eliminatório o que o banco de talentos registra, porque a regra checa em código. O resto vai como desejável.
+                  </p>
+                </div>
+              )}
 
               <div className="flex justify-between gap-3 border-b border-[#EDF1EE] bg-cora-row px-6 py-2.5 text-[13px] font-semibold">
                 <span>Desejáveis</span>

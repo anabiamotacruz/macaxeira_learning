@@ -9,8 +9,11 @@ from backend.agente.configuracao import (
     MAX_META_CANDIDATOS,
     MAX_PRAZO_DIAS,
     MAX_TENTATIVAS_CONTATO,
+    META_PADRAO,
+    PRAZO_PADRAO_DIAS,
     TAMANHO_MAXIMO_DESCRICAO,
     PerguntaVaga,
+    PropostaComObservacoes,
     PropostaModelo,
     _id_da_vaga,
     propor_configuracao,
@@ -95,32 +98,52 @@ def test_empresa_vazia_e_recusada_sem_chamar_o_modelo(empresa_id):
     assert cliente.chamadas == []
 
 
-def test_vaga_ambigua_devolve_pergunta():
+def test_duvida_que_nao_impede_a_proposta_vira_observacao():
     resultado = propor_configuracao(
         DESCRICAO, "empresa-a", _cliente(duvidas=["O inglês é eliminatório?"])
     )
 
-    assert isinstance(resultado, PerguntaVaga)
-    assert resultado.empresa_id == "empresa-a"
-    assert "inglês" in resultado.pergunta
+    assert isinstance(resultado, PropostaComObservacoes)
+    assert resultado.vaga.empresa_id == "empresa-a"
+    assert resultado.vaga.aprovada is False
+    assert any("inglês" in o for o in resultado.observacoes)
 
 
 @pytest.mark.parametrize(
     "campos, trecho",
-    [
-        ({"requisitos": []}, "requisito"),
-        ({"competencias": []}, "competência"),
-        ({"meta_candidatos": None}, "candidatos"),
-        ({"prazo_dias": None}, "prazo"),
-        ({"titulo": " "}, "título"),
-        ({"duvidas": [" "], "requisitos": []}, "requisito"),
-    ],
+    [({"titulo": " "}, "título"), ({"competencias": [], "requisitos": []}, "competência")],
 )
-def test_resposta_incompleta_devolve_pergunta_sem_inventar(campos, trecho):
+def test_sem_titulo_ou_sem_criterio_nenhum_devolve_pergunta(campos, trecho):
     resultado = propor_configuracao(DESCRICAO, "empresa-a", _cliente(**campos))
 
     assert isinstance(resultado, PerguntaVaga)
     assert trecho in resultado.pergunta
+
+
+def test_meta_e_prazo_ausentes_ganham_padrao_e_aviso():
+    resultado = propor_configuracao(
+        DESCRICAO, "empresa-a", _cliente(meta_candidatos=None, prazo_dias=None)
+    )
+
+    assert isinstance(resultado, PropostaComObservacoes)
+    assert resultado.vaga.meta_candidatos == META_PADRAO
+    assert resultado.vaga.prazo_dias == PRAZO_PADRAO_DIAS
+    assert len(resultado.observacoes) == 2
+
+
+def test_sem_eliminatorio_segue_com_aviso():
+    resultado = propor_configuracao(DESCRICAO, "empresa-a", _cliente(requisitos=[]))
+
+    assert isinstance(resultado, PropostaComObservacoes)
+    assert resultado.vaga.requisitos == []
+    assert any("eliminatório" in o for o in resultado.observacoes)
+
+
+def test_sem_competencia_usa_os_requisitos_como_competencia():
+    vaga = propor_configuracao(DESCRICAO, "empresa-a", _cliente(competencias=[]))
+
+    assert isinstance(vaga, Vaga)
+    assert [c.nome for c in vaga.competencias] == ["Morar em João Pessoa"]
 
 
 def test_resposta_so_com_duvida_e_valida():
@@ -439,7 +462,7 @@ def test_requisito_com_campo_do_banco_vira_vaga():
     assert vaga.requisitos[0].campo == "presencial_sp"
 
 
-def test_requisito_com_campo_que_o_banco_nao_tem_vira_pergunta():
+def test_requisito_com_campo_que_o_banco_nao_tem_vira_competencia_com_aviso():
     cliente = _com_requisitos(
         {
             "id": "r1",
@@ -453,12 +476,13 @@ def test_requisito_com_campo_que_o_banco_nao_tem_vira_pergunta():
         DESCRICAO, "empresa-a", cliente, campos_do_banco=CAMPOS_DO_BANCO
     )
 
-    assert isinstance(resultado, PerguntaVaga)
-    assert "modalidade" in resultado.pergunta
-    assert "presencial_sp" in resultado.pergunta
+    assert isinstance(resultado, PropostaComObservacoes)
+    assert resultado.vaga.requisitos == []
+    assert "Trabalho presencial" in [c.nome for c in resultado.vaga.competencias]
+    assert any("Trabalho presencial" in o for o in resultado.observacoes)
 
 
-def test_valor_fora_dos_valores_do_banco_vira_pergunta():
+def test_valor_fora_dos_valores_do_banco_vira_competencia_com_aviso():
     cliente = _com_requisitos(
         {"id": "r1", "descricao": "Produção", "campo": "producao", "valor_esperado": "talvez"}
     )
@@ -467,8 +491,9 @@ def test_valor_fora_dos_valores_do_banco_vira_pergunta():
         DESCRICAO, "empresa-a", cliente, campos_do_banco=CAMPOS_DO_BANCO
     )
 
-    assert isinstance(resultado, PerguntaVaga)
-    assert "producao" in resultado.pergunta
+    assert isinstance(resultado, PropostaComObservacoes)
+    assert resultado.vaga.requisitos == []
+    assert any("Produção" in o for o in resultado.observacoes)
 
 
 def test_sem_campos_do_banco_a_proposta_segue_como_antes():

@@ -32,7 +32,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.agente import exemplos_api as exemplos
 from backend.agente.auditoria import DecisoesAutomaticasPausadas
-from backend.agente.configuracao import PerguntaVaga
+from backend.agente.configuracao import PerguntaVaga, PropostaComObservacoes
 from backend.agente.feedback import FeedbackNegado
 from backend.agente.fluxo import (
     AcaoRecusada,
@@ -43,7 +43,7 @@ from backend.agente.fluxo import (
     TransicaoInvalida,
 )
 from backend.agente.mandato import MandatoInvalido
-from backend.agente.montagem import montar_servico
+from backend.agente.montagem import campos_do_banco_demo, montar_servico
 from backend.agente.palavras_chave import MAX_CARACTERES_PALAVRA, MAX_PALAVRAS_CHAVE
 from backend.agente.servico import (
     AditivoNecessario,
@@ -707,6 +707,8 @@ class RespostaProposta(RespostaSimulada):
 
     proposta: PedidoVaga | None
     pergunta: str | None
+    observacoes: list[str] = Field(default_factory=list)
+    """O que o agente assumiu ou não conseguiu checar por regra. A pessoa revisa antes de criar."""
 
 
 @rotas.post(
@@ -733,12 +735,29 @@ def propor_vaga(
     resultado = servico.propor_vaga(empresa, pedido.descricao)
     if isinstance(resultado, PerguntaVaga):
         return RespostaProposta(proposta=None, pergunta=resultado.pergunta)
+    observacoes: list[str] = []
+    if isinstance(resultado, PropostaComObservacoes):
+        resultado, observacoes = resultado.vaga, resultado.observacoes
     return RespostaProposta(
         proposta=PedidoVaga.model_validate(
             resultado.model_dump(exclude={"id", "empresa_id", "aprovada"})
         ),
         pergunta=None,
+        observacoes=observacoes,
     )
+
+
+rotas_painel = APIRouter(tags=["vagas"])
+"""Apoio ao painel, fora do contrato público. Entra antes de `rotas`: não cai em /vagas/{id}."""
+
+
+@rotas_painel.get("/vagas/campos", include_in_schema=False)
+def campos_para_requisito(empresa: EmpresaDaSessao) -> dict[str, dict[str, list[str]]]:
+    """Os atributos que o banco registra, com os valores. Só eles servem de eliminatório.
+
+    O painel usa esta lista para a pessoa adicionar um eliminatório que a regra consegue checar.
+    """
+    return {"campos": campos_do_banco_demo()}
 
 
 @rotas.get(
@@ -1503,6 +1522,7 @@ def criar_app(
         generate_unique_id_function=_id_da_operacao,
     )
     aplicacao.state.obter_servico = _lazy_demo() if servico is None else (lambda: servico)
+    aplicacao.include_router(rotas_painel)
     aplicacao.include_router(rotas)
     aplicacao.state.whatsapp = atendimento_do_ambiente(aplicacao.state.obter_servico)
     aplicacao.include_router(rotas_whatsapp)

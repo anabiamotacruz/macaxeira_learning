@@ -68,13 +68,23 @@ def test_proposta_pode_virar_vaga_pelo_post_de_sempre(tmp_path):
     assert criada.json()["estado"] == "aguardando_mandato"
 
 
-def test_duvida_do_modelo_volta_como_pergunta(tmp_path):
+def test_duvida_do_modelo_volta_como_observacao_junto_da_proposta(tmp_path):
     cliente = _cliente(tmp_path, {**PROPOSTA, "duvidas": ["Qual é a senioridade?"]})
 
     corpo = _propor(cliente).json()
 
-    assert corpo["proposta"] is None
-    assert corpo["pergunta"] == "Qual é a senioridade?"
+    assert corpo["proposta"]["titulo"] == "Pessoa Desenvolvedora Python"
+    assert corpo["pergunta"] is None
+    assert corpo["observacoes"] == ["Qual é a senioridade?"]
+
+
+def test_meta_e_prazo_ausentes_viram_padrao_na_api(tmp_path):
+    cliente = _cliente(tmp_path, {**PROPOSTA, "meta_candidatos": None, "prazo_dias": None})
+
+    corpo = _propor(cliente).json()
+
+    assert (corpo["proposta"]["meta_candidatos"], corpo["proposta"]["prazo_dias"]) == (5, 14)
+    assert len(corpo["observacoes"]) == 2
 
 
 def test_descricao_vazia_vira_pergunta(tmp_path):
@@ -100,3 +110,12 @@ def test_proposta_exige_sessao(tmp_path):
     resposta = cliente.post("/vagas/proposta", json={"descricao": DESCRICAO})
 
     assert resposta.status_code == 401
+
+
+def test_campos_para_eliminatorio_vem_do_banco(tmp_path):
+    cliente = _cliente(tmp_path, PROPOSTA)
+
+    corpo = cliente.get("/vagas/campos", headers=SESSAO).json()
+
+    assert corpo["campos"]["presencial_sp"] == ["sim"]
+    assert "email" not in corpo["campos"]

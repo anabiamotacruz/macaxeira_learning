@@ -29,7 +29,11 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
-from backend.agente.configuracao import PerguntaVaga, propor_configuracao
+from backend.agente.configuracao import (
+    PerguntaVaga,
+    PropostaComObservacoes,
+    propor_configuracao,
+)
 from backend.agente.contato_publicado import ContatoPorEmpresa
 from backend.agente.fluxo import (
     Priorizador,
@@ -86,6 +90,8 @@ LIMITE_ANALISES_POR_RODADA = 20
 FUNIL_POR_VAGA = 10
 TETO_DO_FUNIL = 50
 COM_MODELO = "AGENTE_COM_MODELO"
+MODELO_REVISAO = "MODELO_REVISAO"
+"""Modelo só da revisão independente. Vazio: o mesmo da análise."""
 ENVIO_REAL = "AGENTE_ENVIO_REAL"
 RESEND_API_KEY = "RESEND_API_KEY"
 EMAIL_FROM = "EMAIL_FROM"
@@ -423,7 +429,9 @@ def _montar(
     respondedor_duvida: Callable[[Vaga, Candidato, str], str | None],
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
-    propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None,
+    propositor_vaga: (
+        Callable[[str, str], Vaga | PerguntaVaga | PropostaComObservacoes] | None
+    ) = None,
     concorrencia: int | None = None,
     buscador_contato: ContatoPorEmpresa | None = None,
     mensageiro: Mensageiro | None = None,
@@ -547,8 +555,12 @@ def montar_com_modelo(
     fonte_extra: FonteExtra | None = None,
     buscador_contato: ContatoPorEmpresa | None = None,
     mensageiro: Mensageiro | None = None,
+    cliente_revisao: ClienteModelo | None = None,
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
+
+    `cliente_revisao` deixa a revisão independente com outro modelo: o revisor que inventa
+    ressalva derruba a nota de todo mundo, e a revisão pede mais rigor que a análise.
 
     O gasto vem do cliente: passou do limite do mandato, a vaga pausa. A concorrência padrão é
     `CONCORRENCIA_COM_MODELO`; `CONCORRENCIA_MODELO`, quando definida, vale no lugar dela.
@@ -562,7 +574,7 @@ def montar_com_modelo(
     return _montar(
         caminho,
         analisador=AnalisadorPorModelo(cliente),
-        revisor=RevisorIndependente(cliente),
+        revisor=RevisorIndependente(cliente_revisao or cliente),
         consultas=consultas_por_modelo(cliente),
         medidor_gasto=medidor_gasto,
         respondedor_duvida=responder,
@@ -596,12 +608,20 @@ def montar_servico(
         return montar_demo(caminho, mensageiro=envio, **demo)
     try:
         cliente = criar_cliente()
+        modelo_revisao = (ambiente.get(MODELO_REVISAO) or "").strip()
+        revisao = (
+            criar_cliente(modelo=modelo_revisao)
+            if modelo_revisao and modelo_revisao != getattr(cliente, "modelo", None)
+            else None
+        )
     except ModeloIndisponivel as erro:
         logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
         return montar_demo(caminho, mensageiro=envio, **demo)
 
     def gasto() -> float:
-        return float(getattr(cliente, "custo_total_usd", 0.0))
+        return sum(
+            float(getattr(c, "custo_total_usd", 0.0)) for c in (cliente, revisao) if c is not None
+        )
 
     return montar_com_modelo(
         caminho,
@@ -611,4 +631,5 @@ def montar_servico(
         fonte_extra=extra,
         buscador_contato=contato,
         mensageiro=envio,
+        cliente_revisao=revisao,
     )

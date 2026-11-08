@@ -34,6 +34,7 @@ Você traduz uma vaga em consultas curtas para buscar perfis em um banco de tale
 Cada consulta tem até 4 palavras, e a busca exige que todas estejam no perfil.
 Inclua sinônimos do cargo, em português e em inglês, nas formas feminina e masculina, e termos \
 técnicos das competências.
+Proponha no máximo 12 consultas, sem repetir nenhuma.
 Não use atributos sensíveis, como gênero, raça, idade, religião, deficiência ou estado civil.
 Não coloque requisitos na consulta: eles são verificados depois, e quem não informou um dado \
 não pode ficar de fora da busca.

@@ -32,6 +32,9 @@ MODELO_PADRAO = "zai-org/GLM-5.2"
 ETAPA_CHAMADA_MODELO = "chamada_modelo"
 MAX_TOKENS_MINIMO = 1000
 MAX_TOKENS_PADRAO = 8000
+
+TETO_TOKENS_POR_ETAPA = {"gerar_consultas": 1000, "ampliar_consultas": 1000}
+"""Etapas de resposta curta. Sem teto, um modelo que repete a lista gasta minutos até o limite."""
 """Folga sobre os 6000 que bastaram na sondagem. `MAX_TOKENS_MODELO` ajusta sem mudar o código."""
 TEMPO_LIMITE_PADRAO_S = 120.0
 REPETICOES_DO_SDK = 1
@@ -375,7 +378,7 @@ class ClienteFeatherless:
             with self._reserva(modelo, sistema, usuario, etapa):
                 marca = self._iniciar_rastro(etapa, modelo, sistema, usuario)
                 inicio = self._relogio()
-                resposta, falha, chave_recusada = self._chamar(modelo, sistema, usuario)
+                resposta, falha, chave_recusada = self._chamar(modelo, sistema, usuario, etapa)
                 tempo_s = self._relogio() - inicio
                 if falha is None:
                     texto = _texto_da_resposta(resposta)
@@ -394,7 +397,12 @@ class ClienteFeatherless:
                 break
         raise ModeloIndisponivel(f"etapa {etapa!r}: {'; '.join(falhas)}")
 
-    def _chamar(self, modelo: str, sistema: str, usuario: str) -> tuple[Any, str | None, bool]:
+    def _tokens(self, etapa: str) -> int:
+        return min(self.max_tokens, TETO_TOKENS_POR_ETAPA.get(etapa, self.max_tokens))
+
+    def _chamar(
+        self, modelo: str, sistema: str, usuario: str, etapa: str = ""
+    ) -> tuple[Any, str | None, bool]:
         """Devolve resposta, descrição segura da falha e se a chave foi recusada.
 
         A falha sai como texto, e não como exceção, para o erro levantado depois não encadear a
@@ -407,7 +415,7 @@ class ClienteFeatherless:
                     {"role": "system", "content": sistema},
                     {"role": "user", "content": usuario},
                 ],
-                max_tokens=self.max_tokens,
+                max_tokens=self._tokens(etapa),
                 temperature=0,
             )
         except OpenAIError as erro:
@@ -422,7 +430,7 @@ class ClienteFeatherless:
         que erra para o lado seguro.
         """
         tokens_entrada = _tokens_estimados(sistema + usuario)
-        previsto = _custo_usd(modelo, tokens_entrada, self.max_tokens)
+        previsto = _custo_usd(modelo, tokens_entrada, self._tokens(etapa))
         limite = self.limite_gasto_usd
         with self._trava:
             gasto = sum(metricas.custo_usd for metricas in self._metricas.values())
@@ -445,7 +453,7 @@ class ClienteFeatherless:
         if cortada:
             logger.warning(
                 "resposta cortada pelo limite de %s tokens: etapa=%s",
-                self.max_tokens,
+                self._tokens(registro.etapa),
                 registro.etapa,
             )
         with self._trava:

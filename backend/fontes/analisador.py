@@ -115,6 +115,38 @@ def normalizar(texto: str) -> str:
     return " ".join(visivel.casefold().split())
 
 
+_PALAVRAS_GENERICAS = frozenset(
+    "experiencia conhecimento conhecimentos obrigatorio obrigatoria desejavel dominio "
+    "solida avancado avancada basico basica pratica com para sobre".split()
+)
+
+
+def _palavras_da_competencia(nome: str) -> list[str]:
+    palavras = re.findall(r"[a-z0-9+#.]+", normalizar(nome))
+    return [p.strip(".") for p in palavras if len(p) >= 3 and p not in _PALAVRAS_GENERICAS]
+
+
+def _ligar_competencias_sem_trecho(vaga: Vaga, evidencias: list[Evidencia]) -> list[Evidencia]:
+    """Competência sem trecho próprio usa um trecho já conferido que cita todas as palavras dela.
+
+    O modelo costuma ligar o trecho só ao requisito ("Python em produção" fica com o requisito
+    de produção), e a competência "Python" ficaria sem evidência, com a nota cortada. O trecho é
+    o mesmo, literal e conferido: só ganha o critério que ele de fato cita.
+    """
+    com_trecho = {e.criterio for e in evidencias}
+    extras = []
+    for competencia in vaga.competencias:
+        palavras = _palavras_da_competencia(competencia.nome)
+        if competencia.nome in com_trecho or not palavras:
+            continue
+        for evidencia in evidencias:
+            texto = f" {' '.join(re.findall(r'[a-z0-9+#.]+', normalizar(evidencia.trecho)))} "
+            if all(f" {p} " in texto or f" {p}." in texto for p in palavras):
+                extras.append(evidencia.model_copy(update={"criterio": competencia.nome}))
+                break
+    return [*evidencias, *extras]
+
+
 def texto_permitido(texto: str) -> bool:
     """Diz se o texto não fala de dado sensível nem de período sem trabalho."""
     normalizado = _RACE_CONDITION.sub(" ", normalizar(texto))
@@ -362,7 +394,7 @@ class AnalisadorPorModelo:
                     (criterio, normalizar(trecho)),
                     Evidencia(criterio=criterio, trecho=trecho, fonte=candidato.fonte),
                 )
-        return list(aceitas.values())
+        return _ligar_competencias_sem_trecho(vaga, list(aceitas.values()))
 
     @staticmethod
     def _notas(vaga: Vaga, resposta: RespostaAnalise) -> dict[str, float]:

@@ -91,3 +91,38 @@ def test_so_o_valor_1_liga_a_busca_real(tmp_path, monkeypatch, valor):
     servico = montar_servico(tmp_path / "demo.db")
 
     assert all(c["simulado"] for c in _candidatos(servico))
+
+
+def test_modelo_de_revisao_separado_soma_no_gasto(tmp_path):
+    criados: list[str | None] = []
+
+    class ClienteFalso:
+        def __init__(self, modelo: str | None = None) -> None:
+            criados.append(modelo)
+            self.modelo = modelo or "modelo-analise"
+            self.custo_total_usd = 0.25
+
+    servico = montar_servico(
+        tmp_path / "a.db",
+        ambiente={"AGENTE_COM_MODELO": "1", "MODELO_REVISAO": "modelo-revisao"},
+        criar_cliente=ClienteFalso,
+    )
+
+    assert criados == [None, "modelo-revisao"]
+    assert servico._dependencias.medidor_gasto() == 0.5
+
+
+def test_sem_modelo_de_revisao_usa_um_cliente_so(tmp_path):
+    criados: list[str | None] = []
+
+    class ClienteFalso:
+        def __init__(self, modelo: str | None = None) -> None:
+            criados.append(modelo)
+            self.modelo = "modelo-analise"
+            self.custo_total_usd = 0.25
+
+    montar_servico(
+        tmp_path / "a.db", ambiente={"AGENTE_COM_MODELO": "1"}, criar_cliente=ClienteFalso
+    )
+
+    assert criados == [None]

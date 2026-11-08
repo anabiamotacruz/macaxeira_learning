@@ -33,6 +33,10 @@ ETAPA_CONFIGURACAO = "configuracao"
 MAX_TENTATIVAS_CONTATO = 2
 """Limite de contato fixado em código: nem a descrição nem o modelo o alteram."""
 
+META_PADRAO = 5
+PRAZO_PADRAO_DIAS = 14
+"""O que um recrutador assume quando a descrição não diz meta ou prazo. A pessoa revisa antes."""
+
 MAX_META_CANDIDATOS = 100
 MAX_PRAZO_DIAS = 180
 """Tetos da proposta. Acima deles, a resposta é inválida e a pessoa recebe uma pergunta."""
@@ -63,6 +67,17 @@ class PerguntaVaga(Contrato):
     empresa_id: Texto
     pergunta: Texto
     trecho_ambiguo: str = ""
+
+
+class PropostaComObservacoes(Contrato):
+    """Vaga proposta com o que o agente assumiu ou não conseguiu mapear, para a pessoa revisar.
+
+    Como um recrutador, o agente segue com o que dá para seguir e avisa: nada aqui é criado
+    nem aprovado sem a pessoa.
+    """
+
+    vaga: Vaga
+    observacoes: list[str]
 
 
 class PropostaModelo(Contrato):
@@ -143,38 +158,50 @@ def _pergunta_sobre_descricao(descricao: str, empresa_id: str) -> PerguntaVaga |
 
 
 def _lacuna_da_proposta(proposta: PropostaModelo) -> str | None:
+    """Só o que impede qualquer proposta. Meta, prazo e eliminatório têm padrão ou aviso."""
     if not proposta.titulo.strip():
         return "Qual é o título da vaga?"
-    if not proposta.requisitos:
-        return "Quais são os requisitos eliminatórios da vaga?"
-    if not proposta.competencias:
+    if not proposta.competencias and not proposta.requisitos:
         return "Quais competências devem pesar na análise?"
-    if proposta.meta_candidatos is None:
-        return "Quantos candidatos a vaga precisa receber?"
-    if proposta.prazo_dias is None:
-        return "Qual é o prazo da vaga, em dias?"
     return None
 
 
 def _vaga_ou_pergunta(
     proposta: PropostaModelo, descricao: str, empresa_id: str
-) -> Vaga | PerguntaVaga:
+) -> Vaga | PerguntaVaga | PropostaComObservacoes:
     duvidas = [duvida.strip() for duvida in proposta.duvidas if duvida.strip()]
-    if duvidas:
-        return PerguntaVaga(empresa_id=empresa_id, pergunta=" ".join(duvidas))
     lacuna = _lacuna_da_proposta(proposta)
     if lacuna:
-        return PerguntaVaga(empresa_id=empresa_id, pergunta=lacuna)
+        return PerguntaVaga(empresa_id=empresa_id, pergunta=" ".join(duvidas) or lacuna)
 
+    observacoes = list(duvidas)
+    meta = proposta.meta_candidatos
+    if meta is None:
+        meta = META_PADRAO
+        observacoes.append(f"A descrição não diz a meta: o agente assumiu {META_PADRAO} pessoas.")
+    prazo = proposta.prazo_dias
+    if prazo is None:
+        prazo = PRAZO_PADRAO_DIAS
+        observacoes.append(
+            f"A descrição não diz o prazo: o agente assumiu {PRAZO_PADRAO_DIAS} dias."
+        )
+    competencias = proposta.competencias or [
+        Competencia(nome=r.descricao, peso=1.0) for r in proposta.requisitos
+    ]
+    if not proposta.requisitos:
+        observacoes.append(
+            "Nenhum requisito eliminatório: o agente decide só pela nota das competências. "
+            "Adicione um eliminatório se houver algo obrigatório."
+        )
     vaga = Vaga(
         id=_id_da_vaga(empresa_id, descricao),
         empresa_id=empresa_id,
         titulo=proposta.titulo,
         descricao=descricao,
         requisitos=proposta.requisitos,
-        competencias=proposta.competencias,
-        meta_candidatos=proposta.meta_candidatos,
-        prazo_dias=proposta.prazo_dias,
+        competencias=competencias,
+        meta_candidatos=meta,
+        prazo_dias=prazo,
         max_tentativas_contato=MAX_TENTATIVAS_CONTATO,
         aprovada=False,
     )
@@ -187,7 +214,7 @@ def _vaga_ou_pergunta(
     termos_no_titulo = termos_sensiveis(vaga.titulo)
     if termos_no_titulo:
         return _pergunta_sobre_dado_sensivel("O título", termos_no_titulo, vaga.titulo, empresa_id)
-    return vaga
+    return PropostaComObservacoes(vaga=vaga, observacoes=observacoes) if observacoes else vaga
 
 
 CamposDoBanco = Mapping[str, Sequence[str]]
@@ -209,27 +236,31 @@ def _pedir_proposta(
     )
 
 
-def _pergunta_sobre_campos(
-    vaga: Vaga, campos: CamposDoBanco, empresa_id: str
-) -> PerguntaVaga | None:
-    """Requisito com campo ou valor que o banco não tem deixaria todo mundo sem dado."""
+def _ajustar_aos_campos(vaga: Vaga, campos: CamposDoBanco) -> tuple[Vaga, list[str]]:
+    """Requisito com campo ou valor que o banco não tem deixaria todo mundo sem dado.
+
+    Em vez de travar a proposta, ele vira competência, que pontua pela evidência do perfil, e
+    a pessoa é avisada. Assim a vaga segue e nada obrigatório some sem ela saber.
+    """
     valores = {campo: {_normalizar(v) for v in lista} for campo, lista in campos.items()}
+    mantidos, avisos = [], []
+    competencias = list(vaga.competencias)
+    nomes = {_normalizar(c.nome) for c in competencias}
     for requisito in vaga.requisitos:
         aceitos = valores.get(requisito.campo)
-        if aceitos is None or _normalizar(requisito.valor_esperado) not in aceitos:
-            disponiveis = "; ".join(
-                f"{campo} ({', '.join(lista)})" for campo, lista in sorted(campos.items())
-            )
-            return PerguntaVaga(
-                empresa_id=empresa_id,
-                pergunta=(
-                    f"O requisito '{requisito.descricao}' usa {requisito.campo} = "
-                    f"{requisito.valor_esperado}, que o banco não registra. Os dados disponíveis "
-                    f"são: {disponiveis}. Como reescrever esse requisito?"
-                ),
-                trecho_ambiguo=requisito.descricao,
-            )
-    return None
+        if aceitos is not None and _normalizar(requisito.valor_esperado) in aceitos:
+            mantidos.append(requisito)
+            continue
+        if _normalizar(requisito.descricao) not in nomes:
+            competencias.append(Competencia(nome=requisito.descricao, peso=1.0))
+            nomes.add(_normalizar(requisito.descricao))
+        avisos.append(
+            f"O obrigatório '{requisito.descricao}' não tem dado no banco de talentos "
+            "para checar por regra: virou competência, que pesa na nota pela evidência do perfil."
+        )
+    if not avisos:
+        return vaga, []
+    return vaga.model_copy(update={"requisitos": mantidos, "competencias": competencias}), avisos
 
 
 def _normalizar(valor: str) -> str:
@@ -242,8 +273,11 @@ def propor_configuracao(
     cliente_modelo: ClienteModelo,
     *,
     campos_do_banco: CamposDoBanco | None = None,
-) -> Vaga | PerguntaVaga:
+) -> Vaga | PerguntaVaga | PropostaComObservacoes:
     """Devolve a vaga proposta, sempre com `aprovada=False`, ou uma pergunta à pessoa.
+
+    Como um recrutador, segue com o que dá: meta e prazo ausentes ganham padrão, dúvida que não
+    impede a proposta vira observação, e obrigatório sem dado no banco vira competência.
 
     Com `campos_do_banco`, o modelo recebe os campos e valores que existem, e o código confere.
     """
@@ -263,6 +297,13 @@ def propor_configuracao(
     if not isinstance(proposta, PropostaModelo):
         return PerguntaVaga(empresa_id=empresa_id, pergunta=PERGUNTA_RESPOSTA_INVALIDA)
     resultado = _vaga_ou_pergunta(proposta, descricao, empresa_id)
-    if isinstance(resultado, Vaga) and campos_do_banco:
-        return _pergunta_sobre_campos(resultado, campos_do_banco, empresa_id) or resultado
-    return resultado
+    if isinstance(resultado, PerguntaVaga) or not campos_do_banco:
+        return resultado
+    vaga, observacoes = (
+        (resultado.vaga, resultado.observacoes)
+        if isinstance(resultado, PropostaComObservacoes)
+        else (resultado, [])
+    )
+    vaga, avisos = _ajustar_aos_campos(vaga, campos_do_banco)
+    observacoes = [*avisos, *observacoes]
+    return PropostaComObservacoes(vaga=vaga, observacoes=observacoes) if observacoes else vaga
