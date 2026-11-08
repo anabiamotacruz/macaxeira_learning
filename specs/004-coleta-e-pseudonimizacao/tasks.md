@@ -63,7 +63,7 @@ description: "Tarefas da feature de coleta e pseudonimização"
 
 - [ ] T013 [P] [US1] [F2] Testar que `TransporteHttp` e `LeitorSitePublico` ignoram proxy do ambiente (FR-E004), em `tests/fontes/provedores/test_transporte.py` e `tests/fontes/test_site_publico.py`. O código já usa `trust_env=False`; falta o teste.
 - [ ] T014 [US1] [F1] Criar `montar_real` em `backend/agente/montagem.py`, escolhida pela configuração, com o catálogo de fontes de `registro.py`, `montar_fonte_externa`, `ClienteFeatherless`, `AnalisadorPorModelo`, `RevisorIndependente`, um único `Pseudonimizador`, cofre em arquivo e `reidentificador_do_cofre`. Recusar a subida se faltar uma peça. Teste: `tests/agente/test_montagem_real.py`, caso `O5`. Achado C-1. **Depende de T026 e T027.**
-- [ ] T015 [US1] [F1] Fixar por teste que `montar_demo` é sempre sintética, com chaves no ambiente e com `MODO_DADOS` em branco (FR-E009), em `tests/agente/test_montagem_real.py`.
+- [x] T015 [US1] [F1] Fixar por teste que `montar_demo` é sempre sintética, com chaves no ambiente e com `MODO_DADOS` em branco (FR-E009), em `tests/agente/test_montagem_real.py`.
 - [ ] T016 [US1] [F1] Expor o estado das fontes na API, em `backend/agente/api.py`, sem chave nem dado de pessoa (FR-E006).
 - [ ] T017 [P] [US1] [F4] Mostrar na interface o estado das fontes e a etiqueta de simulação, em `web/` (FR-E006). **Depende de T016.**
 - [ ] T018 [P] [US1] [F2] Ler o token do GitHub de variável de ambiente e usar cache por execução, em `backend/fontes/github_teste.py` e `backend/fontes/site_publico.py`. Achado B-4.
