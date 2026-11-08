@@ -43,7 +43,9 @@ PAIS_PADRAO = "brazil"
 TAMANHO_PAGINA_PADRAO = 10
 TAMANHO_PAGINA_MAXIMO = 100
 """A documentação aceita `size` de 1 a 100."""
-CAMPOS_DE_BUSCA = ("job_title", "skills", "summary", "experience.title.name")
+CAMPOS_DE_BUSCA = ("job_title.text", "skills", "summary", "experience.title.name.text")
+"""`job_title` e `experience.title.name` são `keyword`, mas têm o subcampo `text`, do tipo `text`:
+é ele que casa palavra a palavra. `skills` só tem `keyword`, e `summary` já é `text`."""
 TAMANHO_MINIMO_TERMO = 3
 """Deixa de fora conectivos como `de` e `em`, que achariam qualquer resumo em português."""
 CONECTIVOS = frozenset({"com", "das", "dos", "para", "por", "uma", "and", "for", "the", "with"})
@@ -60,10 +62,10 @@ def _ler_json(resposta: RespostaHttp) -> Any:
 
 
 def termos_da_consulta(texto: str) -> list[str]:
-    """O texto inteiro, que acha cargo e competência exatos, e cada palavra relevante dele.
+    """O texto inteiro e cada palavra relevante dele, em minúsculas, como o PDL guarda.
 
-    O PDL guarda o texto em minúsculas, e `job_title`, `skills` e `experience.title.name` são
-    `keyword`: só o valor inteiro casa. Por isso cada palavra também vira termo.
+    `skills` é `keyword`: só o valor inteiro casa. Por isso cada palavra também vira termo, e uma
+    competência de uma palavra, como `python`, casa sozinha.
     """
     palavras = texto.casefold().split()
     termos = [" ".join(palavras)]

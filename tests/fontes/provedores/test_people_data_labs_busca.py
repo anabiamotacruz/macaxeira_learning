@@ -94,7 +94,12 @@ def test_consulta_combina_os_termos_nos_campos_de_perfil_com_filtro_de_pais():
     p, transporte = provedor(sucesso())
     p.consultar(POR_TEXTO)
     consulta = transporte.pedidos[0].corpo_json["query"]["bool"]
-    assert CAMPOS_DE_BUSCA == ("job_title", "skills", "summary", "experience.title.name")
+    assert CAMPOS_DE_BUSCA == (
+        "job_title.text",
+        "skills",
+        "summary",
+        "experience.title.name.text",
+    )
     assert consulta["minimum_should_match"] == 1
     assert consulta["filter"] == [{"term": {"location_country": PAIS_PADRAO}}]
     assert PAIS_PADRAO == "brazil"
