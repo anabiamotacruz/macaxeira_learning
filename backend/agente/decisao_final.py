@@ -110,7 +110,6 @@ REGRA_PORTAO = "portao_duro"
 PORTAO_INSTRUCAO = "instrucao_detectada"
 PORTAO_TRECHO_INEXISTENTE = "trecho_inexistente_em_requisito"
 PORTAO_PESOS = "pesos_invalidos"
-PORTAO_SEM_REQUISITOS = "vaga_sem_requisitos"
 SINAL_RESSALVA = "ressalva_revisor"
 SINAL_ALERTA = "alerta"
 SINAIS_EXTERNOS = frozenset({SINAL_RESSALVA, SINAL_ALERTA})
@@ -626,8 +625,6 @@ def classificar_destino(
             for e, tipo in classificadas
         ):
             integridade.append(f"{PORTAO_TRECHO_INEXISTENTE}:{requisito.id}")
-    if not vaga.requisitos:
-        integridade.append(PORTAO_SEM_REQUISITOS)
     if not all(_peso_valido(c) for c in vaga.competencias):
         integridade.append(PORTAO_PESOS)
     return _concluir(
