@@ -18,8 +18,10 @@ from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
 from backend.agente.configuracao import PerguntaVaga
 from backend.agente.documento import documento_de_ingestao
+from backend.agente.documento_html import documento_html
 from backend.agente.fluxo import (
     REGRA_REVERSAO,
+    DuvidaConvite,
     FluxoVaga,
     Priorizador,
     ProvedorConsultas,
@@ -53,6 +55,7 @@ from backend.contratos.modelos import (
     EstadoVaga,
     EventoFluxo,
     Mandato,
+    PacoteContexto,
     PropostaAjuste,
     RespostaCandidato,
     ResumoExecucao,
@@ -343,6 +346,15 @@ class ServicoVagas:
 
     def documento(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
         """O documento de ingestão de quem já foi entregue ao destino, com a conversa."""
+        return documento_de_ingestao(*self._entregue(empresa_id, vaga_id, candidato_id))
+
+    def documento_html(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
+        """O mesmo documento como dossiê HTML para o recrutador, pronto para salvar em PDF."""
+        return documento_html(*self._entregue(empresa_id, vaga_id, candidato_id))
+
+    def _entregue(
+        self, empresa_id: str, vaga_id: str, candidato_id: str
+    ) -> tuple[PacoteContexto, Vaga, list[DuvidaConvite]]:
         fluxo = self._fluxo(empresa_id, vaga_id)
         pacote = next(
             (p for p in fluxo.pacotes_entregues() if p.candidato_id == candidato_id), None
@@ -355,7 +367,7 @@ class ServicoVagas:
             if registro.convite.candidato_id == candidato_id
             for duvida in registro.duvidas
         ]
-        return documento_de_ingestao(pacote, fluxo.vaga, duvidas)
+        return pacote, fluxo.vaga, duvidas
 
     def resumo(self, empresa_id: str, vaga_id: str) -> ResumoExecucao:
         fluxo = self._fluxo(empresa_id, vaga_id)
