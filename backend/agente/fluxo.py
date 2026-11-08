@@ -43,6 +43,7 @@ from backend.agente.contato_publicado import (
     ORIGEM_AUTORIZACAO_PELO_ACEITE,
     ContatoPorEmpresa,
     contato_publicado,
+    conteudo_pelo_contato_publicado,
     mensagem_pelo_contato_publicado,
     motivo_sem_contato,
     usuario_para_consulta,
@@ -85,6 +86,7 @@ from backend.agente.regras import (
     validar_criterios,
 )
 from backend.contato.cadastro import incluir_no_banco
+from backend.contato.convite_html import ConteudoConvite, MensageiroDeEmail
 from backend.contratos.criterios import tem_termo_sensivel
 from backend.contratos.erros import (
     ErroContrato,
@@ -469,6 +471,13 @@ def _pedir_link(destino: AgenteRecrutador, vaga_id: str, candidato_id: str) -> s
 @rastreado("envio_convite")
 def _enviar_convite(mensageiro: Mensageiro, convite: Convite) -> bool:
     return mensageiro.enviar(convite)
+
+
+@rastreado("envio_convite_email")
+def _enviar_email(
+    mensageiro: MensageiroDeEmail, convite: Convite, para: str, conteudo: ConteudoConvite
+) -> bool:
+    return mensageiro.enviar_email(convite, para, conteudo)
 
 
 @rastreado("entrega_destino")
@@ -2051,17 +2060,20 @@ class FluxoVaga:
         link: str | None,
         estado: EstadoConvite,
         tentativa: int = 1,
+        *,
+        simulado: bool = True,
     ) -> str:
         """Texto do redator, quando houver; se ele falhar, o texto fixo segue sem parar o fluxo.
 
-        Quem nunca autorizou recebe o texto fixo do contato publicado, com origem e saída.
+        Quem nunca autorizou recebe o texto fixo do contato publicado, com origem e saída. O aviso
+        de simulação só some quando o convite sai de verdade (`simulado=False`).
         """
         fixo = f"Temos uma vaga de {self.vaga.titulo} que combina com o seu perfil."
         analise = progresso.analises.get(candidato.id)
         contato = contato_publicado(candidato) if externo_sem_autorizacao(candidato) else None
         if contato is not None and estado == EstadoConvite.A_ENVIAR:
             return mensagem_pelo_contato_publicado(
-                self.vaga, candidato, analise, contato, link, tentativa
+                self.vaga, candidato, analise, contato, link, tentativa, simulado=simulado
             )
         if self._redator_convite is None or analise is None or estado != EstadoConvite.A_ENVIAR:
             return fixo
@@ -2084,9 +2096,13 @@ class FluxoVaga:
             link = None
             estado = EstadoConvite.ENCERRADO
         identificador = f"{self.vaga.id}:{candidato_id}:{tentativa}"
-        mensagem = self._texto_do_convite(progresso, atual, link, estado, tentativa)
-        # O e-mail de quem nunca autorizou sai pelo mensageiro simulado: é simulação e diz isso.
-        simulado = candidato.simulado or externo_sem_autorizacao(atual)
+        # O e-mail de quem nunca autorizou só sai de verdade com o envio real ligado na montagem;
+        # sem ele, sai pelo mensageiro simulado, é simulação e diz isso.
+        envio_real = isinstance(self._mensageiro, MensageiroDeEmail)
+        simulado = candidato.simulado or (externo_sem_autorizacao(atual) and not envio_real)
+        mensagem = self._texto_do_convite(
+            progresso, atual, link, estado, tentativa, simulado=simulado
+        )
         convite = Convite(
             id=f"convite:{identificador}",
             empresa_id=self.vaga.empresa_id,
@@ -2163,10 +2179,12 @@ class FluxoVaga:
             self._mudar_convite(registro, EstadoConvite.ENCERRADO)
             self._evento("convite", "contato bloqueado pelas regras", candidato.id)
             return
-        feito = self._acao_idempotente(
-            registro.convite.chave_idempotencia,
-            lambda: _enviar_convite(self._mensageiro, registro.convite),
-        )
+        enviar = self._envio_real(progresso, atual, registro)
+        if enviar is None:
+            self._mudar_convite(registro, EstadoConvite.ENCERRADO)
+            self._evento("convite", "contato bloqueado pelas regras", candidato.id)
+            return
+        feito = self._acao_idempotente(registro.convite.chave_idempotencia, enviar)
         if feito is None:
             self._evento("convite", "envio em andamento em outra execução", candidato.id)
         elif feito:
@@ -2174,6 +2192,29 @@ class FluxoVaga:
             self._evento("convite", "convite enviado", candidato.id)
         else:
             self._evento("convite", "envio do convite falhou", candidato.id)
+
+    def _envio_real(
+        self, progresso: ProgressoFluxo, atual: Candidato, registro: RegistroConvite
+    ) -> Callable[[], bool] | None:
+        """A ação de envio. O convite real só sai para o e-mail que a pessoa publicou, conferido
+        agora; sem ele, devolve `None` e nada sai. O simulado segue pelo mensageiro de sempre."""
+        convite = registro.convite
+        if convite.simulado or not isinstance(self._mensageiro, MensageiroDeEmail):
+            return lambda: _enviar_convite(self._mensageiro, convite)
+        contato = contato_publicado(atual)
+        if contato is None:
+            return None
+        conteudo = conteudo_pelo_contato_publicado(
+            self.vaga,
+            atual,
+            progresso.analises.get(atual.id),
+            contato,
+            convite.link_agendamento,
+            registro.tentativa,
+            simulado=False,
+        )
+        mensageiro = self._mensageiro
+        return lambda: _enviar_email(mensageiro, convite, contato.endereco, conteudo)
 
     def _tratar_duvida(self, convite_id: str, texto: str) -> None:
         """Responde pelo material da vaga ou deixa a dúvida para uma pessoa. Nunca para o fluxo."""
