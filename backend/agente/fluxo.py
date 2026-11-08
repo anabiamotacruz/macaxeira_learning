@@ -13,6 +13,7 @@ import contextvars
 import hashlib
 import logging
 import os
+import re
 import threading
 import uuid
 from collections import deque
@@ -70,7 +71,7 @@ from backend.agente.regras import (
     separar_palavras,
     validar_criterios,
 )
-from backend.contratos.criterios import tem_termo_sensivel
+from backend.contratos.criterios import sem_acento, tem_termo_sensivel
 from backend.contratos.erros import (
     ErroContrato,
     LimiteGastoAtingido,
@@ -181,6 +182,25 @@ CONSULTA_TODO_O_BANCO = ""
 LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
+GARDEN_NAO_AGORA = "nao_agora"
+GARDEN_ALEM_DO_ENCAMINHAMENTO = "alem_do_encaminhamento"
+_NAO_AGORA = re.compile(
+    r"\b(agora nao|nao agora|no momento nao|neste momento nao|nao posso agora|nao da agora"
+    r"|talvez depois|mais (pra|para) frente|daqui a|em breve|outra oportunidade"
+    r"|proxim[ao]s? (mes|meses|ano|semestre|vaga|vagas|oportunidade|oportunidades))\b"
+)
+"""Sobre o texto sem acento nem caixa. Só separa "agora não" de recusa: não decide nada."""
+RESPOSTA_NAO_AGORA = (
+    "Entendido, obrigado por responder! Se a equipe confirmar, seu perfil fica guardado para "
+    "uma próxima oportunidade desta empresa. Para não ser mais contatado, responda SAIR."
+)
+
+
+def eh_nao_agora(texto: str) -> bool:
+    """A pessoa disse que agora não pode, sem fechar a porta. O texto é dado, nunca instrução."""
+    return bool(_NAO_AGORA.search(" ".join(sem_acento(texto).casefold().split())))
+
+
 AVISO_AGENDAMENTO_SIMULADO = "Mensagem simulada: o agendamento acontece num destino simulado."
 REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
 RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
@@ -334,6 +354,15 @@ class RegistroConvite(Contrato):
     retorno: RetornoEntrevista | None = None
 
 
+class ItemGarden(Contrato):
+    """Sugestão do agente para o Talent Garden. Só a pessoa do RH confirma o destino."""
+
+    candidato_id: str
+    motivo: str
+    confirmado: bool
+    simulado: bool
+
+
 class ProgressoFluxo(Contrato):
     """O trabalho feito até aqui. Modelo local: não cruza frentes."""
 
@@ -357,6 +386,7 @@ class ProgressoFluxo(Contrato):
     convites: list[RegistroConvite] = []
     entregues: list[str] = []
     destinos: dict[str, DestinoPessoa] = {}
+    sugestoes_garden: dict[str, str] = {}
 
     def candidato(self, candidato_id: str) -> Candidato:
         for candidato in (*self.candidatos, *self.cortados):
@@ -648,6 +678,8 @@ class FluxoVaga:
                 self._registrar_opt_out(candidato_id)
             else:
                 self._aplicar_resposta(resposta.convite_id, resposta.tipo)
+                if resposta.tipo == TipoResposta.RECUSA and eh_nao_agora(resposta.texto):
+                    self._sugerir_garden(candidato_id, GARDEN_NAO_AGORA, registro)
                 if resposta.tipo == TipoResposta.DUVIDA:
                     self._tratar_duvida(resposta.convite_id, resposta.texto)
 
@@ -1785,6 +1817,7 @@ class FluxoVaga:
             if decisao.tipo == TipoDecisao.INDICAR:
                 if indicados >= limite:
                     decisao = nao_priorizada(decisao, limite)
+                    self._sugerir_garden(decisao.candidato_id, GARDEN_ALEM_DO_ENCAMINHAMENTO)
                 else:
                     indicados += 1
             self._registrar_decisao(decisao)
@@ -2098,6 +2131,55 @@ class FluxoVaga:
             self._preparar_reenvio(candidato_id, registro.tentativa)
         elif tipo == TipoResposta.ACEITE:
             self._enviar_link_apos_aceite(registro)
+
+    def talent_garden(self) -> list[ItemGarden]:
+        """Quem o agente sugeriu guardar para depois. Quem saiu da empresa não aparece."""
+        progresso = self._progresso()
+        itens = []
+        for candidato_id, motivo in progresso.sugestoes_garden.items():
+            candidato = progresso.candidato(candidato_id)
+            if candidato.opt_out or self._tem_opt_out(candidato):
+                continue
+            itens.append(
+                ItemGarden(
+                    candidato_id=candidato_id,
+                    motivo=motivo,
+                    confirmado=progresso.destinos.get(candidato_id) == DestinoPessoa.TALENT_GARDEN,
+                    simulado=candidato.simulado,
+                )
+            )
+        return itens
+
+    def _sugerir_garden(
+        self, candidato_id: str, motivo: str, registro: RegistroConvite | None = None
+    ) -> None:
+        """Sugere o Talent Garden uma vez por pessoa. Não muda decisão nem destino."""
+
+        def sugerir(progresso: ProgressoFluxo) -> bool:
+            if candidato_id in progresso.sugestoes_garden:
+                return False
+            progresso.sugestoes_garden[candidato_id] = motivo
+            return True
+
+        if not self._mudar(sugerir):
+            return
+        self._evento("talent_garden", f"sugerido ao talent garden: {motivo}", candidato_id)
+        if registro is None:
+            return
+        texto = RESPOSTA_NAO_AGORA
+        if registro.convite.simulado:
+            texto = f"{texto}\n\n{AVISO_AGENDAMENTO_SIMULADO}"
+        mensagem = registro.convite.model_copy(
+            update={
+                "id": f"{registro.convite.id}:garden",
+                "mensagem": texto,
+                "link_agendamento": None,
+                "chave_idempotencia": f"{registro.convite.chave_idempotencia}:garden",
+            }
+        )
+        self._acao_idempotente(
+            mensagem.chave_idempotencia, lambda: _enviar_convite(self._mensageiro, mensagem)
+        )
 
     def _enviar_link_apos_aceite(self, registro: RegistroConvite) -> None:
         """Com o aceite, pede o link ao destino e manda numa segunda mensagem. Quem marca é ele."""

@@ -255,6 +255,26 @@ class RespostaConvites(RespostaSimulada):
     itens: list[ItemConvite]
 
 
+class ItemTalentGarden(Contrato):
+    """Quem o agente sugeriu guardar para depois. O RH confirma em `/candidatos/{id}/destino`."""
+
+    candidato_id: Texto
+    motivo: Annotated[
+        str,
+        Field(
+            description="nao_agora: a pessoa disse que agora não pode; alem_do_encaminhamento: "
+            "ficou na faixa verde além do número de encaminhamento."
+        ),
+    ]
+    confirmado: Annotated[bool, Field(description="O RH já definiu o destino talent_garden.")]
+    simulado: bool
+
+
+class RespostaTalentGarden(RespostaSimulada):
+    vaga_id: Texto
+    itens: list[ItemTalentGarden]
+
+
 class PedidoRetornos(Contrato):
     """Pede ao agente que leia os resultados das entrevistas e avise cada pessoa."""
 
@@ -842,6 +862,32 @@ def listar_convites(id: str, empresa: EmpresaDaSessao, servico: Servico) -> Resp
         for r in servico.convites(empresa, id)
     ]
     return RespostaConvites(vaga_id=id, itens=itens)
+
+
+@rotas.get(
+    "/vagas/{id}/talent-garden",
+    tags=["vagas"],
+    response_model=RespostaTalentGarden,
+    responses=_respostas(
+        RespostaTalentGarden(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            itens=[
+                ItemTalentGarden(
+                    candidato_id=exemplos.CONVITE.candidato_id,
+                    motivo="nao_agora",
+                    confirmado=False,
+                    simulado=True,
+                )
+            ],
+        )
+    ),
+)
+def listar_talent_garden(
+    id: str, empresa: EmpresaDaSessao, servico: Servico
+) -> RespostaTalentGarden:
+    """Lista quem o agente sugeriu para o Talent Garden e se o RH já confirmou."""
+    itens = [ItemTalentGarden(**item.model_dump()) for item in servico.talent_garden(empresa, id)]
+    return RespostaTalentGarden(vaga_id=id, itens=itens)
 
 
 @rotas.post(

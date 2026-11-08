@@ -1619,6 +1619,125 @@
         }
       }
     },
+    "/vagas/{id}/talent-garden": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Listar Talent Garden",
+        "description": "Lista quem o agente sugeriu para o Talent Garden e se o RH já confirmou.",
+        "operationId": "listar_talent_garden",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaTalentGarden"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "itens": [
+                    {
+                      "candidato_id": "candidato-exemplo-1",
+                      "motivo": "nao_agora",
+                      "confirmado": false,
+                      "simulado": true
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/vagas/{id}/retornos": {
       "post": {
         "tags": [
@@ -3851,6 +3970,39 @@
         "title": "ItemConvite",
         "description": "O convite como o painel mostra. O agente não agenda: o link é do agente de destino."
       },
+      "ItemTalentGarden": {
+        "properties": {
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "motivo": {
+            "type": "string",
+            "title": "Motivo",
+            "description": "nao_agora: a pessoa disse que agora não pode; alem_do_encaminhamento: ficou na faixa verde além do número de encaminhamento."
+          },
+          "confirmado": {
+            "type": "boolean",
+            "title": "Confirmado",
+            "description": "O RH já definiu o destino talent_garden."
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidato_id",
+          "motivo",
+          "confirmado",
+          "simulado"
+        ],
+        "title": "ItemTalentGarden",
+        "description": "Quem o agente sugeriu guardar para depois. O RH confirma em `/candidatos/{id}/destino`."
+      },
       "Mandato": {
         "properties": {
           "id": {
@@ -5224,6 +5376,42 @@
         ],
         "title": "RespostaRevisao",
         "description": "A decisão humana entra ao lado da do agente, que continua no histórico."
+      },
+      "RespostaTalentGarden": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemTalentGarden"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "itens"
+        ],
+        "title": "RespostaTalentGarden"
       },
       "RespostaVaga": {
         "properties": {

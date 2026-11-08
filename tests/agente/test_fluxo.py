@@ -387,7 +387,7 @@ def _dois_candidatos() -> list[Candidato]:
     return [candidato_exemplo("c1"), candidato_exemplo("c2")]
 
 
-_MENSAGENS_DERIVADAS = (":duvida:", ":retorno", ":agendamento")
+_MENSAGENS_DERIVADAS = (":duvida:", ":retorno", ":agendamento", ":garden")
 
 
 def _convites_por_candidato(m: Montagem) -> dict[str, str]:

@@ -21,6 +21,7 @@ from backend.agente.documento import documento_de_ingestao
 from backend.agente.fluxo import (
     REGRA_REVERSAO,
     FluxoVaga,
+    ItemGarden,
     Priorizador,
     ProvedorConsultas,
     RedatorConvite,
@@ -292,6 +293,9 @@ class ServicoVagas:
 
     def convites(self, empresa_id: str, vaga_id: str) -> list[RegistroConvite]:
         return self._fluxo(empresa_id, vaga_id).convites()
+
+    def talent_garden(self, empresa_id: str, vaga_id: str) -> list[ItemGarden]:
+        return self._fluxo(empresa_id, vaga_id).talent_garden()
 
     def acompanhar_entrevistas(self, empresa_id: str, vaga_id: str) -> list[RetornoEntrevista]:
         """Manda o retorno do destino a quem já foi entrevistado. Repetir não reenvia."""
