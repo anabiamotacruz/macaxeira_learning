@@ -38,23 +38,25 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `validar_criterios(vaga: Vaga) -> list[str]`, `verificar_requisitos(vaga: Vaga, candidato: Candidato) -> dict[str, bool]`, `pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga) -> bool`, `decidir(vaga: Vaga, candidato: Candidato, analise: Analise, rastro_id: str) -> Decisao`.
 
-- [ ] Testar `test_recusa_criterio_sensivel` para gênero, idade, raça, religião e estado civil.
-- [ ] Testar `test_descarta_sem_requisito_eliminatorio`, com `Decisao.regra` preenchida.
-- [ ] Testar `test_nao_contata_opt_out_nem_sem_autorizacao`.
-- [ ] Testar `test_pede_humano_com_ressalva_do_revisor` e `test_nao_indica_sem_evidencia`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_recusa_criterio_sensivel` para gênero, idade, raça, religião e estado civil.
+- [x] Testar `test_descarta_sem_requisito_eliminatorio`, com `Decisao.regra` preenchida.
+- [x] Testar `test_nao_contata_opt_out_nem_sem_autorizacao`.
+- [x] Testar `test_pede_humano_com_ressalva_do_revisor` e `test_nao_indica_sem_evidencia`.
+- [x] Implementar e verificar.
 
 ### T1.2 (onda 1): máquina de estados
 
 **Arquivo:** `backend/agente/fluxo.py`. **Teste:** `tests/agente/test_fluxo.py`.
 
-**Consome:** interfaces, regras. **Produz:** `class FluxoVaga` com `iniciar()`, `aprovar_vaga()`, `aprovar_lote()`, `registrar_resposta(resposta: RespostaCandidato)`, `retomar()`, `estado` e `eventos: list[EventoFluxo]`.
+**Consome:** interfaces, regras. **Produz:** `class FluxoVaga` com `iniciar()`, `assinar_mandato()`, `registrar_resposta(resposta: RespostaCandidato)`, `retomar()`, `estado` e `eventos: list[EventoFluxo]`.
 
-- [ ] Testar `test_fluxo_completo_com_simulacoes`, de `RASCUNHO` a `CONCLUIDA`.
-- [ ] Testar `test_nao_busca_sem_aprovacao` e `test_nao_convida_sem_aprovar_lote`.
-- [ ] Testar `test_fonte_indisponivel_segue_e_registra_cobertura_parcial`.
-- [ ] Testar `test_estado_salvo_permite_retomar` e `test_meta_em_risco_avisa_recrutador`.
-- [ ] Implementar, salvando o estado após cada etapa, e verificar.
+O mandato assinado substituiu `aprovar_vaga()` e `aprovar_lote()` (D-1): o agente indica sozinho dentro dos limites do mandato, e o resto vai para uma pessoa.
+
+- [x] Testar `test_fluxo_completo_com_simulacoes`, de `RASCUNHO` a `CONCLUIDA`.
+- [x] Testar `test_nao_busca_sem_mandato` e `test_indica_sem_aprovar_lote_dentro_do_mandato`.
+- [x] Testar `test_fonte_indisponivel_segue_e_registra_cobertura_parcial`.
+- [x] Testar `test_estado_salvo_permite_retomar` e `test_meta_em_risco_avisa_recrutador`.
+- [x] Implementar, salvando o estado após cada etapa, e verificar.
 
 ### T1.3 [P] (onda 1): cliente de modelos e rastro
 
@@ -62,21 +64,21 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** implementação de `ClienteModelo`, com `custo_total_usd`, leitura de chave do ambiente e rastro no Langfuse.
 
-- [ ] Testar `test_resposta_invalida_tenta_corrigir_e_falha_com_erro_claro`.
-- [ ] Testar `test_modelo_indisponivel_usa_alternativa`.
-- [ ] Testar `test_limite_de_gasto_gera_erro_e_fluxo_pausa_com_estado_salvo`, junto com `FluxoVaga`.
-- [ ] Testar `test_registra_tokens_custo_e_tempo_por_etapa`.
-- [ ] Implementar com a API compatível com a OpenAI e verificar.
+- [x] Testar `test_resposta_invalida_tenta_corrigir_e_falha_com_erro_claro`.
+- [x] Testar `test_modelo_indisponivel_usa_alternativa`.
+- [x] Testar `test_limite_de_gasto_gera_erro_e_fluxo_pausa_com_estado_salvo`, junto com `FluxoVaga`.
+- [x] Testar `test_registra_tokens_custo_e_tempo_por_etapa`.
+- [x] Implementar com a API compatível com a OpenAI e verificar.
 
 ### T1.4 (onda 2): API
 
 **Arquivo:** `backend/agente/api.py`. **Teste:** `tests/agente/test_api.py`.
 
-**Produz:** `POST /vagas`, `POST /vagas/{id}/aprovar`, `POST /vagas/{id}/lote/aprovar`, `POST /convites/{id}/resposta`, `GET /vagas/{id}`, `GET /vagas/{id}/candidatos`, `GET /vagas/{id}/eventos`, `GET /candidatos/{id}/decisao`, `POST /sessoes/reiniciar`.
+**Produz:** `POST /vagas`, `POST /vagas/{id}/mandato`, `POST /convites/{id}/resposta`, `GET /vagas/{id}`, `GET /vagas/{id}/candidatos`, `GET /vagas/{id}/eventos`, `GET /candidatos/{id}/decisao`, `POST /sessoes/reiniciar`. O mandato substituiu as duas rotas de aprovação; a lista completa de rotas está em `docs/api/openapi.json`.
 
-- [ ] Testar criação, aprovação, consulta de explicações e reinício de sessão.
-- [ ] Testar `test_respostas_identificam_simulacao`.
-- [ ] Implementar e verificar.
+- [x] Testar criação, mandato, consulta de explicações e reinício de sessão.
+- [x] Testar `test_respostas_identificam_simulacao_e_so_as_metricas_seguem_fixas`.
+- [x] Implementar e verificar.
 
 ### T1.5 (onda 3, corte): aprendizado
 
@@ -94,10 +96,10 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `Repositorio` com `salvar_estado`, `carregar_estado`, `registrar_evento`, `listar_eventos`, `registrar_chave` e `chave_ja_usada`, em SQLite.
 
-- [ ] Testar `test_estado_sobrevive_a_reinicio`.
-- [ ] Testar `test_chave_repetida_nao_duplica_acao`.
-- [ ] Testar `test_empresa_so_le_os_proprios_dados`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_estado_sobrevive_a_reinicio`.
+- [x] Testar `test_chave_repetida_nao_duplica_acao`.
+- [x] Testar `test_empresa_so_le_os_proprios_dados`.
+- [x] Implementar e verificar.
 
 ### T1.9 [P] (onda 1): proposta de configuração da vaga
 
@@ -105,11 +107,11 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `propor_configuracao(descricao: str, empresa_id: str, cliente_modelo) -> Vaga | PerguntaVaga`, com `aprovada=False`.
 
-- [ ] Testar `test_propoe_requisitos_competencias_e_meta`.
-- [ ] Testar `test_vaga_ambigua_devolve_pergunta`.
-- [ ] Testar `test_proposta_passa_por_validar_criterios`.
-- [ ] Testar `test_descricao_com_instrucao_nao_altera_regras`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_propoe_requisitos_competencias_e_meta`.
+- [x] Testar `test_vaga_ambigua_devolve_pergunta`.
+- [x] Testar `test_proposta_passa_por_validar_criterios`.
+- [x] Testar `test_descricao_com_instrucao_nao_altera_regras`.
+- [x] Implementar e verificar.
 
 ### T1.10 [P] (onda 2): resiliência
 
@@ -129,10 +131,10 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `registrar_decisao(decisao: Decisao)`, `explicar_candidato(empresa_id: str, candidato_id: str, vaga_id: str) -> dict` e `@rastreado(etapa: str)`, para chamadas de modelo e ferramentas.
 
-- [ ] Testar `test_toda_decisao_tem_entrada_regra_evidencias_e_responsavel`.
-- [ ] Testar `test_explicacao_liga_decisao_eventos_e_rastro`.
-- [ ] Testar `test_rastro_nao_contem_chave`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_toda_decisao_tem_entrada_regra_evidencias_e_responsavel`.
+- [x] Testar `test_explicacao_liga_decisao_eventos_e_rastro`.
+- [x] Testar `test_rastro_nao_contem_chave`.
+- [x] Implementar e verificar.
 
 ### T1.7 (onda 2): rotina do banco
 
@@ -158,14 +160,14 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 Esta tarefa é da Frente 1 e substitui a T3.8 proposta na spec da Frente 3. Não se confunde com a T1.6: aqui o agente chama outro agente recrutador; lá, outros clientes chamam as ferramentas do agente.
 
 - [ ] Confirmar a biblioteca MCP na documentação oficial e justificar a dependência no PR.
-- [ ] Testar `test_conector_segue_a_interface`.
-- [ ] Testar `test_ferramentas_vem_da_configuracao_do_destino`, sem nome de ferramenta fixo no código.
-- [ ] Testar `test_entrega_repetida_nao_duplica`, enviando `chave_idempotencia`.
-- [ ] Testar `test_servidor_fora_do_ar_deixa_entrega_pendente` e `test_tempo_limite_gera_erro_claro`.
-- [ ] Testar `test_resposta_invalida_nao_conta_como_entrega` e `test_resposta_do_servidor_e_tratada_como_dado`.
-- [ ] Testar `test_destino_sem_agenda_nem_resultado`.
-- [ ] Testar `test_empresa_de_outro_escopo_e_recusada` e `test_simulacao_e_identificada`.
-- [ ] Implementar, com rastro em cada chamada, e verificar.
+- [x] Testar `test_conector_segue_a_interface`.
+- [x] Testar `test_ferramentas_vem_da_configuracao_do_destino`, sem nome de ferramenta fixo no código.
+- [x] Testar `test_entrega_repetida_nao_duplica`, enviando `chave_idempotencia`.
+- [x] Testar `test_servidor_fora_do_ar_deixa_entrega_pendente` e `test_tempo_limite_gera_erro_claro`.
+- [x] Testar `test_resposta_invalida_nao_conta_como_entrega` e `test_resposta_do_servidor_e_tratada_como_dado`.
+- [x] Testar `test_destino_sem_agenda_nem_resultado`.
+- [x] Testar `test_empresa_de_outro_escopo_e_recusada` e `test_simulacao_e_identificada`.
+- [x] Implementar, com rastro em cada chamada, e verificar.
 
 ### T1.13 (onda 3): avaliação pela pessoa de RH
 
