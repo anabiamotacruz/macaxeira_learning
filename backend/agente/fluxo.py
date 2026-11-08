@@ -13,7 +13,6 @@ import contextvars
 import hashlib
 import logging
 import os
-import re
 import threading
 import uuid
 from collections import deque
@@ -39,6 +38,7 @@ from backend.agente.auditoria import (
     decisoes_vigentes,
     rastreado,
 )
+from backend.agente.interpretacao import NAO_AGORA, eh_nao_agora, interpretar_mensagem
 from backend.agente.mandato import (
     Mandato,
     MandatoInvalido,
@@ -71,7 +71,7 @@ from backend.agente.regras import (
     separar_palavras,
     validar_criterios,
 )
-from backend.contratos.criterios import sem_acento, tem_termo_sensivel
+from backend.contratos.criterios import tem_termo_sensivel
 from backend.contratos.erros import (
     ErroContrato,
     LimiteGastoAtingido,
@@ -184,21 +184,10 @@ MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
 GARDEN_NAO_AGORA = "nao_agora"
 GARDEN_ALEM_DO_ENCAMINHAMENTO = "alem_do_encaminhamento"
-_NAO_AGORA = re.compile(
-    r"\b(agora nao|nao agora|no momento nao|neste momento nao|nao posso agora|nao da agora"
-    r"|talvez depois|mais (pra|para) frente|daqui a|em breve|outra oportunidade"
-    r"|proxim[ao]s? (mes|meses|ano|semestre|vaga|vagas|oportunidade|oportunidades))\b"
-)
-"""Sobre o texto sem acento nem caixa. Só separa "agora não" de recusa: não decide nada."""
 RESPOSTA_NAO_AGORA = (
     "Entendido, obrigado por responder! Se a equipe confirmar, seu perfil fica guardado para "
     "uma próxima oportunidade desta empresa. Para não ser mais contatado, responda SAIR."
 )
-
-
-def eh_nao_agora(texto: str) -> bool:
-    """A pessoa disse que agora não pode, sem fechar a porta. O texto é dado, nunca instrução."""
-    return bool(_NAO_AGORA.search(" ".join(sem_acento(texto).casefold().split())))
 
 
 AVISO_AGENDAMENTO_SIMULADO = "Mensagem simulada: o agendamento acontece num destino simulado."
@@ -671,6 +660,14 @@ class FluxoVaga:
         if registro is None:
             raise AcaoRecusada(f"convite desconhecido nesta vaga: {resposta.convite_id!r}")
         candidato_id = registro.convite.candidato_id
+        if resposta.tipo == TipoResposta.DUVIDA:
+            interpretada = interpretar_mensagem(resposta.texto)
+            if interpretada is not None:
+                tipo = TipoResposta.RECUSA if interpretada == NAO_AGORA else interpretada
+                resposta = resposta.model_copy(update={"tipo": tipo})
+                self._evento(
+                    "interpretacao", f"mensagem interpretada como {interpretada}", candidato_id
+                )
         self._evento("resposta", f"resposta: {resposta.tipo}", candidato_id)
 
         with self._contexto(progresso, candidato_id), self._pausando_em_falha():
