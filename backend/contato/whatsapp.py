@@ -200,11 +200,11 @@ def _decidir_sem_modelo(texto: str) -> Valor | None:
 
 def interpretar_resposta(texto: str, cliente_modelo: ClienteModelo, pergunta: str = "") -> Valor:
     """Sim, não ou ambígua. Respostas curtas e claras não passam pelo modelo."""
-    instrucao = contem_instrucao(texto)
-    if instrucao:
+    if contem_instrucao(texto):
         logger.warning("alerta: instrução no texto da pré-triagem, tratada como ambígua")
+        return "ambigua"
     decidido = _decidir_sem_modelo(texto)
-    if decidido and not instrucao:
+    if decidido:
         return decidido
     try:
         resposta = cliente_modelo.completar(
@@ -213,13 +213,10 @@ def interpretar_resposta(texto: str, cliente_modelo: ClienteModelo, pergunta: st
             RespostaPergunta,
             ETAPA_INTERPRETACAO,
         )
-        valor = RespostaPergunta.model_validate(resposta.model_dump()).valor
+        return RespostaPergunta.model_validate(resposta.model_dump()).valor
     except (ModeloIndisponivel, RespostaInvalida) as erro:
         logger.warning("resposta da pré-triagem tratada como ambígua: %s", erro)
         return "ambigua"
-    if instrucao:
-        return "ambigua"
-    return valor
 
 
 def validar(pre: PreTriagem) -> ResultadoPreTriagem:

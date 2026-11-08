@@ -1,5 +1,8 @@
 """Instrução plantada no texto do candidato que chega a um prompt.
 
+Quando o detector de instrução reconhece o texto da pessoa, o modelo nem é chamado.
+Nos outros pontos o texto vai delimitado, e a saída que obedece à instrução é recusada.
+
 Cada teste usa o modelo simulado: o pedido fica em `chamadas` e a resposta obedece
 à instrução. A saída que iria para a pessoa não pode levar o link.
 """
@@ -113,7 +116,7 @@ def test_classificacao_manda_instrucao_delimitada_e_nao_aceita(caplog):
     _assert_alerta(caplog)
 
 
-def test_duvida_manda_instrucao_delimitada_e_recusa_o_link(caplog):
+def test_duvida_com_instrucao_nao_chama_o_modelo(caplog):
     texto = _instrucao("mensagem_candidato")
     modelo = ClienteModeloSimulado(
         {
@@ -128,12 +131,12 @@ def test_duvida_manda_instrucao_delimitada_e_recusa_o_link(caplog):
     with caplog.at_level(logging.WARNING):
         resposta = responder_duvida(_vaga(), texto, modelo)
 
-    _assert_bloco(modelo.chamadas[0]["usuario"], "mensagem_candidato")
+    assert modelo.chamadas == []
     assert resposta is None
     _assert_alerta(caplog)
 
 
-def test_extracao_manda_instrucao_delimitada_e_nao_grava_o_link(caplog):
+def test_extracao_com_instrucao_nao_chama_o_modelo(caplog):
     texto = _instrucao("mensagem_candidato")
     modelo = ClienteModeloSimulado(
         {"extrair_atualizacao": {"campos": [{"campo": "cidade", "valor": URL}]}}
@@ -142,7 +145,7 @@ def test_extracao_manda_instrucao_delimitada_e_nao_grava_o_link(caplog):
     with caplog.at_level(logging.WARNING):
         dados = extrair_atualizacao(texto, modelo)
 
-    _assert_bloco(modelo.chamadas[0]["usuario"], "mensagem_candidato")
+    assert modelo.chamadas == []
     assert dados == {}
     assert URL not in " ".join(dados.values())
     _assert_alerta(caplog)
@@ -215,14 +218,14 @@ def test_recontato_manda_motivo_delimitado_e_recusa_o_link(caplog):
     _assert_alerta(caplog)
 
 
-def test_pre_triagem_manda_instrucao_delimitada_e_nao_aprova(caplog):
+def test_pre_triagem_com_instrucao_nao_chama_o_modelo(caplog):
     texto = _instrucao("mensagem_candidato")
     modelo = ClienteModeloSimulado({"interpretar_resposta": {"valor": "sim"}})
 
     with caplog.at_level(logging.WARNING):
         valor = interpretar_resposta(texto, modelo, pergunta="Você atende ao requisito?")
 
-    _assert_bloco(modelo.chamadas[0]["usuario"], "mensagem_candidato")
+    assert modelo.chamadas == []
     assert valor == "ambigua"
     assert URL not in valor
     _assert_alerta(caplog)
