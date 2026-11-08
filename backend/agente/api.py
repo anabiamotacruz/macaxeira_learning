@@ -53,6 +53,7 @@ from backend.agente.servico import (
     ServicoVagas,
     VagaInexistente,
 )
+from backend.agente.whatsapp_api import atendimento_do_ambiente, rotas_whatsapp
 from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import (
     Candidato,
@@ -1356,6 +1357,8 @@ def criar_app(
     )
     aplicacao.state.obter_servico = _lazy_demo() if servico is None else (lambda: servico)
     aplicacao.include_router(rotas)
+    aplicacao.state.whatsapp = atendimento_do_ambiente(aplicacao.state.obter_servico)
+    aplicacao.include_router(rotas_whatsapp)
     limitador = LimiteRequisicoes.do_ambiente() if limite is None else limite
 
     @aplicacao.middleware("http")
