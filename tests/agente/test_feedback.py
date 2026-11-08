@@ -20,6 +20,7 @@ from backend.contratos.modelos import (
     MotivoDestino,
     PedidoFeedback,
     Requisito,
+    ResultadoEntrevista,
     RetornoDestino,
     StatusFeedback,
 )
@@ -145,15 +146,6 @@ def test_motivo_sensivel_e_bloqueado_e_vai_para_a_pessoa_responsavel(lacuna_sens
 @pytest.mark.parametrize(
     "fabrica",
     [
-        lambda: classificar_destino(
-            vaga_teste(),
-            candidato_teste(),
-            analise_teste(vaga_teste()),
-            mandato_teste(vaga_teste()),
-            HOJE,
-            AGORA,
-            "r",
-        ),
         lambda: classificar_destino(
             vaga_teste(),
             candidato_teste(atributos={}),
@@ -385,3 +377,136 @@ def test_resposta_ao_pedido_de_quem_aprovou_nao_expoe_destino() -> None:
     )
     assert decisao.destino == DestinoDecisao.APROVAR
     assert "aprovar" not in _responder(decisao).model_dump_json()
+
+
+def _aprovada() -> DecisaoFinal:
+    decisao = classificar_destino(
+        vaga_teste(),
+        candidato_teste(),
+        analise_teste(vaga_teste()),
+        mandato_teste(vaga_teste()),
+        HOJE,
+        AGORA,
+        "r",
+    )
+    assert decisao.destino == DestinoDecisao.APROVAR
+    return decisao
+
+
+def _resultado(aprovado: bool, **campos) -> ResultadoEntrevista:
+    dados = {"empresa_id": "empresa-a", "vaga_id": "v1", "candidato_id": "c1"}
+    return ResultadoEntrevista(**{**dados, **campos}, notas={"tecnica": 8.0}, aprovado=aprovado)
+
+
+def _retorno(*motivos: MotivoDestino) -> RetornoDestino:
+    return RetornoDestino(
+        empresa_id="empresa-a",
+        vaga_id="v1",
+        candidato_id="c1",
+        fonte="nara_simulada",
+        motivos=list(motivos),
+    )
+
+
+def _responder_resultado(resultado, decisao=None, retorno=None, auditoria=None):
+    return responder_pedido_de_feedback(
+        _pedido(),
+        vaga_teste(),
+        "Pessoa Fictícia",
+        registrar=auditoria or _Auditoria(),
+        agora=AGORA,
+        decisao=decisao,
+        retorno=retorno,
+        resultado=resultado,
+    )
+
+
+def test_quem_passou_e_pergunta_recebe_os_criterios_que_sustentaram() -> None:
+    decisao = _aprovada()
+    feedback = _responder(decisao)
+    assert feedback.status == StatusFeedback.GERADO
+    assert "segue para a próxima fase" in feedback.texto
+    assert "não foram atendidos" not in feedback.texto
+    registrados = {(e.criterio, e.trecho, e.fonte) for e in decisao.evidencias}
+    assert {(m.criterio, m.trecho, m.fonte) for m in feedback.motivos} <= registrados
+    assert {m.criterio for m in feedback.motivos} >= {"r1"}
+    assert all(m.evidencia_faltante == "" and m.o_que_pode_mudar == "" for m in feedback.motivos)
+
+
+def test_quem_passou_sem_trecho_registrado_vai_para_a_pessoa_responsavel() -> None:
+    sem_registro = _aprovada().model_copy(update={"evidencias": []})
+    feedback = _responder(sem_registro)
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == "motivo_sem_trecho_registrado"
+
+
+def test_quem_passou_com_trecho_sensivel_nao_recebe_o_trecho() -> None:
+    decisao = _aprovada()
+    trecho = "Mulher com cinco anos de Python"
+    sensivel = [e.model_copy(update={"trecho": trecho}) for e in decisao.evidencias]
+    feedback = _responder(decisao.model_copy(update={"evidencias": sensivel}))
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == "motivo_sensivel"
+    assert "Mulher" not in feedback.model_dump_json()
+
+
+def test_quem_passou_na_entrevista_recebe_o_que_o_destino_disse() -> None:
+    retorno = _retorno(MotivoDestino(criterio="backend", trecho="Explicou bem filas em produção"))
+    feedback = _responder_resultado(_resultado(True), decisao=_recusa(), retorno=retorno)
+    assert feedback.status == StatusFeedback.GERADO
+    assert "segue para a próxima fase" in feedback.texto
+    assert [m.criterio for m in feedback.motivos] == ["backend"]
+    assert feedback.motivos[0].fonte == "nara_simulada"
+    assert "Sabe Python" not in feedback.texto
+
+
+def test_quem_passou_na_entrevista_sem_motivo_usa_a_decisao_registrada() -> None:
+    feedback = _responder_resultado(_resultado(True), decisao=_aprovada(), retorno=_retorno())
+    assert feedback.status == StatusFeedback.GERADO
+    assert "segue para a próxima fase" in feedback.texto
+
+
+def test_quem_nao_passou_na_entrevista_recebe_so_o_que_o_destino_disse() -> None:
+    retorno = _retorno(MotivoDestino(criterio="backend", trecho="Faltou exemplo de filas"))
+    feedback = _responder_resultado(_resultado(False), decisao=_aprovada(), retorno=retorno)
+    assert feedback.status == StatusFeedback.GERADO
+    assert "não foram atendidos" in feedback.texto
+    assert [m.criterio for m in feedback.motivos] == ["backend"]
+
+
+def test_quem_nao_passou_sem_retorno_vai_para_a_pessoa_responsavel() -> None:
+    feedback = _responder_resultado(_resultado(False), decisao=_aprovada())
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == "destino_nao_informou"
+
+
+def test_resultado_sem_decisao_nem_retorno_vai_para_a_pessoa_responsavel() -> None:
+    feedback = _responder_resultado(_resultado(True))
+    assert feedback.status == StatusFeedback.ENCAMINHADO
+    assert feedback.encaminhado_por == "destino_nao_informou"
+
+
+@pytest.mark.parametrize(
+    "campos", [{"candidato_id": "c2"}, {"vaga_id": "v2"}, {"empresa_id": "empresa-b"}]
+)
+def test_resultado_de_outra_pessoa_e_negado(campos: dict) -> None:
+    auditoria = _Auditoria()
+    with pytest.raises(FeedbackNegado):
+        _responder_resultado(_resultado(True, **campos), decisao=_aprovada(), auditoria=auditoria)
+    assert auditoria.eventos == []
+
+
+def test_resposta_a_quem_passou_nao_traz_nota_do_destino() -> None:
+    feedback = _responder_resultado(_resultado(True), decisao=_aprovada())
+    texto = feedback.model_dump_json().lower()
+    assert "8.0" not in texto
+    assert "tecnica" not in texto
+    assert "nota" not in texto
+
+
+def test_registro_diz_se_a_pessoa_passou_sem_dado_dela() -> None:
+    auditoria = _Auditoria()
+    _responder_resultado(_resultado(True), decisao=_aprovada(), auditoria=auditoria)
+    mensagem = auditoria.eventos[0].mensagem
+    assert "resultado=passou" in mensagem
+    assert "Pessoa Fictícia" not in mensagem
