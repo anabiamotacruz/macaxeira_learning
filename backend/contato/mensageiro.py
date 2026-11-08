@@ -11,6 +11,7 @@ import re
 from pydantic import BaseModel
 
 from backend.contato.prompts import (
+    AVISO_SIMULACAO,
     MARCADOR_LINK,
     MARCADOR_NOME,
     PALAVRA_SAIDA,
@@ -24,7 +25,6 @@ from backend.contratos.modelos import Analise, Candidato, Convite, TipoConvite, 
 logger = logging.getLogger(__name__)
 
 ETAPA_CONVITE = "redigir_convite"
-AVISO_SIMULACAO = "Mensagem simulada, enviada em ambiente de demonstração."
 _MARCADOR = re.compile(r"\{[^}]*\}")
 
 

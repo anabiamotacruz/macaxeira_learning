@@ -24,6 +24,7 @@ from backend.contato.mensageiro import (
     chave_convite,
 )
 from backend.contato.prompts import (
+    AVISO_SIMULACAO,
     MARCADOR_NOME,
     PALAVRA_SAIDA,
     SISTEMA_EMAIL,
@@ -192,7 +193,7 @@ def _corpo(
             "Guardamos só dados profissionais públicos, para falar sobre esta vaga.",
             "Para não receber mais contatos e apagar seus dados, use este link: "
             f"{link_exclusao}\nVocê também pode responder {PALAVRA_SAIDA}.",
-            "Mensagem simulada, enviada em ambiente de demonstração.",
+            AVISO_SIMULACAO,
         ]
     )
 

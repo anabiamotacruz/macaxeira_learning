@@ -14,6 +14,7 @@ import unicodedata
 from pydantic import BaseModel
 
 from backend.contato.prompts import (
+    AVISO_SIMULACAO,
     MARCADOR_NOME,
     PALAVRA_SAIDA,
     SISTEMA_CLASSIFICACAO,
@@ -196,5 +197,5 @@ def mensagem_duvida_encaminhada(vaga: Vaga) -> str:
         f"Olá, {MARCADOR_NOME}! A dúvida sobre a vaga {vaga.titulo} foi passada "
         "para uma pessoa da equipe, que vai responder em breve. "
         f"Para não receber mais mensagens, responda {PALAVRA_SAIDA}. "
-        "Mensagem simulada, enviada em ambiente de demonstração."
+        f"{AVISO_SIMULACAO}"
     )
