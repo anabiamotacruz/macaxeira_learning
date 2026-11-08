@@ -33,4 +33,5 @@ ENV PATH="/app/.venv/bin:$PATH" \
 EXPOSE 8000
 
 # Um único processo: as conversas e o banco de talentos simulado ficam em memória.
-CMD ["sh", "-c", "uvicorn backend.agente.api:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]
+# Socket dual-stack (IPv4 e IPv6) em $PORT: a rede privada da Railway usa IPv6, o domínio público, IPv4.
+CMD ["python", "-c", "import os, socket, uvicorn\ns = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)\ns.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\ns.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)\ns.bind(('::', int(os.environ.get('PORT', '8000'))))\nconfig = uvicorn.Config('backend.agente.api:app', proxy_headers=True, forwarded_allow_ips='*')\nuvicorn.Server(config).run(sockets=[s])"]
