@@ -34,6 +34,7 @@ from backend.agente.fluxo import (
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
+from backend.agente.whatsapp import linha_do_convite
 from backend.contato.conversa import contem_instrucao, material_da_vaga, responder_duvida
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contato.pos_entrevista import mensagem_pos_entrevista
@@ -323,7 +324,7 @@ def redigir_convite(vaga: Vaga, candidato: Candidato, analise: Analise, link: st
         ClienteModeloSimulado(),
         preferencias=PreferenciasContato(personalizar=False),
     )
-    return convite.mensagem
+    return convite.mensagem + linha_do_convite(vaga.empresa_id, vaga.id, candidato.id)
 
 
 def redigir_retorno(vaga: Vaga, candidato: Candidato, resultado: ResultadoEntrevista) -> str:
