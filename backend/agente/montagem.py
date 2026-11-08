@@ -1,15 +1,20 @@
 """Liga as implementações das frentes às interfaces do fluxo. Só aqui o agente as conhece.
 
 `montar_demo` monta a demonstração: tudo é sintético, em simulação e sem chave nem internet.
+`montar_com_modelo` usa o modelo de verdade na análise, na revisão, nas consultas e nas dúvidas,
+com os mesmos dados sintéticos. `montar_servico` escolhe: o modelo só entra com
+`AGENTE_COM_MODELO=1` e a chave do provedor no ambiente.
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """
 
 import json
+import logging
+import os
 import re
 import tempfile
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -17,10 +22,11 @@ from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
-from backend.contato.conversa import contem_instrucao, material_da_vaga
+from backend.contato.conversa import contem_instrucao, material_da_vaga, responder_duvida
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contato.pos_entrevista import mensagem_pos_entrevista
-from backend.contratos.interfaces import ClienteModelo
+from backend.contratos.erros import ModeloIndisponivel
+from backend.contratos.interfaces import Analisador, ClienteModelo, Revisor
 from backend.contratos.modelos import Analise, Candidato, Evidencia, ResultadoEntrevista, Vaga
 from backend.contratos.simulacoes import (
     BancoTalentosSimulado,
@@ -29,7 +35,7 @@ from backend.contratos.simulacoes import (
     RevisorSimulado,
     candidato_simulado,
 )
-from backend.fontes.analisador import ALERTA_INSTRUCAO, INSTRUCAO, normalizar
+from backend.fontes.analisador import ALERTA_INSTRUCAO, INSTRUCAO, AnalisadorPorModelo, normalizar
 from backend.fontes.anonimizador import (
     Pseudonimizador,
     identificadores_do_candidato,
@@ -37,9 +43,14 @@ from backend.fontes.anonimizador import (
 )
 from backend.fontes.consultas import ETAPA_GERAR, ampliar_consultas, gerar_consultas
 from backend.fontes.funil import priorizar
+from backend.fontes.revisor import RevisorIndependente
+from backend.modelos.cliente import ClienteFeatherless
 from backend.nara_simulada.servico import NaraSimulada
 
+logger = logging.getLogger(__name__)
+
 LIMITE_ANALISES_POR_RODADA = 20
+COM_MODELO = "AGENTE_COM_MODELO"
 """Quantas pessoas cada rodada leva às análises por modelo. As demais vão para a fila humana."""
 
 
@@ -311,8 +322,15 @@ def _sem_gasto() -> float:
     return 0.0
 
 
-def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
-    """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
+def _montar(
+    caminho: str | Path | None,
+    *,
+    analisador: Analisador,
+    revisor: Revisor,
+    consultas: ProvedorConsultas,
+    medidor_gasto: Callable[[], float],
+    respondedor_duvida: Callable[[Vaga, Candidato, str], str | None],
+) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
     fonte = FonteDemo(_agora().date())
@@ -321,20 +339,78 @@ def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
             repositorio=Repositorio(caminho),
             banco=BancoTalentosSimulado(_agora().date()),
             fontes=[fonte],
-            analisador=AnalisadorDemo(),
-            revisor=RevisorSimulado(),
+            analisador=analisador,
+            revisor=revisor,
             mensageiro=MensageiroSimulado(),
             destino=NaraSimulada(),
             relogio=_agora,
-            medidor_gasto=_sem_gasto,
-            consultas=consultas_por_modelo(
-                ClienteModeloSimulado({ETAPA_GERAR: {"consultas": ["python"]}})
-            ),
+            medidor_gasto=medidor_gasto,
+            consultas=consultas,
             priorizador=priorizador_do_funil(),
             redator_convite=redigir_convite,
-            respondedor_duvida=responder_duvida_demo,
+            respondedor_duvida=respondedor_duvida,
             redator_retorno=redigir_retorno,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),
     )
+
+
+def montar_demo(caminho: str | Path | None = None) -> ServicoVagas:
+    """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária."""
+    return _montar(
+        caminho,
+        analisador=AnalisadorDemo(),
+        revisor=RevisorSimulado(),
+        consultas=consultas_por_modelo(
+            ClienteModeloSimulado({ETAPA_GERAR: {"consultas": ["python"]}})
+        ),
+        medidor_gasto=_sem_gasto,
+        respondedor_duvida=responder_duvida_demo,
+    )
+
+
+def montar_com_modelo(
+    caminho: str | Path | None = None,
+    *,
+    cliente: ClienteModelo,
+    medidor_gasto: Callable[[], float],
+) -> ServicoVagas:
+    """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
+
+    O gasto vem do cliente: passou do limite do mandato, a vaga pausa.
+    """
+
+    def responder(vaga: Vaga, candidato: Candidato, texto: str) -> str | None:
+        return responder_duvida(vaga, texto, cliente)
+
+    return _montar(
+        caminho,
+        analisador=AnalisadorPorModelo(cliente),
+        revisor=RevisorIndependente(cliente),
+        consultas=consultas_por_modelo(cliente),
+        medidor_gasto=medidor_gasto,
+        respondedor_duvida=responder,
+    )
+
+
+def montar_servico(
+    caminho: str | Path | None = None,
+    *,
+    ambiente: Mapping[str, str] | None = None,
+    criar_cliente: Callable[..., ClienteModelo] = ClienteFeatherless,
+) -> ServicoVagas:
+    """Escolhe a montagem pelo ambiente. Sem opt-in ou sem chave, fica a demonstração sem modelo."""
+    ambiente = os.environ if ambiente is None else ambiente
+    if ambiente.get(COM_MODELO, "").strip() != "1":
+        return montar_demo(caminho)
+    try:
+        cliente = criar_cliente()
+    except ModeloIndisponivel as erro:
+        logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
+        return montar_demo(caminho)
+
+    def gasto() -> float:
+        return float(getattr(cliente, "custo_total_usd", 0.0))
+
+    return montar_com_modelo(caminho, cliente=cliente, medidor_gasto=gasto)
