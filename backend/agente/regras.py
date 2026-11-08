@@ -643,6 +643,27 @@ def alem_do_teto(decisao: Decisao, limite: int) -> Decisao:
     )
 
 
+def fora_da_taxa_verde(decisao: Decisao, vagas: int, analisados: int) -> Decisao:
+    """Segura quem estava na faixa verde quando ela ficou cheia demais.
+
+    O agente fica mais seletivo sozinho, nunca menos que o mandato: mantém as `vagas` melhores
+    notas e registra os demais como descarte com a nota e o corte, para o RH reverter.
+    """
+    nota = decisao.entrada.get("nota")
+    nota_texto = f"nota {float(nota):.2f}" if nota is not None else "nota não informada"
+    return decisao.model_copy(
+        update={
+            "tipo": TipoDecisao.DESCARTAR,
+            "regra": "fora_da_taxa_verde",
+            "motivo": (
+                f"estava na faixa verde ({nota_texto}), mas a faixa ficou cheia demais para "
+                f"{analisados} analisados; o agente ficou com as {vagas} melhores notas "
+                "(empate decidido pelo id); o RH pode reverter"
+            ),
+        }
+    )
+
+
 def decisao_sem_analise(
     vaga: Vaga, candidato: Candidato, mandato: Mandato, agora: datetime, rastro_id: str
 ) -> Decisao:

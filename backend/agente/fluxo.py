@@ -73,6 +73,7 @@ from backend.agente.regras import (
     decisao_por_novos_requisitos,
     decisao_sem_analise,
     externo_sem_autorizacao,
+    fora_da_taxa_verde,
     parece_instrucao,
     pode_contatar,
     pode_contatar_pelo_publicado,
@@ -192,6 +193,7 @@ LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
 REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "alem_do_teto_do_mandato"})
+ETAPA_DECIDINDO = "decidindo"
 REGRA_REVERSAO = "reversao_humana"
 VALIDADE_DA_RESERVA = timedelta(minutes=5)
 """Por quanto tempo uma ação reservada segura as outras execuções, caso a primeira tenha caído."""
@@ -1790,6 +1792,7 @@ class FluxoVaga:
             for candidato in progresso.candidatos
             if candidato.id not in decididos
         ]
+        decisoes = self._conferir_taxa_verde(progresso, mandato, decisoes)
         limite = mandato.politica.max_indicacoes
         indicados = len(self._indicados())
         for decisao in sorted(decisoes, key=_ordem_de_decisao):
@@ -1800,20 +1803,56 @@ class FluxoVaga:
                 else:
                     indicados += 1
             self._registrar_decisao(decisao)
-        if not progresso.taxa_aceita and self._taxa_anomala(progresso, mandato):
-            raise _PausaNecessaria(MotivoPausa.TAXA_ANOMALA)
+        if self._mede_taxa(progresso, mandato) and not any(
+            decisao.regra in REGRAS_DA_FAIXA_VERDE for decisao in self._ultimas_decisoes().values()
+        ):
+            self._evento(
+                ETAPA_DECIDINDO,
+                f"faixa verde vazia em {len(progresso.analises)} analisados: "
+                "o agente amplia a busca dentro do mandato, sem pausar",
+            )
         self._avaliar_meta(progresso, mandato)
         return True
 
-    def _taxa_anomala(self, progresso: ProgressoFluxo, mandato: Mandato) -> bool:
-        """Faixa verde vazia ou cheia demais sugere problema na regra ou nos dados."""
+    def _mede_taxa(self, progresso: ProgressoFluxo, mandato: Mandato) -> bool:
+        return (
+            not progresso.taxa_aceita
+            and mandato.politica.limiar_verde is not None
+            and len(progresso.analises) >= MINIMO_PARA_MEDIR_TAXA
+        )
+
+    def _conferir_taxa_verde(
+        self, progresso: ProgressoFluxo, mandato: Mandato, decisoes: list[Decisao]
+    ) -> list[Decisao]:
+        """Faixa verde cheia demais: o agente fica mais seletivo sozinho, em vez de pausar.
+
+        Só aperta, nunca afrouxa o mandato. Fica com as melhores notas até `TAXA_VERDE_MAXIMA`
+        dos analisados; os demais viram descarte com regra própria, que o RH pode reverter.
+        A faixa vazia segue para a ampliação de busca em `_avaliar_meta`.
+        """
+        if not self._mede_taxa(progresso, mandato):
+            return decisoes
         analisados = len(progresso.analises)
-        if mandato.politica.limiar_verde is None or analisados < MINIMO_PARA_MEDIR_TAXA:
-            return False
-        verdes = sum(
+        vagas = int(TAXA_VERDE_MAXIMA * analisados + 1e-9)
+        ja_verdes = sum(
             decisao.regra in REGRAS_DA_FAIXA_VERDE for decisao in self._ultimas_decisoes().values()
         )
-        return verdes == 0 or verdes / analisados > TAXA_VERDE_MAXIMA
+        novos_verdes = sorted(
+            (d for d in decisoes if d.tipo == TipoDecisao.INDICAR), key=_ordem_de_decisao
+        )
+        if ja_verdes + len(novos_verdes) <= vagas:
+            return decisoes
+        restantes = max(0, vagas - ja_verdes)
+        cortados = {d.candidato_id for d in novos_verdes[restantes:]}
+        self._evento(
+            ETAPA_DECIDINDO,
+            f"faixa verde cheia demais ({ja_verdes + len(novos_verdes)} de {analisados}): "
+            f"o agente ficou mais seletivo e manteve as {vagas} melhores notas, sem pausar",
+        )
+        return [
+            fora_da_taxa_verde(d, vagas, analisados) if d.candidato_id in cortados else d
+            for d in decisoes
+        ]
 
     def _meta_efetiva(self, mandato: Mandato) -> int:
         return min(self.vaga.meta_candidatos, mandato.politica.max_indicacoes)
