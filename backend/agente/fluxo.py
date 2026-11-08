@@ -13,6 +13,7 @@ import contextvars
 import hashlib
 import logging
 import os
+import re
 import threading
 import uuid
 from collections import deque
@@ -356,6 +357,9 @@ class RegistroConvite(Contrato):
     estado: EstadoConvite = EstadoConvite.A_ENVIAR
     duvidas: list[DuvidaConvite] = Field(default_factory=list)
     retorno: RetornoEntrevista | None = None
+
+
+_USUARIO_LINKEDIN_VALIDO = re.compile(r"[A-Za-z0-9_%-]{1,100}")
 
 
 class ProgressoFluxo(Contrato):
@@ -887,7 +891,7 @@ class FluxoVaga:
             decisao = decisoes.get(candidato.id)
             situacao.append(
                 (
-                    candidato,
+                    self._para_exibicao(candidato, progresso),
                     None if decisao is None else decisao.tipo,
                     progresso.destinos.get(candidato.id),
                 )
@@ -1228,6 +1232,21 @@ class FluxoVaga:
         if candidato.opt_out or self._tem_opt_out(candidato):
             atual = atual.model_copy(update={"opt_out": True})
         return self._com_contato_envo(atual, progresso)
+
+    @classmethod
+    def _para_exibicao(cls, candidato: Candidato, progresso: ProgressoFluxo) -> Candidato:
+        """Só para a tela: o link do LinkedIn (nunca aberto pelo sistema) e o e-mail publicado."""
+        atual = cls._com_contato_envo(candidato, progresso)
+        extras: dict[str, str] = {}
+        usuario = str(atual.atributos.get("usuario_linkedin", "")).strip()
+        if _USUARIO_LINKEDIN_VALIDO.fullmatch(usuario):
+            extras["perfil_linkedin"] = f"https://www.linkedin.com/in/{usuario}/"
+        email = atual.atributos.get(EMAIL_PUBLICADO_ENVO)
+        if email:
+            extras["email_publicado"] = email
+        if not extras:
+            return atual
+        return atual.model_copy(update={"atributos": {**atual.atributos, **extras}})
 
     @staticmethod
     def _com_contato_envo(candidato: Candidato, progresso: ProgressoFluxo) -> Candidato:

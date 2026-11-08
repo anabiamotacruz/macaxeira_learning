@@ -246,3 +246,29 @@ def test_opt_out_nao_registra_autorizacao_e_continua_permanente(tmp_path):
     assert pecas.destino.entregues == {}
     outra = pecas.rodar(vaga_exemplo(id="v2"))
     assert _decisao(outra, "ext").regra == "funil:opt_out"
+
+
+def _situacao_de(fluxo: FluxoVaga, candidato_id: str):
+    return next(c for c, _, _ in fluxo.situacao_candidatos() if c.id == candidato_id)
+
+
+def test_situacao_traz_link_do_linkedin_e_email_publicado_da_envoapi(tmp_path):
+    pecas = Pecas(tmp_path, [externo(atributos={"python": "sim", "usuario_linkedin": "ana-souza"})])
+    fluxo = pecas.rodar()
+    fluxo._mudar(lambda p: p.contatos_envo.update({"ext": "ana@exemplo.invalid"}))
+
+    atributos = _situacao_de(fluxo, "ext").atributos
+
+    assert atributos["usuario_linkedin"] == "ana-souza"
+    assert atributos["perfil_linkedin"] == "https://www.linkedin.com/in/ana-souza/"
+    assert atributos["email_publicado"] == "ana@exemplo.invalid"
+
+
+def test_situacao_sem_contato_nao_inventa_campos_e_recusa_usuario_estranho(tmp_path):
+    pecas = Pecas(tmp_path, [externo(atributos={"python": "sim", "usuario_linkedin": "x/../y?z"})])
+    fluxo = pecas.rodar()
+
+    atributos = _situacao_de(fluxo, "ext").atributos
+
+    assert "perfil_linkedin" not in atributos
+    assert "email_publicado" not in atributos

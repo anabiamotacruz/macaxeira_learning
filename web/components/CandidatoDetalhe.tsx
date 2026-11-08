@@ -309,6 +309,8 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
   const nota100 = criterios.notaGeral !== undefined ? Math.round(criterios.notaGeral * 100) : undefined;
   const cargo = candidato.atributos.cargo ?? candidato.historico[0]?.cargo;
   const email = candidato.atributos.email;
+  const perfilLinkedin = candidato.atributos.perfil_linkedin;
+  const emailPublicado = candidato.atributos.email_publicado;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -356,6 +358,25 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
             </div>
             <a className="cora-btn cora-btn-outline h-10" href="#decisao-rh" onClick={() => setAba("visao")}>Registrar decisão do RH</a>
           </div>
+        </section>
+
+        <section aria-labelledby="sec-contato-publico" className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-cora-line-2 bg-cora-surface px-5 py-3 text-sm">
+          <h2 className="m-0 text-sm font-semibold" id="sec-contato-publico">Contato público</h2>
+          {perfilLinkedin || emailPublicado ? (
+            <>
+              {perfilLinkedin && (
+                <a className="font-medium text-cora-primary" href={perfilLinkedin} rel="noopener noreferrer" target="_blank">Ver perfil no LinkedIn</a>
+              )}
+              {emailPublicado && (
+                <span>
+                  <a className="font-medium text-cora-primary" href={`mailto:${emailPublicado}`}>{emailPublicado}</a>
+                  <span className="ml-2 text-xs text-cora-placeholder">publicado pela própria pessoa</span>
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-cora-muted">Sem contato público</span>
+          )}
         </section>
 
         <div aria-label="Seções da pessoa" className="flex gap-5 border-b border-cora-line" role="tablist">
