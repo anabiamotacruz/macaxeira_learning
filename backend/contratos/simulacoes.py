@@ -109,6 +109,9 @@ class BancoTalentosSimulado:
             raise KeyError(candidato_id)
         return perfis[candidato_id]
 
+    def obter(self, empresa_id: str, candidato_id: str) -> Candidato | None:
+        return self._da_empresa(empresa_id).get(candidato_id)
+
     def _apto(self, candidato: Candidato) -> bool:
         return (
             candidato.estado == EstadoBanco.ATIVO
