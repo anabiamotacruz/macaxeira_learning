@@ -84,9 +84,9 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Produz:** `propor_ajuste(vaga: Vaga, resultados: list[ResultadoNara]) -> PropostaAjuste | None`, `aplicar(proposta)` e `reverter(proposta)`.
 
-- [ ] Testar `test_detecta_criterio_com_reprovacao_repetida`.
-- [ ] Testar `test_nao_aplica_sem_aprovacao`, `test_permite_reverter` e `test_nao_propoe_criterio_sensivel`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_detecta_criterio_com_reprovacao_repetida`.
+- [x] Testar `test_nao_aplica_sem_aprovacao`, `test_permite_reverter` e `test_nao_propoe_criterio_sensivel`.
+- [x] Implementar e verificar.
 
 ### T1.8 [P] (onda 1): persistência e retomada
 
