@@ -806,7 +806,20 @@ def test_autorizacao_vencida_na_hora_do_convite_bloqueia_contato(tmp_path: Path)
     assert fluxo.estado is E.CONCLUIDA
 
 
-def test_excedentes_da_faixa_verde_ficam_nao_priorizados(tmp_path: Path) -> None:
+def test_faixa_verde_acima_da_meta_indica_todos(tmp_path: Path) -> None:
+    candidatos = [candidato_exemplo(c) for c in ("c1", "c2", "c3")]
+    notas = {"c1": 0.8, "c2": 0.9, "c3": 0.8}
+    m = Montagem(tmp_path, candidatos, analisador=AnalisadorComEvidencias(notas=notas))
+
+    _assinar_fluxo(m.fluxo(), max_indicacoes=10)
+
+    decisoes = {d.candidato_id: d for d in m.repo.listar_decisoes("empresa-a", "v1")}
+    assert all(d.tipo is TipoDecisao.INDICAR for d in decisoes.values())
+    assert all(d.regra != "nao_priorizado" for d in decisoes.values())
+    assert set(_convites_por_candidato(m)) == {"c1", "c2", "c3"}
+
+
+def test_acima_do_teto_explicito_descarta_com_regra_propria(tmp_path: Path) -> None:
     candidatos = [candidato_exemplo(c) for c in ("c1", "c2", "c3")]
     notas = {"c1": 0.8, "c2": 0.9, "c3": 0.8}
     m = Montagem(tmp_path, candidatos, analisador=AnalisadorComEvidencias(notas=notas))
@@ -816,8 +829,9 @@ def test_excedentes_da_faixa_verde_ficam_nao_priorizados(tmp_path: Path) -> None
     decisoes = {d.candidato_id: d for d in m.repo.listar_decisoes("empresa-a", "v1")}
     assert decisoes["c2"].tipo is TipoDecisao.INDICAR
     assert decisoes["c1"].tipo is TipoDecisao.INDICAR
-    assert decisoes["c3"].tipo is TipoDecisao.PEDIR_HUMANO
-    assert decisoes["c3"].regra == "nao_priorizado"
+    assert decisoes["c3"].tipo is TipoDecisao.DESCARTAR
+    assert decisoes["c3"].regra == "alem_do_teto_do_mandato"
+    assert "faixa verde" in decisoes["c3"].motivo and "2" in decisoes["c3"].motivo
     assert set(_convites_por_candidato(m)) == {"c1", "c2"}
 
 

@@ -44,7 +44,7 @@ const ESTADOS: Record<string, string> = {
 const ATIVOS = new Set(["buscando", "analisando", "revisando", "decidindo"]);
 
 const MOTIVOS: Record<string, string> = {
-  nao_priorizado: "Passou do limite de indicações do mandato",
+  alem_do_teto_do_mandato: "Passou do teto de segurança de indicações do mandato",
   perfil_desatualizado: "Perfil desatualizado: confirmar os dados com a pessoa",
   alerta: "Perfil com texto suspeito (instrução escondida)",
   requisito_sem_dado: "Falta informação sobre um requisito eliminatório",
@@ -109,7 +109,7 @@ function Secao({ numero, titulo, children, simulado = false }: {
 function FormMandato({ vaga, aoAssinar }: { vaga: Vaga; aoAssinar: () => void }) {
   const [assinante, setAssinante] = useState("Pessoa do RH (fictícia)");
   const [limiar, setLimiar] = useState("0.7");
-  const [maxIndicacoes, setMaxIndicacoes] = useState(String(vaga.meta_candidatos));
+  const [maxIndicacoes, setMaxIndicacoes] = useState(String(Math.min(50, Math.max(20, 10 * vaga.meta_candidatos))));
   const [declarada, setDeclarada] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
@@ -153,7 +153,7 @@ function FormMandato({ vaga, aoAssinar }: { vaga: Vaga; aoAssinar: () => void })
         <label className="grid gap-1 text-sm text-[#526c68]">Quem assina
           <input className={campo} onChange={(e) => setAssinante(e.target.value)} value={assinante} />
         </label>
-        <label className="grid gap-1 text-sm text-[#526c68]">Indicações sem revisão humana (no máximo)
+        <label className="grid gap-1 text-sm text-[#526c68]">Teto de segurança de indicações (não é a meta)
           <input className={campo} inputMode="numeric" onChange={(e) => setMaxIndicacoes(e.target.value)} value={maxIndicacoes} />
         </label>
         <label className="grid gap-1 text-sm text-[#526c68]">Nota mínima para indicar sozinho (0 a 1)

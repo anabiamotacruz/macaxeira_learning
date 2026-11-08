@@ -62,6 +62,7 @@ from backend.agente.regras import (
     CorteFunil,
     StatusRequisito,
     TipoEvidencia,
+    alem_do_teto,
     autorizacao_ativa,
     avaliar_requisitos,
     classificar_evidencia,
@@ -72,7 +73,6 @@ from backend.agente.regras import (
     decisao_por_novos_requisitos,
     decisao_sem_analise,
     externo_sem_autorizacao,
-    nao_priorizada,
     parece_instrucao,
     pode_contatar,
     pode_contatar_pelo_publicado,
@@ -191,7 +191,7 @@ CONSULTA_TODO_O_BANCO = ""
 LIMITE_INVALIDAS_SEGUIDAS = 3
 MINIMO_PARA_MEDIR_TAXA = 10
 TAXA_VERDE_MAXIMA = 0.8
-REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "nao_priorizado"})
+REGRAS_DA_FAIXA_VERDE = frozenset({"faixa_verde_v1", "alem_do_teto_do_mandato"})
 REGRA_REVERSAO = "reversao_humana"
 VALIDADE_DA_RESERVA = timedelta(minutes=5)
 """Por quanto tempo uma ação reservada segura as outras execuções, caso a primeira tenha caído."""
@@ -1796,7 +1796,7 @@ class FluxoVaga:
             self._conferir_execucao()
             if decisao.tipo == TipoDecisao.INDICAR:
                 if indicados >= limite:
-                    decisao = nao_priorizada(decisao, limite)
+                    decisao = alem_do_teto(decisao, limite)
                 else:
                     indicados += 1
             self._registrar_decisao(decisao)

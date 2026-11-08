@@ -30,17 +30,29 @@ def vaga(cliente) -> str:
 
 
 def _na_fila(cliente, vaga, motivo_contem: str) -> str:
+    """Devolve uma pessoa na fila humana; quem passou do teto entra nela pela reversão do RH."""
     itens = cliente.get(f"/vagas/{vaga}/candidatos?limite=100", headers=SESSAO).json()["itens"]
     for item in itens:
-        if item["decisao"] != "pedir_humano":
-            continue
         candidato_id = item["candidato"]["id"]
         decisao = cliente.get(
             f"/candidatos/{candidato_id}/decisao?vaga_id={vaga}", headers=SESSAO
         ).json()["decisao"]
-        if motivo_contem in decisao["motivo"]:
-            return candidato_id
-    raise AssertionError(f"ninguém na fila com {motivo_contem!r}")
+        if motivo_contem not in decisao["motivo"]:
+            continue
+        if item["decisao"] != "pedir_humano":
+            revertida = cliente.post(
+                f"/candidatos/{candidato_id}/reverter",
+                headers=SESSAO,
+                json={
+                    "vaga_id": vaga,
+                    "motivo": "Quero rever.",
+                    "responsavel": PESSOA_RH,
+                    "chave_idempotencia": f"rev-{candidato_id}",
+                },
+            )
+            assert revertida.status_code == 200, revertida.text
+        return candidato_id
+    raise AssertionError(f"ninguém com {motivo_contem!r}")
 
 
 def _revisar(cliente, vaga, candidato_id, decisao, chave="r1", responsavel=PESSOA_RH):
@@ -57,8 +69,8 @@ def _revisar(cliente, vaga, candidato_id, decisao, chave="r1", responsavel=PESSO
     )
 
 
-def test_rh_indica_quem_passou_do_limite_e_o_agente_convida(cliente, vaga):
-    candidato_id = _na_fila(cliente, vaga, "limite")
+def test_rh_indica_quem_passou_do_teto_e_o_agente_convida(cliente, vaga):
+    candidato_id = _na_fila(cliente, vaga, "teto de segurança")
 
     resposta = _revisar(cliente, vaga, candidato_id, "indicar")
 
@@ -71,7 +83,7 @@ def test_rh_indica_quem_passou_do_limite_e_o_agente_convida(cliente, vaga):
 
 
 def test_rh_descarta_e_ninguem_e_contatado(cliente, vaga):
-    candidato_id = _na_fila(cliente, vaga, "limite")
+    candidato_id = _na_fila(cliente, vaga, "teto de segurança")
 
     resposta = _revisar(cliente, vaga, candidato_id, "descartar")
 
@@ -93,7 +105,7 @@ def test_quem_nao_esta_na_fila_nao_pode_ser_revisado(cliente, vaga):
 
 
 def test_revisao_exige_uma_pessoa_responsavel(cliente, vaga):
-    candidato_id = _na_fila(cliente, vaga, "limite")
+    candidato_id = _na_fila(cliente, vaga, "teto de segurança")
 
     resposta = _revisar(cliente, vaga, candidato_id, "indicar", responsavel="agente automático")
 
@@ -101,7 +113,7 @@ def test_revisao_exige_uma_pessoa_responsavel(cliente, vaga):
 
 
 def test_revisao_repetida_com_a_mesma_chave_nao_duplica(cliente, vaga):
-    candidato_id = _na_fila(cliente, vaga, "limite")
+    candidato_id = _na_fila(cliente, vaga, "teto de segurança")
 
     primeira = _revisar(cliente, vaga, candidato_id, "indicar", chave="igual")
     segunda = _revisar(cliente, vaga, candidato_id, "indicar", chave="igual")
@@ -110,7 +122,7 @@ def test_revisao_repetida_com_a_mesma_chave_nao_duplica(cliente, vaga):
 
 
 def test_revisao_so_aceita_indicar_ou_descartar(cliente, vaga):
-    candidato_id = _na_fila(cliente, vaga, "limite")
+    candidato_id = _na_fila(cliente, vaga, "teto de segurança")
 
     resposta = _revisar(cliente, vaga, candidato_id, "pedir_humano")
 
