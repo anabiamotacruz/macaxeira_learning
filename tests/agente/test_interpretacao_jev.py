@@ -146,7 +146,7 @@ def test_montagem_usa_o_jev_quando_ha_chave(tmp_path) -> None:
 
     criados: list[str] = []
 
-    def criar_jev(chave: str) -> DecisorJev:
+    def criar_jev(chave: str, **_) -> DecisorJev:
         criados.append(chave)
         decisor, _ = _jev()
         return decisor
@@ -160,6 +160,59 @@ def test_montagem_usa_o_jev_quando_ha_chave(tmp_path) -> None:
 @pytest.mark.skipif(not os.environ.get(CHAVE_JEV, "").strip(), reason=f"precisa de {CHAVE_JEV}")
 def test_jev_real_nas_mensagens_sinteticas() -> None:
     decisor = DecisorJev()
+
+    resultado = avaliar(lambda texto: interpretar_com_jev(texto, decisor))
+
+    assert resultado["perigosos"] == []
+    assert resultado["precisao"] >= 0.9
+
+
+def test_com_modelo_ligado_o_classificador_da_featherless_decide(tmp_path) -> None:
+    from backend.agente.interpretacao import (
+        MODELO_CLASSIFICADOR_PADRAO,
+        URL_CLASSIFICADOR_FEATHERLESS,
+    )
+    from backend.agente.montagem import COM_MODELO, montar_servico
+    from backend.contratos.simulacoes import ClienteModeloSimulado
+
+    pedidos: list[dict] = []
+
+    def criar_jev(chave: str, **opcoes) -> DecisorJev:
+        pedidos.append({"chave": chave, **opcoes})
+        decisor, _ = _jev()
+        return decisor
+
+    montar_servico(
+        tmp_path / "a.db",
+        ambiente={COM_MODELO: "1", "FEATHERLESS_API_KEY": CHAVE},
+        criar_cliente=lambda modelo=None: ClienteModeloSimulado(),
+        criar_jev=criar_jev,
+    )
+
+    assert pedidos == [
+        {
+            "chave": CHAVE,
+            "url": URL_CLASSIFICADOR_FEATHERLESS,
+            "modelo": MODELO_CLASSIFICADOR_PADRAO,
+        }
+    ]
+
+
+@pytest.mark.eval
+@pytest.mark.skipif(
+    not os.environ.get("FEATHERLESS_API_KEY", "").strip(), reason="precisa de FEATHERLESS_API_KEY"
+)
+def test_classificador_da_featherless_nas_mensagens_sinteticas() -> None:
+    from backend.agente.interpretacao import (
+        MODELO_CLASSIFICADOR_PADRAO,
+        URL_CLASSIFICADOR_FEATHERLESS,
+    )
+
+    decisor = DecisorJev(
+        os.environ["FEATHERLESS_API_KEY"],
+        url=URL_CLASSIFICADOR_FEATHERLESS,
+        modelo=os.environ.get("MODELO_CLASSIFICADOR", "").strip() or MODELO_CLASSIFICADOR_PADRAO,
+    )
 
     resultado = avaliar(lambda texto: interpretar_com_jev(texto, decisor))
 

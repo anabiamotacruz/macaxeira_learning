@@ -26,7 +26,9 @@ from backend.agente.configuracao import PerguntaVaga, propor_configuracao
 from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
 from backend.agente.interpretacao import (
     CHAVE_JEV,
+    MODELO_CLASSIFICADOR_PADRAO,
     MODELO_INTERPRETACAO_PADRAO,
+    URL_CLASSIFICADOR_FEATHERLESS,
     DecisorJev,
     interpretar_com_jev,
     interpretar_com_modelo,
@@ -504,7 +506,7 @@ def montar_servico(
     ambiente: Mapping[str, str] | None = None,
     criar_cliente: Callable[..., ClienteModelo] = ClienteFeatherless,
     criar_busca: Callable[[Mapping[str, str]], FonteExtra] = busca_real,
-    criar_jev: Callable[[str], DecisorJev] = DecisorJev,
+    criar_jev: Callable[..., DecisorJev] = DecisorJev,
 ) -> ServicoVagas:
     """Escolhe a montagem pelo ambiente. Sem opt-in ou sem chave, fica a demonstração sem modelo."""
     ambiente = os.environ if ambiente is None else ambiente
@@ -521,6 +523,7 @@ def montar_servico(
         return montar_demo(caminho, destino=destino, fonte_extra=extra, interpretador=jev)
 
     interpretacao = _cliente_de_interpretacao(criar_cliente, ambiente, cliente)
+    decisor = jev or _interpretador_classificador(ambiente, criar_jev)
 
     def gasto() -> float:
         clientes = {id(c): c for c in (cliente, interpretacao)}.values()
@@ -533,12 +536,31 @@ def montar_servico(
         destino=destino,
         fonte_extra=extra,
         cliente_interpretacao=interpretacao,
-        interpretador=jev,
+        interpretador=decisor,
     )
 
 
+MODELO_CLASSIFICADOR = "MODELO_CLASSIFICADOR"
+
+
+def _interpretador_classificador(
+    ambiente: Mapping[str, str], criar_jev: Callable[..., DecisorJev]
+) -> Callable[[str], TipoResposta | str | None] | None:
+    """Com o modelo ligado, o classificador da Featherless decide a intenção: sem gerar texto."""
+    chave = ambiente.get("FEATHERLESS_API_KEY", "").strip()
+    if not chave:
+        return None
+    modelo = ambiente.get(MODELO_CLASSIFICADOR, "").strip() or MODELO_CLASSIFICADOR_PADRAO
+    try:
+        decisor = criar_jev(chave, url=URL_CLASSIFICADOR_FEATHERLESS, modelo=modelo)
+    except ModeloIndisponivel as erro:
+        logger.warning("classificador indisponível, a interpretação usa o modelo: %s", erro)
+        return None
+    return lambda texto: interpretar_com_jev(texto, decisor)
+
+
 def _interpretador_jev(
-    ambiente: Mapping[str, str], criar_jev: Callable[[str], DecisorJev]
+    ambiente: Mapping[str, str], criar_jev: Callable[..., DecisorJev]
 ) -> Callable[[str], TipoResposta | str | None] | None:
     """Com a chave da TypeSafe, o Jev decide a intenção onde as regras não decidem."""
     chave = ambiente.get(CHAVE_JEV, "").strip()

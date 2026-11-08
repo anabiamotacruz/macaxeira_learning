@@ -124,11 +124,16 @@ def interpretar_com_modelo(texto: str, cliente: ClienteModelo) -> TipoResposta |
     return _DA_INTENCAO.get(intencao)
 
 
-# ---------- Jev (TypeSafe AI): decisão tipada com probabilidade, sem gerar texto ----------
+# ---------- Jev: decisão tipada com probabilidade, sem gerar texto ----------
+# Serve à API da TypeSafe e ao Simple Jev da Featherless, que segue o mesmo formato e lê a
+# probabilidade de cada rótulo direto do modelo, sem gerar texto.
 
 URL_JEV = "https://api.typesafe.ai/v1/systemone"
 MODELO_JEV_PADRAO = "jev-latest"
 CHAVE_JEV = "TYPESAFE_API_KEY"
+URL_CLASSIFICADOR_FEATHERLESS = "https://api.featherless.ai/v1/classifier"
+MODELO_CLASSIFICADOR_PADRAO = "featherless-ai/Qwen3.5-4B-classifier"
+"""US$ 0,03 por milhão de tokens de entrada e nada na saída, em 8/11/2026."""
 LIMIAR_JEV = 0.8
 """Abaixo desta confiança, a mensagem continua dúvida e vai para uma pessoa."""
 TEMPO_LIMITE_JEV_S = 10.0
@@ -152,7 +157,10 @@ class DecisaoJev(BaseModel):
 
 
 class DecisorJev:
-    """Chama o Jev pela API da TypeSafe. A chave vem do ambiente e nunca vai a log."""
+    """Chama uma API no formato Jev: a TypeSafe ou o classificador da Featherless.
+
+    A chave vem do ambiente e nunca vai a log.
+    """
 
     def __init__(
         self,

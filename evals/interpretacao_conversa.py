@@ -5,6 +5,7 @@ Uso, a partir da raiz do repositório:
     python -m evals.interpretacao_conversa             # só regras, sem custo
     python -m evals.interpretacao_conversa --modelo    # regras + modelo (precisa da chave)
     python -m evals.interpretacao_conversa --jev       # regras + Jev (precisa de TYPESAFE_API_KEY)
+    python -m evals.interpretacao_conversa --classificador  # regras + classificador Featherless
 
 O modelo é `MODELO_INTERPRETACAO` ou, sem ela, o padrão de `backend.agente.interpretacao`.
 Nenhuma mensagem é de pessoa real.
@@ -22,8 +23,10 @@ from pathlib import Path
 
 from backend.agente.interpretacao import (
     CHAVE_JEV,
+    MODELO_CLASSIFICADOR_PADRAO,
     MODELO_INTERPRETACAO_PADRAO,
     NAO_AGORA,
+    URL_CLASSIFICADOR_FEATHERLESS,
     DecisorJev,
     interpretar_com_jev,
     interpretar_com_modelo,
@@ -103,11 +106,18 @@ def main() -> None:
     argumentos.add_argument(
         "--jev", action="store_true", help="usa o Jev (TypeSafe) onde as regras não decidem"
     )
+    argumentos.add_argument(
+        "--classificador",
+        action="store_true",
+        help="usa o classificador da Featherless (Simple Jev) onde as regras não decidem",
+    )
     opcoes = argumentos.parse_args()
 
     _imprimir("só regras", avaliar(interpretar_mensagem))
     if opcoes.jev:
         _rodar_jev()
+    if opcoes.classificador:
+        _rodar_classificador()
     if not opcoes.modelo:
         return
     if not os.environ.get("FEATHERLESS_API_KEY", "").strip():
@@ -121,6 +131,19 @@ def main() -> None:
     resultado["custo_usd"] = round(cliente.custo_total_usd, 6)
     resultado["modelo"] = modelo
     _imprimir(f"regras + modelo ({modelo})", resultado)
+
+
+def _rodar_classificador() -> None:
+    chave = os.environ.get("FEATHERLESS_API_KEY", "").strip()
+    if not chave:
+        print("Sem FEATHERLESS_API_KEY no ambiente: a rodada com o classificador não foi feita.")
+        return
+    modelo = os.environ.get("MODELO_CLASSIFICADOR", "").strip() or MODELO_CLASSIFICADOR_PADRAO
+    decisor = DecisorJev(chave, url=URL_CLASSIFICADOR_FEATHERLESS, modelo=modelo)
+    resultado = avaliar(lambda texto: interpretar_com_jev(texto, decisor))
+    resultado["chamadas"] = decisor.chamadas
+    resultado["modelo"] = f"{modelo} ({decisor.tokens_entrada} tokens de entrada)"
+    _imprimir("regras + classificador da Featherless", resultado)
 
 
 def _rodar_jev() -> None:
