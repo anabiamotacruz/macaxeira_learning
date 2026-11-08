@@ -627,6 +627,38 @@ def decidir(
     )
 
 
+REGRA_POTENCIAL = "faixa_potencial_v1"
+REGRA_ABAIXO_DO_LIMIAR = "abaixo_do_limiar"
+
+
+def na_faixa_potencial(decisao: Decisao, meta: int, agora: datetime) -> Decisao:
+    """Indica quem ficou abaixo do limiar, mas acima do piso, para completar a meta.
+
+    Só recebe descarte `abaixo_do_limiar`: requisito eliminatório reprovado, falta de autorização
+    e nota abaixo do piso nunca chegam aqui. Quem chama confere a evidência, como no `indicar`.
+    """
+    if decisao.regra != REGRA_ABAIXO_DO_LIMIAR:
+        raise ValueError("só descarte abaixo do limiar entra na faixa de potencial")
+    nota = float(decisao.entrada["nota"])
+    limiar = decisao.entrada.get("limiar_verde", "?")
+    piso = decisao.entrada.get("piso_nota", "?")
+    motivo = (
+        f"potencial: nota {nota:.2f}, abaixo do limiar {limiar} e acima do piso {piso}; a faixa "
+        f"verde não chegou à meta de {meta}, e o agente completou com as maiores notas abaixo "
+        "dele, sem requisito eliminatório reprovado; o RH pode reverter"
+    )
+    return decisao.model_copy(
+        update={
+            "tipo": TipoDecisao.INDICAR,
+            "regra": REGRA_POTENCIAL,
+            "motivo": motivo,
+            "entrada": {**decisao.entrada, "faixa": "potencial", "meta": str(meta)},
+            "evidencias": [*decisao.evidencias, evidencia_da_regra(REGRA_POTENCIAL, motivo)],
+            "momento": agora,
+        }
+    )
+
+
 def alem_do_teto(decisao: Decisao, limite: int) -> Decisao:
     """Segura quem estava na faixa verde além do teto de segurança do mandato.
 
