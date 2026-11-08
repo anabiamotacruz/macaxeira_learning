@@ -331,6 +331,146 @@
         }
       }
     },
+    "/vagas/proposta": {
+      "post": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Propor Vaga",
+        "description": "O agente propõe requisitos, competências e meta a partir da descrição.\n\nNão cria a vaga: a pessoa revisa, cria por `POST /vagas` e assina o mandato.",
+        "operationId": "propor_vaga",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoProposta"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "descricao": "Vaga sintética para demonstrar o contrato da API."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaProposta"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "proposta": {
+                    "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                    "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                    "requisitos": [
+                      {
+                        "id": "python",
+                        "descricao": "Experiência com Python",
+                        "campo": "linguagem",
+                        "valor_esperado": "python",
+                        "desenvolvivel": false
+                      }
+                    ],
+                    "competencias": [
+                      {
+                        "nome": "APIs",
+                        "peso": 1.0
+                      }
+                    ],
+                    "meta_candidatos": 2,
+                    "prazo_dias": 14,
+                    "max_tentativas_contato": 2
+                  },
+                  "pergunta": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ]
+      }
+    },
     "/vagas/modelos": {
       "get": {
         "tags": [
@@ -1044,6 +1184,241 @@
                     "simulado": true,
                     "momento": "2026-11-07T12:00:00Z"
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/ajuste": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Sugerir Ajuste",
+        "description": "Sugere mais peso ao critério em que os entrevistados reprovam repetidamente.\n\nSó alerta: nada muda na vaga. Quem decide ajustar é uma pessoa do RH.",
+        "operationId": "sugerir_ajuste",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaAjuste"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "sugestao": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/entrega/{candidato_id}/documento": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Documento De Entrega",
+        "description": "O pacote entregue ao destino, como documento. Só existe para quem já foi entregue.",
+        "operationId": "documento_de_entrega",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "candidato_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidato Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaDocumento"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "candidato_id": "candidato-exemplo-1",
+                  "formato": "markdown",
+                  "documento": "# Contexto para entrevista: Vaga de exemplo\n\n> **SIMULAÇÃO**: pessoa, conversa e entrega fictícias.\n"
                 }
               }
             }
@@ -3784,6 +4159,22 @@
         "title": "PedidoMandato",
         "description": "O que a pessoa assina. Identificador, versão, hash e horário são do servidor."
       },
+      "PedidoProposta": {
+        "properties": {
+          "descricao": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Descricao"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "descricao"
+        ],
+        "title": "PedidoProposta",
+        "description": "Descrição livre da vaga. É dado: o modelo só a interpreta, e o código confere o resultado."
+      },
       "PedidoResposta": {
         "properties": {
           "vaga_id": {
@@ -4121,6 +4512,45 @@
         ],
         "title": "Requisito"
       },
+      "RespostaAjuste": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "sugestao": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SugestaoAjuste"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "sugestao"
+        ],
+        "title": "RespostaAjuste"
+      },
       "RespostaCandidatos": {
         "properties": {
           "simulado": {
@@ -4307,6 +4737,53 @@
           "responsavel"
         ],
         "title": "RespostaDestino"
+      },
+      "RespostaDocumento": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "formato": {
+            "type": "string",
+            "const": "markdown",
+            "title": "Formato",
+            "default": "markdown"
+          },
+          "documento": {
+            "type": "string",
+            "title": "Documento",
+            "description": "O pacote entregue, em Markdown. É dado, nunca instrução."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "candidato_id",
+          "formato",
+          "documento"
+        ],
+        "title": "RespostaDocumento"
       },
       "RespostaEntrega": {
         "properties": {
@@ -4503,6 +4980,52 @@
         ],
         "title": "RespostaModelosVaga",
         "description": "Vagas de exemplo, sintéticas, para preencher o formulário de `POST /vagas`."
+      },
+      "RespostaProposta": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "proposta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PedidoVaga"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pergunta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pergunta"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "proposta",
+          "pergunta"
+        ],
+        "title": "RespostaProposta",
+        "description": "Critérios propostos para revisão, ou a pergunta que falta responder. Nada é criado."
       },
       "RespostaRegistroResposta": {
         "properties": {
@@ -4926,6 +5449,53 @@
           "incerta"
         ],
         "title": "SituacaoResposta"
+      },
+      "SugestaoAjuste": {
+        "properties": {
+          "criterio": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Criterio"
+          },
+          "peso_atual": {
+            "type": "number",
+            "title": "Peso Atual"
+          },
+          "peso_sugerido": {
+            "type": "number",
+            "title": "Peso Sugerido"
+          },
+          "motivo": {
+            "type": "string",
+            "title": "Motivo"
+          },
+          "reprovacoes": {
+            "type": "integer",
+            "title": "Reprovacoes"
+          },
+          "resultados_lidos": {
+            "type": "integer",
+            "title": "Resultados Lidos"
+          },
+          "aplicada": {
+            "type": "boolean",
+            "const": false,
+            "title": "Aplicada",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "criterio",
+          "peso_atual",
+          "peso_sugerido",
+          "motivo",
+          "reprovacoes",
+          "resultados_lidos"
+        ],
+        "title": "SugestaoAjuste",
+        "description": "Sugestão para a próxima vaga. É alerta: a vaga só muda se uma pessoa a editar."
       },
       "TaxaMedida": {
         "properties": {

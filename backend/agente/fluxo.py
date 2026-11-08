@@ -1716,14 +1716,19 @@ class FluxoVaga:
         progresso.analises[analise.candidato_id] = analise
         progresso.invalidas_seguidas = 0
 
-        def gravar(atual: ProgressoFluxo) -> None:
+        def gravar(atual: ProgressoFluxo) -> int | None:
+            nova = analise.candidato_id not in atual.analises
             atual.analises[analise.candidato_id] = analise
             atual.invalidas_seguidas = 0
             if revisada:
                 atual.revisadas.append(analise.candidato_id)
+            return len(atual.analises) if nova else None
 
-        self._mudar(gravar)
+        total = self._mudar(gravar)
         self._concluir_candidato(indice)
+        if total is not None:
+            texto = f"análise e revisão concluídas ({total} até agora)"
+            self._evento("analise", texto, analise.candidato_id)
 
     def _exigir_coerencia(self, analise: Analise, candidato: Candidato) -> None:
         esperado = (self.vaga.empresa_id, self.vaga.id, candidato.id)

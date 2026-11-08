@@ -397,3 +397,88 @@ def test_falha_do_modelo_fica_no_rastro():
 
     registros = RASTRO_LOCAL.listar("empresa-a", _id_da_vaga("empresa-a", DESCRICAO), None)
     assert [registro.erro_tipo for registro in registros] == ["ModeloIndisponivel"]
+
+
+CAMPOS_DO_BANCO = {"presencial_sp": ["sim"], "producao": ["nao", "sim"]}
+
+
+def _com_requisitos(*requisitos: dict) -> ClienteModeloSimulado:
+    return _cliente(requisitos=list(requisitos))
+
+
+def test_campos_do_banco_vao_no_pedido_ao_modelo():
+    cliente = _com_requisitos(
+        {
+            "id": "r1",
+            "descricao": "Presencial em SP",
+            "campo": "presencial_sp",
+            "valor_esperado": "sim",
+        }
+    )
+
+    propor_configuracao(DESCRICAO, "empresa-a", cliente, campos_do_banco=CAMPOS_DO_BANCO)
+
+    pedido = cliente.chamadas[-1]["usuario"]
+    assert "presencial_sp" in pedido
+    assert "producao" in pedido
+
+
+def test_requisito_com_campo_do_banco_vira_vaga():
+    cliente = _com_requisitos(
+        {
+            "id": "r1",
+            "descricao": "Presencial em SP",
+            "campo": "presencial_sp",
+            "valor_esperado": "Sim",
+        }
+    )
+
+    vaga = propor_configuracao(DESCRICAO, "empresa-a", cliente, campos_do_banco=CAMPOS_DO_BANCO)
+
+    assert isinstance(vaga, Vaga)
+    assert vaga.requisitos[0].campo == "presencial_sp"
+
+
+def test_requisito_com_campo_que_o_banco_nao_tem_vira_pergunta():
+    cliente = _com_requisitos(
+        {
+            "id": "r1",
+            "descricao": "Trabalho presencial",
+            "campo": "modalidade",
+            "valor_esperado": "Presencial",
+        }
+    )
+
+    resultado = propor_configuracao(
+        DESCRICAO, "empresa-a", cliente, campos_do_banco=CAMPOS_DO_BANCO
+    )
+
+    assert isinstance(resultado, PerguntaVaga)
+    assert "modalidade" in resultado.pergunta
+    assert "presencial_sp" in resultado.pergunta
+
+
+def test_valor_fora_dos_valores_do_banco_vira_pergunta():
+    cliente = _com_requisitos(
+        {"id": "r1", "descricao": "Produção", "campo": "producao", "valor_esperado": "talvez"}
+    )
+
+    resultado = propor_configuracao(
+        DESCRICAO, "empresa-a", cliente, campos_do_banco=CAMPOS_DO_BANCO
+    )
+
+    assert isinstance(resultado, PerguntaVaga)
+    assert "producao" in resultado.pergunta
+
+
+def test_sem_campos_do_banco_a_proposta_segue_como_antes():
+    cliente = _com_requisitos(
+        {
+            "id": "r1",
+            "descricao": "Trabalho presencial",
+            "campo": "modalidade",
+            "valor_esperado": "Presencial",
+        }
+    )
+
+    assert isinstance(propor_configuracao(DESCRICAO, "empresa-a", cliente), Vaga)
