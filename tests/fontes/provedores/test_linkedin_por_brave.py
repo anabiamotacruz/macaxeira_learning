@@ -375,13 +375,19 @@ def nomes(ambiente):
     ("ambiente", "esperado"),
     [
         ({"BRAVE_API_KEY": CHAVE_BRAVE}, ["brave"]),
-        ({"BRAVE_API_KEY": CHAVE_BRAVE, "ENVO_API_KEY": CHAVE_ENVO}, [NOME, "brave"]),
+        (
+            {"BRAVE_API_KEY": CHAVE_BRAVE, "ENVO_API_KEY": CHAVE_ENVO},
+            ["envoapi_busca", NOME, "brave"],
+        ),
         (
             {"BRAVE_API_KEY": CHAVE_BRAVE, "LINK_API_KEY": CHAVE_LINK_1},
             [NOME, "linkdapi#1", "brave"],
         ),
-        ({"ENVO_API_KEY": CHAVE_ENVO, "LINK_API_KEY": CHAVE_LINK_1}, ["linkdapi#1"]),
-        ({"ENVO_API_KEY": CHAVE_ENVO}, []),
+        (
+            {"ENVO_API_KEY": CHAVE_ENVO, "LINK_API_KEY": CHAVE_LINK_1},
+            ["envoapi_busca", "linkdapi#1"],
+        ),
+        ({"ENVO_API_KEY": CHAVE_ENVO}, ["envoapi_busca"]),
     ],
 )
 def test_ordem_da_cadeia_com_e_sem_as_chaves(ambiente, esperado):
@@ -397,7 +403,7 @@ def test_a_envoapi_vem_antes_das_chaves_da_linkdapi_no_extrator():
             "LINK_API_KEY_2": CHAVE_LINK_2,
         }
     )
-    provedor = fonte.cadeia.provedores[0]
+    provedor = fonte.cadeia.provedores[1]
     assert [e.nome for e in provedor.extratores] == ["envoapi", "linkdapi#1", "linkdapi#2"]
 
 
@@ -409,7 +415,7 @@ def test_perfis_por_pagina_vem_do_ambiente():
             "LINKEDIN_PERFIS_POR_PAGINA": "4",
         }
     )
-    assert fonte.cadeia.provedores[0].custo_maximo(POR_TEXTO) == pytest.approx(0.005 + 0.04)
+    assert fonte.cadeia.provedores[1].custo_maximo(POR_TEXTO) == pytest.approx(0.005 + 0.04)
 
 
 def test_teto_que_nao_cabe_no_orcamento_e_reduzido_e_o_estado_avisa():
@@ -420,7 +426,7 @@ def test_teto_que_nao_cabe_no_orcamento_e_reduzido_e_o_estado_avisa():
             "PROVEDORES_ORCAMENTO_EXECUCAO_USD": "0.05",
         }
     )
-    provedor = fonte.cadeia.provedores[0]
+    provedor = fonte.cadeia.provedores[1]
     assert provedor.nome == NOME
     assert provedor.custo_maximo(POR_TEXTO) <= 0.05
     assert provedor.custo_maximo(POR_TEXTO) == pytest.approx(0.005 + 4 * 0.01)
@@ -435,7 +441,7 @@ def test_sem_orcamento_nem_para_um_perfil_o_provedor_fica_fora_e_avisa():
             "PROVEDORES_ORCAMENTO_EXECUCAO_USD": "0.01",
         }
     )
-    assert nomes_cadeia == ["brave"]
+    assert nomes_cadeia == ["envoapi_busca", "brave"]
     assert any(NOME in aviso for aviso in fonte.estado().avisos)
 
 
