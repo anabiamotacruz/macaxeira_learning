@@ -29,9 +29,15 @@ info() { printf '\033[1;32m›\033[0m %s\n' "$*"; }
 aviso() { printf '\033[1;33m!\033[0m %s\n' "$*"; }
 
 PIDS=()
+matar_arvore() {  # o processo e todos os filhos (pnpm → next → node)
+  local filho
+  for filho in $(pgrep -P "$1" 2>/dev/null); do matar_arvore "$filho"; done
+  kill "$1" 2>/dev/null || true
+}
 encerrar() {
+  trap - EXIT INT TERM
   info "Encerrando a API e o painel…"
-  for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for pid in "${PIDS[@]}"; do matar_arvore "$pid"; done
   wait 2>/dev/null || true
 }
 trap encerrar EXIT INT TERM
