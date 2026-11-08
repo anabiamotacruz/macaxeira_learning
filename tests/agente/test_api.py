@@ -132,6 +132,7 @@ def test_expoe_exatamente_as_rotas_combinadas():
         ("get", "/vagas/{id}/eventos"),
         ("get", "/vagas/{id}/entrega"),
         ("get", "/vagas/{id}/convites"),
+        ("post", "/vagas/{id}/retornos"),
         ("get", "/vagas/{id}/resumo"),
         ("get", "/vagas/{id}/metricas"),
         ("get", "/candidatos/{id}/decisao"),

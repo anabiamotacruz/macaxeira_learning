@@ -1165,7 +1165,8 @@
                       "simulado": true,
                       "estado": "aguardando",
                       "tentativa": 1,
-                      "duvidas": []
+                      "duvidas": [],
+                      "retorno": null
                     }
                   ]
                 }
@@ -1197,6 +1198,163 @@
                   "erro": {
                     "codigo": "nao_encontrado",
                     "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/retornos": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Acompanhar Retornos",
+        "description": "Lê o resultado das entrevistas no destino e avisa cada pessoa uma vez.\n\nO agente só comunica o que o destino decidiu. Nota da entrevista não aparece aqui.",
+        "operationId": "acompanhar_retornos",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoRetornos"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "chave_idempotencia": "exemplo-retornos-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaRetornos"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "itens": [
+                    {
+                      "candidato_id": "candidato-exemplo-1",
+                      "convite_id": "convite:vaga-exemplo-1:candidato-exemplo-1:1",
+                      "aprovado": true,
+                      "mensagem": "[SIMULAÇÃO] Retorno fictício depois da entrevista.",
+                      "enviado": true,
+                      "simulado": true,
+                      "momento": "2026-11-07T12:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
                   },
                   "simulado": true
                 },
@@ -3291,6 +3449,17 @@
             "title": "Duvidas",
             "description": "Dúvidas da pessoa e resposta do agente; sem resposta, uma pessoa atende.",
             "default": []
+          },
+          "retorno": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetornoEntrevista"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Retorno depois da entrevista, com o resultado que o destino devolveu."
           }
         },
         "additionalProperties": false,
@@ -3646,6 +3815,22 @@
         ],
         "title": "PedidoResposta",
         "description": "Resposta da pessoa ao convite. Na demonstração, quem testa faz o papel da pessoa."
+      },
+      "PedidoRetornos": {
+        "properties": {
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "chave_idempotencia"
+        ],
+        "title": "PedidoRetornos",
+        "description": "Pede ao agente que leia os resultados das entrevistas e avise cada pessoa."
       },
       "PedidoReversao": {
         "properties": {
@@ -4423,6 +4608,42 @@
         ],
         "title": "RespostaResumo"
       },
+      "RespostaRetornos": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/RetornoEntrevista"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "itens"
+        ],
+        "title": "RespostaRetornos"
+      },
       "RespostaReversao": {
         "properties": {
           "simulado": {
@@ -4609,6 +4830,52 @@
         ],
         "title": "ResumoExecucao",
         "description": "Contagens e gasto de uma vaga, para o controle depois da ação."
+      },
+      "RetornoEntrevista": {
+        "properties": {
+          "candidato_id": {
+            "type": "string",
+            "title": "Candidato Id"
+          },
+          "convite_id": {
+            "type": "string",
+            "title": "Convite Id"
+          },
+          "aprovado": {
+            "type": "boolean",
+            "title": "Aprovado"
+          },
+          "mensagem": {
+            "type": "string",
+            "title": "Mensagem"
+          },
+          "enviado": {
+            "type": "boolean",
+            "title": "Enviado"
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "momento": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Momento"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidato_id",
+          "convite_id",
+          "aprovado",
+          "mensagem",
+          "enviado",
+          "simulado",
+          "momento"
+        ],
+        "title": "RetornoEntrevista",
+        "description": "O que o agente comunicou depois da entrevista. Sem nota: o resultado é do destino."
       },
       "SaidaPersonalizada": {
         "properties": {

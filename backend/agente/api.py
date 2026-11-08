@@ -34,6 +34,7 @@ from backend.agente.fluxo import (
     DuvidaConvite,
     EstadoConvite,
     ResponsavelInvalido,
+    RetornoEntrevista,
     TransicaoInvalida,
 )
 from backend.agente.mandato import MandatoInvalido
@@ -215,6 +216,10 @@ class ItemConvite(Contrato):
             description="Dúvidas da pessoa e resposta do agente; sem resposta, uma pessoa atende."
         ),
     ] = []
+    retorno: Annotated[
+        RetornoEntrevista | None,
+        Field(description="Retorno depois da entrevista, com o resultado que o destino devolveu."),
+    ] = None
 
     @classmethod
     def de(
@@ -223,6 +228,7 @@ class ItemConvite(Contrato):
         estado: EstadoConvite,
         tentativa: int,
         duvidas: Sequence[DuvidaConvite] = (),
+        retorno: RetornoEntrevista | None = None,
     ) -> "ItemConvite":
         return cls(
             id=convite.id,
@@ -234,12 +240,35 @@ class ItemConvite(Contrato):
             estado=estado,
             tentativa=tentativa,
             duvidas=list(duvidas),
+            retorno=retorno,
         )
 
 
 class RespostaConvites(RespostaSimulada):
     vaga_id: Texto
     itens: list[ItemConvite]
+
+
+class PedidoRetornos(Contrato):
+    """Pede ao agente que leia os resultados das entrevistas e avise cada pessoa."""
+
+    chave_idempotencia: Texto
+
+
+class RespostaRetornos(RespostaSimulada):
+    vaga_id: Texto
+    itens: list[RetornoEntrevista]
+
+
+RETORNO_EXEMPLO = RetornoEntrevista(
+    candidato_id=exemplos.CONVITE.candidato_id,
+    convite_id=exemplos.CONVITE.id,
+    aprovado=True,
+    mensagem="[SIMULAÇÃO] Retorno fictício depois da entrevista.",
+    enviado=True,
+    simulado=True,
+    momento=exemplos.MOMENTO,
+)
 
 
 class RespostaRegistroResposta(RespostaSimulada):
@@ -674,10 +703,45 @@ def consultar_entrega(id: str, empresa: EmpresaDaSessao, servico: Servico) -> Re
 def listar_convites(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaConvites:
     """Lista os convites da vaga com o estado de cada um. Todo convite aqui é simulado."""
     itens = [
-        ItemConvite.de(r.convite, r.estado, r.tentativa, r.duvidas)
+        ItemConvite.de(r.convite, r.estado, r.tentativa, r.duvidas, r.retorno)
         for r in servico.convites(empresa, id)
     ]
     return RespostaConvites(vaga_id=id, itens=itens)
+
+
+@rotas.post(
+    "/vagas/{id}/retornos",
+    tags=["controle"],
+    response_model=RespostaRetornos,
+    responses=_respostas(
+        RespostaRetornos(vaga_id=exemplos.VAGA_EXEMPLO, itens=[RETORNO_EXEMPLO]),
+        erros=_ERROS_DE_ACAO,
+    ),
+)
+def acompanhar_retornos(
+    id: str,
+    pedido: Annotated[
+        PedidoRetornos, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_RETORNOS))
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaRetornos:
+    """Lê o resultado das entrevistas no destino e avisa cada pessoa uma vez.
+
+    O agente só comunica o que o destino decidiu. Nota da entrevista não aparece aqui.
+    """
+    servico.consultar(empresa, id)
+
+    def acao() -> RespostaRetornos:
+        return RespostaRetornos(vaga_id=id, itens=servico.acompanhar_entrevistas(empresa, id))
+
+    return servico.idempotente(
+        empresa,
+        f"retornos:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaRetornos,
+        acao,
+    )
 
 
 @rotas.get(
