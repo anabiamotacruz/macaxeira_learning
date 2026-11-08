@@ -1,6 +1,6 @@
 # Status da entrega
 
-Atualizado em 8/11/2026, por volta das 4h10, horário de Fortaleza. A `main` está em `c51ac27` (merge da #122).
+Atualizado em 8/11/2026, por volta das 4h45, horário de Fortaleza. A `main` está em `c51ac27` (merge da #122).
 
 Os testes rodaram localmente, no Windows, com o `uv.lock`. Lá aparece **1 falha que só acontece no Windows**: `tests/fontes/test_anonimizador.py::test_cofre_e_arquivo_proprio_e_so_abre_com_a_empresa_certa` confere `st_mode & 0o077`, e o Windows não tem permissão POSIX. No CI, que roda em Linux, ela deve passar.
 
@@ -39,14 +39,21 @@ Pipeline e demonstração: mandato, busca, decisão, convite, dúvida, aceite, o
 | #92 | Auditoria de injeção no recontato | Bruno |
 | #106 | Aviso de simulação do contato numa constante só | Bruno |
 
-## Branches novas deste turno (sem PR aberta)
+## Branches novas (sem PR aberta)
 
-| Branch | O que faz | Testes |
-| --- | --- | --- |
-| `frente/agente/campanha-assercao` | Corrige o teste da #102 (`ENCAMINHAR_APERTADO = 1`) | 4 ok; a mutação "excesso vira descarte" faz o teste falhar |
-| `frente/agente/feedback-quem-passou` | Feedback a pedido para quem passou: critérios sustentados, com trecho, sem nota. Com `ResultadoEntrevista`, diz se segue ou não. Não muda contrato. | `test_feedback`, `test_jornada_pre_triagem` e `test_decisao_final`: 155 ok |
-| `frente/agente/seguranca-fontes` | Traz para cima da `main` as 9 correções de `frente/agente-sistema-fontes`, que nunca tiveram PR: pseudonimizador obrigatório, filtro de instrução, site e PDF endurecidos, pares de viés, credencial do MCP em cabeçalho. O conflito em `conector_mcp.py` foi resolvido mantendo `DestinoPorEmpresa`. | conector MCP, destino por empresa e Nara: 106 ok; suíte completa em andamento |
-| `frente/produto/t4-3-deploy` | Dockerfile, `render.yaml` e `docs/deploy.md` | sem Docker aqui; o `render.yaml` foi conferido |
+Ordem para mesclar: cada uma parte da anterior.
+
+| Ordem | Branch | O que faz | Testes |
+| --- | --- | --- | --- |
+| 1 | `frente/agente/campanha-assercao` | Corrige o teste da #102 (`ENCAMINHAR_APERTADO = 1`). | 4 ok, conferido com mutação |
+| 2 | `frente/agente/feedback-quem-passou` | Feedback a pedido para quem passou: critérios sustentados, com trecho, sem nota. Com `ResultadoEntrevista`, diz se a pessoa segue. | 155 ok |
+| 3 | `frente/agente/link-apos-aceite` | O convite sai sem link. No aceite, o agente pede o link à Nara, guarda no convite (`link_destino`) e manda numa segunda mensagem. | suíte completa ok |
+| 4 | `frente/agente/talent-garden` (sobre a 3) | "Agora não" e quem passou do número de encaminhamento viram sugestão de Talent Garden. O RH confirma por `/candidatos/{id}/destino`. Rota nova: `GET /vagas/{id}/talent-garden`. | suíte completa ok |
+| 5 | `frente/agente/garden-campanha` (sobre a 4) | Numa campanha nova, `GET /vagas/{id}/talent-garden/sugestoes` mostra o Talent Garden das outras vagas da empresa. `POST /vagas/{id}/talent-garden/convites` manda o convite especial pelo canal do primeiro contato, com o RH como responsável. | suíte completa ok |
+| 6 | `frente/agente/painel-garden` (sobre a #107 e a 5) | Seção 8 do painel com o Talent Garden e o convite especial, o botão "agora não" na conversa e o link depois do aceite. | build, lint e `tsc` ok; testado no navegador |
+| — | `frente/produto/t4-3-deploy` | Dockerfile, `render.yaml`, `docs/deploy.md` e este quadro. | — |
+
+A branch local `frente/agente/seguranca-fontes` ficou parada: deu 33 falhas e não é prioridade do MVP. Ela não foi enviada.
 
 ## Falta
 
@@ -54,22 +61,19 @@ Pipeline e demonstração: mandato, busca, decisão, convite, dúvida, aceite, o
 | --- | --- | --- | --- |
 | 1 | Abrir PRs das branches acima e mesclar #107, #103, #102, #92 e #106 | P | Precisa do João, porque não há `gh` nesta máquina |
 | 2 | Deploy: criar conta e serviço no Render ou Railway e na Vercel | P | Passo a passo em `docs/deploy.md` |
-| 3 | Link de agendamento só depois do aceite (proposta abaixo) | M | Decisão de produto, com o Bruno |
+| 3 | Link de agendamento só depois do aceite | — | Feito na branch 3 |
 | 4 | Ligar o feedback a uma rota ou ao WhatsApp | G | Hoje existe como função e testes |
-| 5 | "Não agora", Talent Garden e o e-mail com `wa.me` na demo da API | G | Hoje rodam só como cenário de teste da Frente 3 |
+| 5 | E-mail com `wa.me` na demo da API | M | O "agora não" e o Talent Garden já foram feitos nas branches 4 a 6 |
 | 6 | #68 | P | `test_avaliacao_v3_eval.py` chama `priorizar()` sem os argumentos novos. Quebra com `-m eval`. |
 | 7 | #95, #69, #77 | P | Fora do caminho crítico |
 | 8 | #67 | — | A T3.5 saiu do escopo. Fechar. |
 | 9 | `frente/agente-consolidado` | — | Substituída pela `main` (10 conflitos). Descartar. |
 
-## Proposta: link de agendamento só depois do aceite
+## Talent Garden: como funciona na demo
 
-Hoje `fluxo.py:1921` pede o link ao destino quando cria o convite, e o link vai na primeira mensagem (`fluxo.py:1936`). O escopo (etapa 5) diz que o link só sai quando três condições fecham: aceite, momento e cobertura do que a vaga pede.
+1. Na conversa, a pessoa responde "Agora não, mais para frente". O agente responde com SAIR e sugere o Talent Garden.
+2. Na seção 8, o RH clica em "Guardar no Talent Garden". O destino é sempre do RH.
+3. Numa vaga nova da mesma empresa, a seção 8 lista o Talent Garden das outras vagas. O RH marca as pessoas e clica em "Mandar convite especial".
+4. A pessoa aceita e recebe o link de agendamento da Nara.
 
-Mudança mínima, sem contrato novo:
-
-1. Em `_criar_convite`, gravar `link=None` e não chamar `_link_de_agendamento`.
-2. Em `registrar_resposta`, quando a pessoa aceitar e a decisão for `indicar`, pedir o link ao destino e enviar uma segunda mensagem com ele.
-3. Ajustar os testes da demo que esperam o link no primeiro convite.
-
-Não foi aplicada porque muda a demonstração ao vivo e o texto do convite da Frente 3. Precisa do João e do Bruno.
+Limite conhecido: quem entra pelo convite especial recebe o link de agendamento, mas não gera o pacote de contexto para a Nara, porque não passou pela análise desta vaga.
