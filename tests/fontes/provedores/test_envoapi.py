@@ -201,3 +201,134 @@ def test_403_sem_envelope_e_recusa_do_provedor_sem_repetir():
 
     assert capturado.value.motivo is MotivoTroca.RECUSADO_PELO_PROVEDOR
     assert len(transporte.pedidos) == 1
+
+
+# --- ritmo: limite de pedidos por minuto, 429 do perfil e log sem segredo ---
+
+
+class RelogioFalso:
+    """Relógio e sono que andam juntos: dormir avança o tempo, sem esperar de verdade."""
+
+    def __init__(self) -> None:
+        self.agora = 0.0
+        self.esperas: list[float] = []
+
+    def __call__(self) -> float:
+        return self.agora
+
+    def dormir(self, segundos: float) -> None:
+        self.esperas.append(segundos)
+        self.agora += segundos
+
+
+def perfil_envo() -> dict:
+    return {"data": {"fullName": "Pessoa Ficticia", "headline": "Engenheira", "experience": []}}
+
+
+def extrator(*respostas, sono: Sono | None = None, limitador=None):
+    from backend.fontes.provedores.envoapi import ExtratorPerfilEnvo
+
+    transporte = TransporteSimulado(*respostas)
+    return ExtratorPerfilEnvo(CHAVE, transporte, dormir=sono or Sono(), limitador=limitador), (
+        transporte
+    )
+
+
+def limite(segundos: str = "2"):
+    return resposta_json(erro("rate_limit_exceeded", True), status=429, Retry_After=segundos)
+
+
+def test_perfil_com_um_429_espera_o_retry_after_e_devolve_o_perfil():
+    sono = Sono()
+    cliente, transporte = extrator(limite("3"), resposta_json(perfil_envo()), sono=sono)
+
+    registro, custo = cliente.perfil("pessoa-ficticia")
+
+    assert registro is not None
+    assert custo == pytest.approx(CUSTO_CREDITO_USD)
+    assert sono.esperas == [3.0]
+    assert len(transporte.pedidos) == 2
+
+
+def test_perfil_com_tres_429_seguidos_levanta_fonte_indisponivel():
+    sono = Sono()
+    cliente, transporte = extrator(limite(), limite(), limite(), sono=sono)
+
+    with pytest.raises(FonteIndisponivel):
+        cliente.perfil("pessoa-ficticia")
+
+    assert sono.esperas == [2.0, 2.0]
+    assert len(transporte.pedidos) == 3
+
+
+def test_o_limitador_segura_o_31_pedido_dentro_de_um_minuto():
+    from backend.fontes.provedores.envoapi import LimitadorDePedidos
+
+    relogio = RelogioFalso()
+    limitador = LimitadorDePedidos(30, relogio=relogio, dormir=relogio.dormir)
+
+    for _ in range(30):
+        limitador.esperar_a_vez()
+    assert relogio.esperas == []
+
+    limitador.esperar_a_vez()
+
+    assert relogio.esperas == [pytest.approx(60.0)]
+    assert relogio.agora == pytest.approx(60.0)
+
+
+def test_o_limitador_e_compartilhado_entre_perfil_e_contato():
+    from backend.fontes.provedores.envoapi import ExtratorPerfilEnvo, LimitadorDePedidos
+
+    relogio = RelogioFalso()
+    limitador = LimitadorDePedidos(2, relogio=relogio, dormir=relogio.dormir)
+    sono = Sono()
+    transporte = TransporteSimulado(
+        resposta_json(perfil_envo()), resposta_json(contato()), resposta_json(perfil_envo())
+    )
+    perfis = ExtratorPerfilEnvo(CHAVE, transporte, dormir=sono, limitador=limitador)
+    contatos = BuscadorContatoEnvo(CHAVE, transporte, dormir=sono, limitador=limitador)
+
+    perfis.perfil("pessoa-ficticia")
+    contatos.emails_publicados("pessoa-ficticia")
+    assert relogio.esperas == []
+
+    perfis.perfil("pessoa-ficticia")
+
+    assert relogio.esperas == [pytest.approx(60.0)]
+
+
+def test_o_limite_vem_de_envo_pedidos_por_minuto(monkeypatch):
+    from backend.fontes.provedores.envoapi import PEDIDOS_POR_MINUTO_PADRAO, pedidos_por_minuto
+
+    assert PEDIDOS_POR_MINUTO_PADRAO == 30
+    monkeypatch.delenv("ENVO_PEDIDOS_POR_MINUTO", raising=False)
+    assert pedidos_por_minuto() == 30
+    monkeypatch.setenv("ENVO_PEDIDOS_POR_MINUTO", "7")
+    assert pedidos_por_minuto() == 7
+    monkeypatch.setenv("ENVO_PEDIDOS_POR_MINUTO", "lixo")
+    assert pedidos_por_minuto() == 30
+
+
+@pytest.mark.parametrize(
+    "resposta,esperado",
+    [
+        (resposta_json({}, status=429, Retry_After="0"), "429"),
+        (resposta_json({}, status=503), "503"),
+        (ConnectionError("falha de conexão com o provedor"), "erro de rede"),
+    ],
+)
+def test_aviso_de_indisponibilidade_diz_o_status_e_nunca_a_chave_nem_o_corpo(
+    caplog, resposta, esperado
+):
+    caplog.set_level(logging.DEBUG)
+    respostas = [resposta] * 3
+    cliente, _ = extrator(*respostas)
+
+    with pytest.raises(FonteIndisponivel):
+        cliente.perfil("pessoa-ficticia")
+
+    avisos = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any(esperado in aviso for aviso in avisos)
+    assert CHAVE not in caplog.text
+    assert "texto do provedor" not in caplog.text

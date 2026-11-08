@@ -12,7 +12,7 @@
           "vagas"
         ],
         "summary": "Listar Vagas",
-        "description": "Lista as vagas da empresa da sessão para o catálogo, com as contagens do resumo.",
+        "description": "Lista as vagas da empresa da sessão, com o estado e o mandato de cada uma.",
         "operationId": "listar_vagas",
         "responses": {
           "200": {
@@ -20,21 +20,63 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RespostaVagas"
+                  "$ref": "#/components/schemas/RespostaListaVagas"
                 },
                 "example": {
                   "simulado": true,
                   "exemplo_fixo": false,
                   "itens": [
                     {
-                      "id": "vaga-exemplo-1",
-                      "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                      "simulado": true,
+                      "exemplo_fixo": false,
+                      "vaga": {
+                        "id": "vaga-exemplo-1",
+                        "empresa_id": "empresa-exemplo",
+                        "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                        "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                        "requisitos": [
+                          {
+                            "id": "python",
+                            "descricao": "Experiência com Python",
+                            "campo": "linguagem",
+                            "valor_esperado": "python",
+                            "desenvolvivel": false
+                          }
+                        ],
+                        "competencias": [
+                          {
+                            "nome": "APIs",
+                            "peso": 1.0
+                          }
+                        ],
+                        "meta_candidatos": 2,
+                        "prazo_dias": 14,
+                        "max_tentativas_contato": 2,
+                        "aprovada": true,
+                        "palavras_chave": []
+                      },
                       "estado": "decidindo",
-                      "meta_candidatos": 2,
-                      "analisados": 3,
-                      "indicados": 1,
-                      "descartados": 1,
-                      "gasto_usd": 0.42
+                      "mandato": {
+                        "id": "mandato-exemplo-1",
+                        "versao": 1,
+                        "empresa_id": "empresa-exemplo",
+                        "vaga_id": "vaga-exemplo-1",
+                        "hash_vaga": "hash-de-exemplo",
+                        "assinante": "Pessoa Responsável Fictícia",
+                        "limite_gasto_usd": 5.0,
+                        "politica": {
+                          "limiar_verde": 0.8,
+                          "piso_nota": 0.5,
+                          "max_indicacoes": 2,
+                          "max_ampliacoes": 1,
+                          "modo_entrega": "apos_aceite",
+                          "aceitar_declarada": false,
+                          "lapidar_exige_confirmacao": true,
+                          "prazo_garden_dias": 180
+                        },
+                        "assinado_em": "2026-11-07T12:00:00Z",
+                        "valido_ate": "2026-11-21T12:00:00Z"
+                      }
                     }
                   ]
                 }
@@ -52,23 +94,6 @@
                   "erro": {
                     "codigo": "sessao_ausente",
                     "mensagem": "Sessão ausente ou inválida."
-                  },
-                  "simulado": true
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Dados inválidos",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RespostaErro"
-                },
-                "example": {
-                  "erro": {
-                    "codigo": "dados_invalidos",
-                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
                   },
                   "simulado": true
                 }
@@ -4183,62 +4208,6 @@
         "title": "ItemConvite",
         "description": "O convite como o painel mostra. O agente não agenda: o link é do agente de destino."
       },
-      "ItemVaga": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Id"
-          },
-          "titulo": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Titulo"
-          },
-          "estado": {
-            "$ref": "#/components/schemas/EstadoVaga"
-          },
-          "meta_candidatos": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Meta Candidatos"
-          },
-          "analisados": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Analisados"
-          },
-          "indicados": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Indicados"
-          },
-          "descartados": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Descartados"
-          },
-          "gasto_usd": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Gasto Usd"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "id",
-          "titulo",
-          "estado",
-          "meta_candidatos",
-          "analisados",
-          "indicados",
-          "descartados",
-          "gasto_usd"
-        ],
-        "title": "ItemVaga",
-        "description": "O mínimo de cada vaga para o catálogo, tirado do resumo da vaga."
-      },
       "Mandato": {
         "properties": {
           "id": {
@@ -5403,6 +5372,36 @@
         "title": "RespostaFeedback",
         "description": "`responsavel` e `encaminhado_por` orientam o canal e não são mostrados à pessoa."
       },
+      "RespostaListaVagas": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/RespostaVaga"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "itens"
+        ],
+        "title": "RespostaListaVagas"
+      },
       "RespostaMandato": {
         "properties": {
           "simulado": {
@@ -5792,37 +5791,6 @@
           "mandato"
         ],
         "title": "RespostaVaga"
-      },
-      "RespostaVagas": {
-        "properties": {
-          "simulado": {
-            "type": "boolean",
-            "const": true,
-            "title": "Simulado",
-            "default": true
-          },
-          "exemplo_fixo": {
-            "type": "boolean",
-            "title": "Exemplo Fixo",
-            "default": false
-          },
-          "itens": {
-            "items": {
-              "$ref": "#/components/schemas/ItemVaga"
-            },
-            "type": "array",
-            "title": "Itens"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "simulado",
-          "exemplo_fixo",
-          "itens"
-        ],
-        "title": "RespostaVagas",
-        "description": "Vagas da empresa da sessão, das mais novas para as mais antigas."
       },
       "ResumoExecucao": {
         "properties": {

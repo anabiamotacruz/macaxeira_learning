@@ -50,28 +50,8 @@ export type ApiRespostaResponse = ApiEnvelope & {
   tipo: TipoResposta;
 };
 
-/** Item de `GET /vagas`: o mínimo de cada vaga para o catálogo, tirado do resumo da vaga. */
-export type ItemVagaCatalogo = {
-  id: string;
-  titulo: string;
-  estado: EstadoVaga;
-  meta_candidatos: number;
-  analisados: number;
-  indicados: number;
-  descartados: number;
-  gasto_usd: number;
-};
-
-export type ApiVagasResponse = ApiEnvelope & { itens: ItemVagaCatalogo[] };
-
-/** Pessoa do banco de talentos, montada a partir das vagas da empresa, sem repetição. */
-export type PessoaDoBanco = {
-  candidato: Candidato;
-  vagaId: string;
-  vagaTitulo: string;
-  decisao: TipoDecisao | null;
-  nota: number | null;
-  simulado: boolean;
+export type ApiVagaListItem = ApiVagaResponse & {
+  fonte: "api" | "reserva";
 };
 
 export class ApiError extends Error {
@@ -137,10 +117,42 @@ export function modoReservaAtivo(): boolean {
   return RESERVA_ATIVA;
 }
 
-/** Vagas da empresa da sessão, das mais novas para as mais antigas. */
-export async function listarVagas(): Promise<ApiVagasResponse> {
-  return request<ApiVagasResponse>("/vagas");
+export function listarIdsLocais(): string[] {
+  return idsSalvos();
 }
+
+export async function listarVagas(): Promise<ApiVagaListItem[]> {
+  if (RESERVA_ATIVA) return [];
+  try {
+    const resposta = await request<ApiEnvelope & { itens: ApiVagaResponse[] }>("/vagas");
+    return resposta.itens.map((item) => ({ ...item, fonte: "api" as const }));
+  } catch (erro) {
+    // API sem a listagem: cai para as vagas criadas neste navegador.
+    if (!(erro instanceof ApiError) || (erro.status !== 404 && erro.status !== 405)) throw erro;
+  }
+  const vagas: Array<ApiVagaListItem | null> = await Promise.all(
+    idsSalvos().map(async (id) => {
+      try {
+        return { ...(await obterVaga(id)), fonte: "api" as const };
+      } catch (erro) {
+        // A API guarda as vagas em memória: uma vaga que sumiu no reinício não derruba o catálogo.
+        if (erro instanceof ApiError && erro.status === 404) return null;
+        throw erro;
+      }
+    }),
+  );
+  return vagas.filter((vaga): vaga is ApiVagaListItem => vaga !== null);
+}
+
+/** Pessoa do banco de talentos, montada a partir das vagas da empresa, sem repetição. */
+export type PessoaDoBanco = {
+  candidato: Candidato;
+  vagaId: string;
+  vagaTitulo: string;
+  decisao: TipoDecisao | null;
+  nota: number | null;
+  simulado: boolean;
+};
 
 /** A nota que a regra gravou na decisão, quando houver. */
 export function notaDaDecisao(decisao: Decisao): number | null {
@@ -161,13 +173,13 @@ async function todosOsCandidatos(vagaId: string): Promise<ApiCandidatosResponse[
 }
 
 /**
- * Banco de talentos: as pessoas das vagas da empresa, sem repetir.
+ * Banco de talentos: as pessoas das vagas da empresa (`GET /vagas` e os candidatos de cada uma), sem repetir.
  * As vagas vêm das mais novas para as mais antigas, então vale a decisão da vaga mais recente.
  */
 export async function listarPessoasDoBanco(): Promise<PessoaDoBanco[]> {
-  const { itens: vagas } = await listarVagas();
+  const vagas = await listarVagas();
   const porVaga = await Promise.all(
-    vagas.map(async (vaga) => ({ vaga, itens: await todosOsCandidatos(vaga.id) })),
+    vagas.map(async (item) => ({ vaga: item.vaga, itens: await todosOsCandidatos(item.vaga.id) })),
   );
   const pessoas = new Map<string, PessoaDoBanco>();
   for (const { vaga, itens } of porVaga) {
@@ -197,15 +209,15 @@ export async function listarPessoasDoBanco(): Promise<PessoaDoBanco[]> {
   return [...pessoas.values()];
 }
 
-/** Acha o candidato e a vaga. Sem `vagaId`, usa a primeira vaga em que a pessoa aparece. */
+/** Acha a pessoa e a vaga. Sem `vagaId`, usa a primeira vaga em que a pessoa aparece. */
 export async function localizarCandidato(
   candidatoId: string,
   vagaId?: string,
-): Promise<{ candidato: Candidato; vagaId: string } | null> {
-  const vagas = vagaId ? [vagaId] : (await listarVagas()).itens.map((vaga) => vaga.id);
+): Promise<{ candidato: Candidato; destino: string | null; vagaId: string } | null> {
+  const vagas = vagaId ? [vagaId] : (await listarVagas()).map((item) => item.vaga.id);
   for (const id of vagas) {
     const item = (await todosOsCandidatos(id)).find(({ candidato }) => candidato.id === candidatoId);
-    if (item) return { candidato: item.candidato, vagaId: id };
+    if (item) return { candidato: item.candidato, destino: item.destino, vagaId: id };
   }
   return null;
 }
@@ -493,4 +505,73 @@ export async function obterAudioWhatsApp(vagaId: string, audioId: string): Promi
   );
   if (!resposta.ok) throw new ApiError(resposta.status);
   return URL.createObjectURL(await resposta.blob());
+}
+
+// Controle da vaga e da decisão: pausa, retomada, reversão, destino, métricas e reinício da sessão.
+
+export type ControleVaga = { vaga_id: string; estado: EstadoVaga; estado_anterior: EstadoVaga };
+
+export async function pararVaga(vagaId: string, responsavel: string, motivo = ""): Promise<ControleVaga> {
+  return requestComMotivo<ControleVaga>(`/vagas/${encodeURIComponent(vagaId)}/parar`, {
+    method: "POST",
+    body: JSON.stringify({ responsavel, motivo, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export async function retomarVaga(vagaId: string, responsavel: string, motivo = ""): Promise<ControleVaga> {
+  return requestComMotivo<ControleVaga>(`/vagas/${encodeURIComponent(vagaId)}/retomar`, {
+    method: "POST",
+    body: JSON.stringify({ responsavel, motivo, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export async function reverterDecisao(
+  candidatoId: string,
+  pedido: { vaga_id: string; motivo: string; responsavel: string },
+): Promise<{ decisao_original: Decisao; decisao_nova: Decisao }> {
+  return requestComMotivo(`/candidatos/${encodeURIComponent(candidatoId)}/reverter`, {
+    method: "POST",
+    body: JSON.stringify({ ...pedido, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export type DestinoPessoa = "banco" | "talent_garden" | "contratada";
+
+export async function registrarDestino(
+  candidatoId: string,
+  pedido: { vaga_id: string; destino: DestinoPessoa; responsavel: string },
+): Promise<{ vaga_id: string; candidato_id: string; destino: DestinoPessoa; responsavel: string }> {
+  return requestComMotivo(`/candidatos/${encodeURIComponent(candidatoId)}/destino`, {
+    method: "POST",
+    body: JSON.stringify({ ...pedido, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export type TaxaMedida = {
+  valor: number | null;
+  casos: number;
+  wilson_inferior: number | null;
+  wilson_superior: number | null;
+};
+
+export type MetricasVaga = ApiEnvelope & {
+  vaga_id: string;
+  sem_revisao: TaxaMedida;
+  erros_por_tipo: Record<string, TaxaMedida>;
+};
+
+export async function obterMetricas(vagaId: string): Promise<MetricasVaga> {
+  return request<MetricasVaga>(`/vagas/${encodeURIComponent(vagaId)}/metricas`);
+}
+
+export async function reiniciarSessao(): Promise<ApiEnvelope & { dados_recarregados: boolean; mensagem: string }> {
+  return requestComMotivo(`/sessoes/reiniciar`, { method: "POST", body: "{}" });
+}
+
+export async function statusWhatsApp(): Promise<{ ligado: boolean; voz: string | null }> {
+  try {
+    return await request<{ ligado: boolean; voz: string | null }>(`/whatsapp/status`);
+  } catch {
+    return { ligado: false, voz: null };
+  }
 }

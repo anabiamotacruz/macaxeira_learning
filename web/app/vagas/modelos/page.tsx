@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { Sidebar } from "../../../components/Sidebar";
+import { AppHeader, AppMain } from "../../../components/AppHeader";
 import { ApiError, criarVaga, listarModelosDeVaga, type ModeloDeVaga } from "../../../lib/api";
 
 export default function ModelosDeVagaPage() {
@@ -34,33 +34,52 @@ export default function ModelosDeVagaPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
-      <Sidebar active="criar" />
-      <div>
-        <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-5 py-8 sm:px-6 lg:px-6">
-          <Link className="text-sm font-medium text-[#4c8885] hover:text-[#fb3c0d]" href="/criar-vaga">← Criar do zero</Link>
-          <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-[#0b3038]">Modelos de vaga</h1>
-          <p className="mt-2 text-sm text-[#718784]">Vagas de exemplo com requisitos eliminatórios e competências, prontas para o agente trabalhar. Os dados são sintéticos.</p>
-          {erro && <p className="mt-5 rounded-lg border border-[#f0b5aa] bg-[#fff1ee] px-4 py-3 text-sm text-[#a43826]" role="alert">{erro}</p>}
-          {carregando && <p className="mt-8 text-[#718784]">Carregando modelos…</p>}
-          <div className="mt-8 grid gap-4">
-            {modelos.map((modelo, indice) => (
-              <article className="rounded-xl border border-[#dfe7e2] bg-white p-6" key={`${modelo.titulo}-${indice}`}>
-                <h2 className="text-xl font-semibold text-[#0b3038]">{modelo.titulo}</h2>
-                <p className="mt-2 text-sm text-[#526c68]">{modelo.descricao}</p>
-                <div className="mt-3 grid gap-1 text-sm text-[#2c4f55]">
-                  <p><b>Eliminatório:</b> {modelo.requisitos.map((r) => r.descricao).join("; ") || "nenhum"}</p>
-                  <p><b>Pontua:</b> {modelo.competencias.map((c) => c.nome).join(", ")}</p>
-                  <p><b>Meta:</b> {modelo.meta_candidatos} pessoas em {modelo.prazo_dias} dias</p>
-                </div>
-                <button className="mt-4 rounded-lg bg-[#fb3c0d] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" disabled={criando !== null} onClick={() => usar(indice)} type="button">
-                  {criando === indice ? "Criando…" : "Usar este modelo"}
-                </button>
-              </article>
-            ))}
+    <div className="min-h-screen bg-cora-bg text-cora-ink">
+      <AppHeader ativo="vagas" />
+      <AppMain>
+        <div className="flex flex-col gap-2.5">
+          <nav aria-label="Caminho" className="flex items-center gap-1.5 text-[13px] text-cora-placeholder">
+            <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href="/">Vagas</Link>
+            <span aria-hidden="true">/</span>
+            <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href="/criar-vaga">Nova vaga</Link>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page" className="text-cora-ink">Modelos</span>
+          </nav>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <h1 className="m-0 text-[30px] font-semibold leading-[1.15] tracking-[-0.04em]">Modelos de vaga</h1>
+              <p className="m-0 max-w-[680px] text-[15px] text-cora-muted">Vagas de exemplo com eliminatórios e desejáveis, prontas para a CORA trabalhar. Os dados são sintéticos.</p>
+            </div>
+            <Link className="cora-btn cora-btn-outline" href="/criar-vaga">Criar do zero</Link>
           </div>
         </div>
-      </div>
-    </main>
+
+        {erro && <p className="m-0 rounded-lg border border-[#F0B5AA] bg-cora-coral-bg px-4 py-3 text-sm text-cora-coral-ink" role="alert">{erro}</p>}
+        {carregando && <p className="m-0 text-cora-muted">Carregando modelos…</p>}
+        <div className="grid gap-4 md:grid-cols-2">
+          {modelos.map((modelo, indice) => (
+            <article className="rounded-xl border border-cora-line-2 bg-cora-surface shadow-[0_1px_2px_rgba(11,48,56,0.06)] flex flex-col gap-4 px-6 py-[22px]" key={`${modelo.titulo}-${indice}`}>
+              <div className="flex flex-col gap-1.5">
+                <h2 className="m-0 text-lg font-semibold tracking-[-0.02em]">{modelo.titulo}</h2>
+                <p className="m-0 text-[13px] text-cora-muted">{modelo.descricao}</p>
+              </div>
+              <dl className="m-0 grid gap-x-4 gap-y-2 text-[13px] sm:grid-cols-[140px_1fr]">
+                  <dt className="font-medium text-cora-muted">Eliminatórios</dt>
+                  <dd className="m-0 text-cora-ink-2">{modelo.requisitos.map((r) => r.descricao).join("; ") || "nenhum (sem requisito, a CORA decide pelas competências)"}</dd>
+                  <dt className="font-medium text-cora-muted">Desejáveis</dt>
+                  <dd className="m-0 flex flex-wrap gap-1.5">{modelo.competencias.map((c) => <span className="cora-chip cora-chip-neutral" key={c.nome}>{c.nome} · peso {c.peso}</span>)}</dd>
+                  <dt className="font-medium text-cora-muted">Meta</dt>
+                  <dd className="num m-0 text-cora-ink-2">{modelo.meta_candidatos} pessoas em {modelo.prazo_dias} dias</dd>
+                </dl>
+              <div className="mt-auto flex justify-end border-t border-cora-subtle pt-4">
+                <button className="cora-btn cora-btn-primary" disabled={criando !== null} onClick={() => usar(indice)} type="button">
+                  {criando === indice ? "Criando…" : "Usar este modelo"}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </AppMain>
+    </div>
   );
 }

@@ -30,7 +30,8 @@ Referências consultadas em 8/11/2026:
 
 Decisões:
 - Só o e-mail sai daqui. Telefone, sites, aniversário e endereço são ignorados.
-- O 404 vira lista vazia. O 429 espera o `Retry-After` uma vez (com teto) e desiste.
+- O 404 vira lista vazia. O 429 espera o `Retry-After` (com teto): uma vez no
+  contato, até duas no perfil. Um limitador por processo (30 pedidos por minuto) evita o 429.
 - Medido em 8/11: o firewall devolve 403 sem envelope ao agente de usuário padrão do Python
   (o transporte manda `macaxeira-learning/0.1`). Esse 403 é recusa do provedor, sem repetir.
 - A chave fica só no cabeçalho: nunca em URL, log, rastro, exceção ou `repr`.
@@ -42,8 +43,11 @@ usamos para a LinkdAPI, US$ 0,01, até conferir no painel.
 
 import json
 import logging
+import os
 import re
+import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from typing import Any, NoReturn
 from urllib.parse import urlencode
@@ -68,10 +72,66 @@ CUSTO_CREDITO_USD = 0.01
 """Preço não publicado na documentação: teto suposto, o mesmo da LinkdAPI."""
 ESPERA_MAXIMA_S = 30.0
 """Teto da espera do `Retry-After`: o limite é da conta, e o fluxo não fica parado mais que isso."""
+PEDIDOS_POR_MINUTO_PADRAO = 30
+"""Limite por minuto do plano; `ENVO_PEDIDOS_POR_MINUTO` troca. O pedido acima dele volta 429."""
+TENTATIVAS_APOS_429 = 2
 USUARIO_LINKEDIN = re.compile(r"[A-Za-z0-9_%.-]{1,100}")
 _URL_PERFIL = re.compile(r"https://(?:[a-z]{2,3}\.)?linkedin\.com/in/([A-Za-z0-9_%.-]{1,100})/?")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 _TAMANHO_MAXIMO_EMAIL = 254
+
+
+def pedidos_por_minuto() -> int:
+    """`ENVO_PEDIDOS_POR_MINUTO`, ou 30 quando falta ou vem fora do formato."""
+    try:
+        valor = int(os.environ.get("ENVO_PEDIDOS_POR_MINUTO", ""))
+    except ValueError:
+        return PEDIDOS_POR_MINUTO_PADRAO
+    return valor if valor >= 1 else PEDIDOS_POR_MINUTO_PADRAO
+
+
+class LimitadorDePedidos:
+    """Janela deslizante de 60 s. Thread-safe: o pedido espera a sua vez em vez de falhar."""
+
+    JANELA_S = 60.0
+
+    def __init__(
+        self,
+        limite: int,
+        *,
+        relogio: Callable[[], float] = time.monotonic,
+        dormir: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._limite = limite
+        self._relogio = relogio
+        self._dormir = dormir
+        self._saidas: deque[float] = deque()
+        self._trava = threading.Lock()
+
+    def esperar_a_vez(self) -> None:
+        # A trava fica durante a espera: quem chega depois fica atrás, na ordem.
+        with self._trava:
+            while True:
+                agora = self._relogio()
+                while self._saidas and agora - self._saidas[0] >= self.JANELA_S:
+                    self._saidas.popleft()
+                if len(self._saidas) < self._limite:
+                    self._saidas.append(agora)
+                    return
+                self._dormir(self._saidas[0] + self.JANELA_S - agora)
+
+
+_limitador: LimitadorDePedidos | None = None
+_trava_do_limitador = threading.Lock()
+
+
+def limitador_do_processo() -> LimitadorDePedidos:
+    """Um só por processo: perfil e contato dividem o mesmo limite da conta."""
+    global _limitador
+    with _trava_do_limitador:
+        if _limitador is None:
+            _limitador = LimitadorDePedidos(pedidos_por_minuto())
+        return _limitador
 
 
 def url_perfil_linkedin(usuario: str) -> str:
@@ -124,8 +184,10 @@ def _levantar_erro(resposta: RespostaHttp, corpo: Any) -> NoReturn:
     """Erro sobe só com o motivo: nunca com o texto da resposta."""
     status = resposta.status
     if status == 429:
+        logger.warning("envoapi indisponível: status 429 (limite de pedidos)")
         raise FonteIndisponivel(f"{NOME}: limite de requisições excedido (status 429)")
     if status >= 500:
+        logger.warning("envoapi indisponível: status %s", status)
         raise FonteIndisponivel(f"{NOME}: status {status}")
     codigo = _codigo_de_erro(corpo)
     if status == 402 or codigo == "insufficient_credits":
@@ -175,10 +237,12 @@ class BuscadorContatoEnvo:
         *,
         dormir: Callable[[float], None] = time.sleep,
         custo_credito_usd: float = CUSTO_CREDITO_USD,
+        limitador: LimitadorDePedidos | None = None,
     ) -> None:
         self._chave = chave
         self._transporte = transporte
         self._dormir = dormir
+        self._limitador = limitador or limitador_do_processo()
         self._custo = custo_credito_usd
         self.creditos_usados = 0
 
@@ -201,11 +265,13 @@ class BuscadorContatoEnvo:
         usuario = usuario_de(usuario_ou_url)
         if usuario is None:
             return []
+        self._limitador.esperar_a_vez()
         resposta = self._transporte.enviar(self._pedido(usuario))
         if resposta.status == 429:
             espera = _espera(resposta)
             logger.warning("envoapi: limite de ritmo, nova tentativa em %.0f s", espera)
             self._dormir(espera)
+            self._limitador.esperar_a_vez()
             resposta = self._transporte.enviar(self._pedido(usuario))
         return self._emails(resposta)
 
@@ -241,11 +307,19 @@ class ExtratorPerfilEnvo:
     origem = NOME
 
     def __init__(
-        self, chave: str, transporte: Transporte, *, custo_credito_usd: float = CUSTO_CREDITO_USD
+        self,
+        chave: str,
+        transporte: Transporte,
+        *,
+        custo_credito_usd: float = CUSTO_CREDITO_USD,
+        dormir: Callable[[float], None] = time.sleep,
+        limitador: LimitadorDePedidos | None = None,
     ) -> None:
         self._chave = chave
         self._transporte = transporte
         self._custo = custo_credito_usd
+        self._dormir = dormir
+        self._limitador = limitador or limitador_do_processo()
 
     def __repr__(self) -> str:
         return "ExtratorPerfilEnvo()"
@@ -253,6 +327,14 @@ class ExtratorPerfilEnvo:
     @property
     def custo_por_perfil_usd(self) -> float:
         return CREDITOS_POR_CONSULTA * self._custo
+
+    def _enviar(self, pedido: PedidoHttp) -> RespostaHttp:
+        self._limitador.esperar_a_vez()
+        try:
+            return self._transporte.enviar(pedido)
+        except (ConnectionError, TimeoutError) as erro:
+            logger.warning("envoapi indisponível: erro de rede (%s)", type(erro).__name__)
+            raise FonteIndisponivel(f"{NOME}: erro de rede") from None
 
     @rastreado(ETAPA_ENVOAPI_PERFIL)
     def perfil(self, usuario_ou_url: str) -> tuple[dict[str, Any] | None, float]:
@@ -264,16 +346,19 @@ class ExtratorPerfilEnvo:
         usuario = usuario_de(usuario_ou_url)
         if usuario is None:
             return None, 0.0
-        resposta = self._transporte.enviar(
-            PedidoHttp(
-                metodo="GET",
-                url=f"{URL_DETALHES}?{urlencode({'url': url_perfil_linkedin(usuario)})}",
-                cabecalhos={
-                    "Authorization": f"Bearer {self._chave}",
-                    "Accept": "application/json",
-                },
-            )
+        pedido = PedidoHttp(
+            metodo="GET",
+            url=f"{URL_DETALHES}?{urlencode({'url': url_perfil_linkedin(usuario)})}",
+            cabecalhos={"Authorization": f"Bearer {self._chave}", "Accept": "application/json"},
         )
+        resposta = self._enviar(pedido)
+        for _ in range(TENTATIVAS_APOS_429):
+            if resposta.status != 429:
+                break
+            espera = _espera(resposta)
+            logger.warning("envoapi: limite de ritmo, nova tentativa em %.0f s", espera)
+            self._dormir(espera)
+            resposta = self._enviar(pedido)
         corpo = _ler_json(resposta)
         if resposta.status == 200:
             dados = corpo.get("data") if isinstance(corpo, dict) else None

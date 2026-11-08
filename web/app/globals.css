@@ -1,40 +1,137 @@
 @import "tailwindcss";
 
+/* Sem tema escuro: os dark: do shadcn só valem com a classe .dark, que o app não usa. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tokens do design CORA (zip cora-design, 08/11). Use as classes do Tailwind abaixo
+   (bg-cora-bg, text-cora-ink, border-cora-line...) ou as variáveis direto. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --cora-bg: #f7f8f5;
+  --cora-surface: #ffffff;
+  --cora-subtle: #f1f4f2;
+  --cora-muted-bg: #eef2ef;
+  --cora-row: #fafbf9;
+  --cora-ink: #0b3038;
+  --cora-ink-2: #2c4f55;
+  --cora-muted: #526c68;
+  --cora-placeholder: #5e7672;
+  --cora-line: #e4e9e5;
+  --cora-line-2: #dfe6e1;
+  --cora-primary: #dc3209;
+  --cora-primary-hover: #c42c08;
+  --cora-accent: #fb3c0d;
+  --cora-coral-bg: #fff1ee;
+  --cora-coral-ink: #a43826;
+  --cora-ok-bg: #e3f3e8;
+  --cora-ok-ink: #2f6e52;
+  --cora-warn-bg: #fff1cc;
+  --cora-warn-ink: #855a0e;
+
+  /* Variáveis do shadcn/ui apontando para a paleta CORA */
+  --radius: 0.5rem;
+  --background: var(--cora-bg);
+  --foreground: var(--cora-ink);
+  --card: var(--cora-surface);
+  --card-foreground: var(--cora-ink);
+  --popover: var(--cora-surface);
+  --popover-foreground: var(--cora-ink);
+  --primary: var(--cora-primary);
+  --primary-foreground: #ffffff;
+  --secondary: var(--cora-muted-bg);
+  --secondary-foreground: var(--cora-ink);
+  --muted: var(--cora-subtle);
+  --muted-foreground: var(--cora-muted);
+  --accent: var(--cora-muted-bg);
+  --accent-foreground: var(--cora-ink);
+  --destructive: var(--cora-coral-ink);
+  --border: var(--cora-line);
+  --input: var(--cora-line-2);
+  --ring: var(--cora-accent);
 }
 
 @theme inline {
+  --color-cora-bg: var(--cora-bg);
+  --color-cora-surface: var(--cora-surface);
+  --color-cora-subtle: var(--cora-subtle);
+  --color-cora-muted-bg: var(--cora-muted-bg);
+  --color-cora-row: var(--cora-row);
+  --color-cora-ink: var(--cora-ink);
+  --color-cora-ink-2: var(--cora-ink-2);
+  --color-cora-muted: var(--cora-muted);
+  --color-cora-placeholder: var(--cora-placeholder);
+  --color-cora-line: var(--cora-line);
+  --color-cora-line-2: var(--cora-line-2);
+  --color-cora-primary: var(--cora-primary);
+  --color-cora-primary-hover: var(--cora-primary-hover);
+  --color-cora-accent: var(--cora-accent);
+  --color-cora-coral-bg: var(--cora-coral-bg);
+  --color-cora-coral-ink: var(--cora-coral-ink);
+  --color-cora-ok-bg: var(--cora-ok-bg);
+  --color-cora-ok-ink: var(--cora-ok-ink);
+  --color-cora-warn-bg: var(--cora-warn-bg);
+  --color-cora-warn-ink: var(--cora-warn-ink);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 6px);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+@layer base {
+* { border-color: var(--border); }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--cora-bg);
+  color: var(--cora-ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid #fb3c0d;
+button, input, select, textarea { font: inherit; color: inherit; }
+input::placeholder, textarea::placeholder { color: var(--cora-placeholder); }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--cora-accent);
   outline-offset: 2px;
 }
+.num { font-variant-numeric: tabular-nums; }
+}
 
-input::placeholder,
-textarea::placeholder {
-  color: #5e7672;
+/* Peças reutilizáveis do design */
+@layer components {
+.cora-card { background: var(--cora-surface); border: 1px solid var(--cora-line); border-radius: 12px; }
+.cora-btn { height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; border-radius: 8px; font-size: 14px; font-weight: 500; white-space: nowrap; transition: background-color .15s ease, border-color .15s ease; cursor: pointer; text-decoration: none; }
+.cora-btn:disabled { opacity: .55; cursor: not-allowed; }
+.cora-btn-primary { background: var(--cora-primary); color: #fff; font-weight: 600; border: 0; }
+.cora-btn-primary:hover:not(:disabled) { background: var(--cora-primary-hover); }
+.cora-btn-outline { background: var(--cora-surface); color: var(--cora-ink); border: 1px solid var(--cora-line-2); }
+.cora-btn-outline:hover:not(:disabled) { background: var(--cora-muted-bg); }
+.cora-input { height: 38px; width: 100%; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid var(--cora-line-2); background: var(--cora-surface); font-size: 14px; }
+textarea.cora-input { height: auto; padding: 10px 12px; }
+.cora-label { font-size: 13px; font-weight: 500; color: var(--cora-ink-2); }
+.cora-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.cora-chip-ok { background: var(--cora-ok-bg); color: var(--cora-ok-ink); }
+.cora-chip-warn { background: var(--cora-warn-bg); color: var(--cora-warn-ink); }
+.cora-chip-coral { background: var(--cora-coral-bg); color: var(--cora-coral-ink); }
+.cora-chip-neutral { background: var(--cora-muted-bg); color: var(--cora-ink-2); }
+.cora-row:hover { background: var(--cora-row); }
 }

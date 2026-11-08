@@ -365,23 +365,8 @@ class RespostaVaga(RespostaSimulada):
     mandato: Mandato | None
 
 
-class ItemVaga(Contrato):
-    """O mínimo de cada vaga para o catálogo, tirado do resumo da vaga."""
-
-    id: Texto
-    titulo: Texto
-    estado: EstadoVaga
-    meta_candidatos: Annotated[int, Field(ge=0)]
-    analisados: Annotated[int, Field(ge=0)]
-    indicados: Annotated[int, Field(ge=0)]
-    descartados: Annotated[int, Field(ge=0)]
-    gasto_usd: Annotated[float, Field(ge=0, allow_inf_nan=False)]
-
-
-class RespostaVagas(RespostaSimulada):
-    """Vagas da empresa da sessão, das mais novas para as mais antigas."""
-
-    itens: list[ItemVaga]
+class RespostaListaVagas(RespostaSimulada):
+    itens: list[RespostaVaga]
 
 
 class RespostaMandato(RespostaSimulada):
@@ -671,42 +656,16 @@ def criar_vaga(
 @rotas.get(
     "/vagas",
     tags=["vagas"],
-    response_model=RespostaVagas,
-    responses=_respostas(
-        RespostaVagas(
-            itens=[
-                ItemVaga(
-                    id=exemplos.RESUMO.vaga_id,
-                    titulo=exemplos.VAGA_COM_MANDATO.titulo,
-                    estado=EstadoVaga(exemplos.RESUMO.estado),
-                    meta_candidatos=exemplos.VAGA_COM_MANDATO.meta_candidatos,
-                    analisados=exemplos.RESUMO.analisados,
-                    indicados=exemplos.RESUMO.indicados,
-                    descartados=exemplos.RESUMO.descartados,
-                    gasto_usd=exemplos.RESUMO.gasto_usd,
-                )
-            ]
-        ),
-        erros=(401, 422),
-    ),
+    response_model=RespostaListaVagas,
+    responses=_respostas(RespostaListaVagas(itens=[_resposta_vaga()]), erros=(401,)),
 )
-def listar_vagas(empresa: EmpresaDaSessao, servico: Servico) -> RespostaVagas:
-    """Lista as vagas da empresa da sessão para o catálogo, com as contagens do resumo."""
-    return RespostaVagas(
-        itens=[
-            ItemVaga(
-                id=vaga.id,
-                titulo=vaga.titulo,
-                estado=EstadoVaga(resumo.estado),
-                meta_candidatos=vaga.meta_candidatos,
-                analisados=resumo.analisados,
-                indicados=resumo.indicados,
-                descartados=resumo.descartados,
-                gasto_usd=resumo.gasto_usd,
-            )
-            for vaga, resumo in servico.catalogo(empresa)
-        ]
-    )
+def listar_vagas(empresa: EmpresaDaSessao, servico: Servico) -> RespostaListaVagas:
+    """Lista as vagas da empresa da sessão, com o estado e o mandato de cada uma."""
+    itens = []
+    for vaga in servico.vagas(empresa):
+        fluxo = servico.consultar(empresa, vaga.id)
+        itens.append(RespostaVaga(vaga=fluxo.vaga, estado=fluxo.estado, mandato=fluxo.mandato))
+    return RespostaListaVagas(itens=itens)
 
 
 @rotas.post(
