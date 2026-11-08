@@ -27,6 +27,7 @@ from backend.contratos.modelos import (
     MotivoFeedback,
     MotivoLacuna,
     PedidoFeedback,
+    ResultadoEntrevista,
     RetornoDestino,
     StatusFeedback,
     TipoCriterio,
@@ -145,6 +146,42 @@ def _motivos_da_decisao(decisao: DecisaoFinal) -> tuple[list[MotivoFeedback], st
     return ([], ENCAMINHADO_SEM_TRECHO) if sem_trecho else (motivos, None)
 
 
+def _motivos_de_quem_passou(
+    decisao: DecisaoFinal, vaga: Vaga
+) -> tuple[list[MotivoFeedback], str | None]:
+    """Os critérios da vaga que o registro sustenta, cada um com o trecho que a decisão guardou."""
+    descricoes = _descricoes_dos_criterios(vaga)
+    motivos: list[MotivoFeedback] = []
+    vistos: set[str] = set()
+    for evidencia in decisao.evidencias:
+        if evidencia.criterio in vistos or evidencia.criterio not in descricoes:
+            continue
+        if evidencia.fonte == FONTE_REGRA or not evidencia.trecho.strip():
+            continue
+        if _bloqueado(evidencia.criterio, descricoes[evidencia.criterio], evidencia.trecho):
+            return [], ENCAMINHADO_SENSIVEL
+        vistos.add(evidencia.criterio)
+        motivos.append(
+            MotivoFeedback(
+                criterio=evidencia.criterio,
+                descricao=descricoes[evidencia.criterio],
+                trecho=_para_a_pessoa(evidencia.trecho),
+                fonte=evidencia.fonte,
+                evidencia_faltante="",
+                o_que_pode_mudar="",
+            )
+        )
+    return (motivos, None) if motivos else ([], ENCAMINHADO_SEM_TRECHO)
+
+
+def _aprovada(decisao: DecisaoFinal | None) -> bool:
+    return (
+        decisao is not None
+        and decisao.destino == DestinoDecisao.APROVAR
+        and not decisao.pendente_confirmacao
+    )
+
+
 def _descricoes_dos_criterios(vaga: Vaga) -> dict[str, str]:
     return {
         **{r.id: r.descricao for r in vaga.requisitos},
@@ -178,8 +215,15 @@ def _motivos_do_destino(
     return motivos, None
 
 
-def _texto(vaga: Vaga, motivos: Sequence[MotivoFeedback]) -> str:
-    linhas = [f"Sobre a vaga {vaga.titulo}, estes critérios não foram atendidos:"]
+def _texto(vaga: Vaga, motivos: Sequence[MotivoFeedback], passou: bool = False) -> str:
+    if passou:
+        abertura = (
+            f"Sobre a vaga {vaga.titulo}, você segue para a próxima fase. "
+            "Estes critérios sustentaram a decisão:"
+        )
+    else:
+        abertura = f"Sobre a vaga {vaga.titulo}, estes critérios não foram atendidos:"
+    linhas = [abertura]
     for motivo in motivos:
         complemento = " ".join(
             parte for parte in (motivo.evidencia_faltante, motivo.o_que_pode_mudar) if parte
@@ -194,11 +238,12 @@ def _exigir_mesma_pessoa(
     vaga: Vaga,
     decisao: DecisaoFinal | None,
     retorno: RetornoDestino | None,
+    resultado: ResultadoEntrevista | None = None,
 ) -> None:
-    if decisao is None and retorno is None:
+    if decisao is None and retorno is None and resultado is None:
         raise FeedbackNegado("não há decisão registrada para este pedido")
     alvo = (pedido.empresa_id, pedido.vaga_id, pedido.candidato_id)
-    registros = [r for r in (decisao, retorno) if r is not None]
+    registros = [r for r in (decisao, retorno, resultado) if r is not None]
     if (vaga.empresa_id, vaga.id) != alvo[:2] or any(
         (r.empresa_id, r.vaga_id, r.candidato_id) != alvo for r in registros
     ):
@@ -212,6 +257,7 @@ def _registrar(
     decisao: DecisaoFinal | None,
     retorno: RetornoDestino | None,
     agora: datetime,
+    passou: bool,
 ) -> None:
     """Só códigos e critérios. Não leva o nome, o texto do pedido nem o motivo bloqueado."""
     resumo = hashlib.sha256(feedback.texto.encode("utf-8")).hexdigest()[:16]
@@ -219,6 +265,7 @@ def _registrar(
         "status": feedback.status.value,
         "canal": pedido.canal,
         "origem": "destino" if retorno is not None else "decisao",
+        "resultado": "passou" if passou else "nao_passou",
         "regra": "nao_se_aplica" if decisao is None else decisao.regra,
         "encaminhado_por": feedback.encaminhado_por or "nao_se_aplica",
         "criterios": ",".join(m.criterio for m in feedback.motivos) or "nenhum",
@@ -247,18 +294,32 @@ def responder_pedido_de_feedback(
     agora: datetime,
     decisao: DecisaoFinal | None = None,
     retorno: RetornoDestino | None = None,
+    resultado: ResultadoEntrevista | None = None,
 ) -> FeedbackCandidato:
     """Responde ao pedido da pessoa, ou o encaminha. Com `retorno`, a decisão veio da entrevista.
 
+    Vale para quem passou e para quem não passou. `resultado` diz qual dos dois a entrevista
+    decidiu; as notas dele nunca saem. Sem `resultado`, quem foi aprovado pela decisão registrada
+    passou, e o retorno do destino explica quem não passou.
+
     O texto do pedido é dado: só serve para reconhecer contestação e não entra em lugar nenhum.
     """
-    _exigir_mesma_pessoa(pedido, vaga, decisao, retorno)
+    _exigir_mesma_pessoa(pedido, vaga, decisao, retorno, resultado)
     saudacao = f"Olá, {nome_tratamento}."
     motivos: list[MotivoFeedback] = []
+    passou = (
+        resultado.aprovado
+        if resultado is not None
+        else (False if retorno is not None else _aprovada(decisao))
+    )
     if pedido.contestacao or _CONTESTACAO.search(_normalizado(pedido.texto)):
         encaminhado = ENCAMINHADO_CONTESTACAO
-    elif retorno is not None:
+    elif retorno is not None and retorno.motivos:
         motivos, encaminhado = _motivos_do_destino(retorno, vaga)
+    elif passou and decisao is not None:
+        motivos, encaminhado = _motivos_de_quem_passou(decisao, vaga)
+    elif retorno is not None or resultado is not None:
+        motivos, encaminhado = [], ENCAMINHADO_DESTINO_SEM_MOTIVO
     else:
         motivos, encaminhado = _motivos_da_decisao(decisao)
     if encaminhado is not None:
@@ -273,8 +334,8 @@ def responder_pedido_de_feedback(
         feedback = FeedbackCandidato(
             status=StatusFeedback.GERADO,
             saudacao=saudacao,
-            texto=_texto(vaga, motivos),
+            texto=_texto(vaga, motivos, passou),
             motivos=motivos,
         )
-    _registrar(registrar, pedido, feedback, decisao, retorno, agora)
+    _registrar(registrar, pedido, feedback, decisao, retorno, agora, passou)
     return feedback
