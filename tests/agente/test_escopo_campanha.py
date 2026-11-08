@@ -15,6 +15,7 @@ from tests.agente.apoio import pedido_mandato
 SESSAO = {"X-Empresa-Id": "empresa-campanha"}
 POSICOES = 3
 ENCAMINHAR = 10
+ENCAMINHAR_APERTADO = 1
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def _software(cliente: TestClient) -> dict:
     return next(m for m in modelos.json()["itens"] if m["titulo"] == "Software Engineer")
 
 
-def _campanha(cliente: TestClient) -> str:
+def _campanha(cliente: TestClient, encaminhar: int = ENCAMINHAR) -> str:
     pedido = {**_software(cliente), "meta_candidatos": POSICOES}
     criada = cliente.post("/vagas", headers=SESSAO, json=pedido)
     assert criada.status_code == 201, criada.text
@@ -37,7 +38,7 @@ def _campanha(cliente: TestClient) -> str:
     mandato = cliente.post(
         f"/vagas/{vaga}/mandato",
         headers=SESSAO,
-        json=pedido_mandato(max_indicacoes=ENCAMINHAR, aceitar_declarada=True),
+        json=pedido_mandato(max_indicacoes=encaminhar, aceitar_declarada=True),
     )
     assert mandato.status_code == 201, mandato.text
     return vaga
@@ -83,18 +84,20 @@ def test_encaminhamento_nao_passa_do_numero_do_recrutador(cliente):
 
 
 def test_quem_passa_do_encaminhamento_fica_com_o_rh(cliente):
-    vaga = _campanha(cliente)
+    # Encaminhamento menor que a faixa verde da base: sempre sobra alguém além do número.
+    vaga = _campanha(cliente, encaminhar=ENCAMINHAR_APERTADO)
     itens = _itens(cliente, vaga)
 
-    for item in itens:
-        if item["decisao"] != "pedir_humano":
-            continue
-        regra = _regra(cliente, vaga, item["candidato"]["id"])
-        if regra != "nao_priorizado":
-            continue
-        assert item["decisao"] != "descartar"
+    encaminhados = [i for i in itens if i["decisao"] == "indicar"]
+    na_fila = [i for i in itens if i["decisao"] == "pedir_humano"]
+    alem_do_numero = [
+        i for i in na_fila if _regra(cliente, vaga, i["candidato"]["id"]) == "nao_priorizado"
+    ]
 
-    assert any(i["decisao"] == "pedir_humano" for i in itens)
+    assert len(encaminhados) == ENCAMINHAR_APERTADO
+    assert alem_do_numero, "ninguém ficou além do encaminhamento: o teste não prova o excesso"
+    descartados = {i["candidato"]["id"] for i in itens if i["decisao"] == "descartar"}
+    assert not descartados & {i["candidato"]["id"] for i in alem_do_numero}
 
 
 def test_outra_empresa_nao_ve_a_campanha(cliente):
