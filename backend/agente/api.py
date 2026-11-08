@@ -38,7 +38,7 @@ from backend.agente.fluxo import (
     TransicaoInvalida,
 )
 from backend.agente.mandato import MandatoInvalido
-from backend.agente.montagem import montar_demo
+from backend.agente.montagem import montar_servico
 from backend.agente.servico import (
     AditivoNecessario,
     CandidatoInexistente,
@@ -1138,7 +1138,7 @@ def _lazy_demo() -> Callable[[], ServicoVagas]:
     def obter() -> ServicoVagas:
         with trava:
             if not montado:
-                montado.append(montar_demo())
+                montado.append(montar_servico())
             return montado[0]
 
     return obter

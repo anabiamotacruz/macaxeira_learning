@@ -29,6 +29,8 @@ curl -X POST -H "X-Empresa-Id: empresa-exemplo" -H "Content-Type: application/js
 
 A documentação interativa fica em `/docs`.
 
+Por padrão, a API sobe a demonstração sem modelo: tudo sintético e sem chave. Para o agente raciocinar com o modelo de verdade na análise, na revisão, nas consultas e nas dúvidas, defina `AGENTE_COM_MODELO=1` e `FEATHERLESS_API_KEY`. As pessoas, o contato e a Nara continuam simulados. O gasto do modelo conta para o limite do mandato: passou do limite, a vaga pausa. Sem a chave, a API avisa no log e segue sem modelo.
+
 ## Regras do contrato
 
 - **Sessão:** `empresa_id` vem do cabeçalho simulado `X-Empresa-Id`, nunca do corpo. Sem ele, a resposta é 401.
