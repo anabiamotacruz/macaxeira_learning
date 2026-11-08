@@ -676,7 +676,8 @@ def test_analisador_recusa_trecho_que_cita_o_original_retirado():
     analise = AnalisadorPorModelo(cliente).analisar(_vaga(), candidato)
 
     assert analise.evidencias == []
-    assert analise.notas == {}
+    # O trecho sai; a nota fica, sem trecho, e a regra de decisão limita nota sem trecho.
+    assert analise.notas == {"Kubernetes": 0.9}
 
 
 def test_revisor_recebe_evidencia_com_marcadores_iguais_aos_do_analisador():

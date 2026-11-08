@@ -296,7 +296,7 @@ def test_resposta_invalida_pede_humano(tmp_path: Path):
 
     decisao = _decisoes(m)["c1"]
     assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "ressalva_do_revisor" in decisao.motivo
+    assert "revisao_invalida" in decisao.motivo
 
 
 def test_resposta_sem_o_campo_de_ressalvas_nao_conta_como_aprovacao():
@@ -306,7 +306,8 @@ def test_resposta_sem_o_campo_de_ressalvas_nao_conta_como_aprovacao():
         revisor.revisar(_vaga(), _candidato(), _analise())
 
 
-def test_ressalva_sem_trecho_passa_pelo_fluxo_como_pedido_de_humano(tmp_path: Path):
+def test_ressalva_sem_trecho_nao_muda_a_decisao_e_fica_registrada(tmp_path: Path):
+    """Ressalva que o código não confirmou não limita nota nem leva a uma pessoa."""
     auditoria.configurar_destino_externo(None)
     cliente = ClienteModeloSimulado(
         {ETAPA_REVISAO: {"ressalvas": [_exagero(criterio="backend", trecho="inventado")]}}
@@ -320,7 +321,9 @@ def test_ressalva_sem_trecho_passa_pelo_fluxo_como_pedido_de_humano(tmp_path: Pa
 
     _assinar_fluxo(m.fluxo())
 
-    assert _decisoes(m)["c1"].tipo is TipoDecisao.PEDIR_HUMANO
+    decisao = _decisoes(m)["c1"]
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert "ressalva_do_revisor" in decisao.entrada["sinais"]
 
 
 @pytest.mark.parametrize("erro", [ModeloIndisponivel, LimiteGastoAtingido])

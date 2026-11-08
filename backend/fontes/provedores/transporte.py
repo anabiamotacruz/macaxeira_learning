@@ -15,6 +15,8 @@ import httpx2
 from backend.fontes.provedores.erros import ErroProvedor, MotivoTroca
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx2").setLevel(logging.WARNING)
+"""O cliente registra a URL em INFO, e a LinkdAPI só aceita GET: a consulta vai na URL."""
 
 TEMPO_LIMITE_PADRAO_S = 60.0
 """Abaixo do `TEMPO_LIMITE_INTEGRACAO_S` de `com_tentativas`, como ele exige."""
@@ -22,12 +24,16 @@ TAMANHO_MAXIMO_PADRAO = 2 * 1024 * 1024
 HOSTS_OFICIAIS = frozenset(
     {
         "api.brightdata.com",
+        "api.envoapi.com",
         "api.peopledatalabs.com",
         "api.search.brave.com",
+        "linkdapi.com",
         "sandbox.api.peopledatalabs.com",
     }
 )
 """A chave só sai para estes hosts."""
+USER_AGENT_PADRAO = "macaxeira-learning/0.1"
+"""Vai em todo pedido sem `User-Agent`: o firewall da EnvoAPI devolve 403 ao padrão do Python."""
 
 
 @dataclass(frozen=True)
@@ -68,11 +74,14 @@ class TransporteHttp:
     def enviar(self, pedido: PedidoHttp) -> RespostaHttp:
         if urlsplit(pedido.url).hostname not in HOSTS_OFICIAIS:
             raise ErroProvedor(MotivoTroca.RECUSADO_PELO_PROVEDOR)
+        cabecalhos = dict(pedido.cabecalhos)
+        if not any(nome.casefold() == "user-agent" for nome in cabecalhos):
+            cabecalhos["User-Agent"] = USER_AGENT_PADRAO
         try:
             with self._cliente.stream(
                 pedido.metodo,
                 pedido.url,
-                headers=pedido.cabecalhos,
+                headers=cabecalhos,
                 json=pedido.corpo_json,
                 timeout=pedido.tempo_limite_s,
                 follow_redirects=False,

@@ -1,8 +1,20 @@
-"""Liga a cadeia pelo ambiente: cada provedor com chave entra, na ordem Brave, Bright Data e PDL.
+"""Liga a cadeia pelo ambiente: cada provedor com chave entra, nesta ordem.
 
-A busca é da Brave. O único outro interruptor é o da SERP da Bright Data, que usa alvo Google e só
-entra com `BRIGHTDATA_ZONA_BUSCA` e `BRIGHTDATA_BUSCA_HABILITADA=1`. A leitura de páginas continua
-na Bright Data, e o enriquecimento, na People Data Labs.
+0. LinkdAPI, a primeira quando há `LINK_API_KEY` (decisão do dono do produto em 8/11/2026). As
+   chaves de reserva `LINK_API_KEY_2`, `LINK_API_KEY_3`… entram logo depois, uma instância por
+   chave (`linkdapi#N`): sem crédito ou recusada, a cadeia passa para a seguinte. A leitura para no
+   primeiro número ausente, e chave em branco não conta. `LINKDAPI_LOCAL` e
+   `LINKDAPI_PERFIS_POR_PAGINA` ajustam a consulta.
+1. Busca da People Data Labs (Person Search), a principal: devolve perfis com cargo, competências
+   e experiência. Entra com `PDL_API_KEY`; `PDL_PAIS` e `PDL_TAMANHO_PAGINA` ajustam a consulta.
+2. Brave, a busca na web, que assume quando o PDL falha ou não acha.
+3. Bright Data, que lê páginas. A SERP dela usa alvo Google e só entra com `BRIGHTDATA_ZONA_BUSCA`
+   e `BRIGHTDATA_BUSCA_HABILITADA=1`.
+4. Enriquecimento da People Data Labs (Person Enrichment), só por identidade.
+
+Sem `LINK_API_KEY`, a ordem segue de 1 a 4. Sem `PDL_API_KEY`, a ordem fica Brave, Bright Data.
+Cada registro do PDL custa até US$ 0,28: com o orçamento de execução padrão, uma página não cabe,
+a busca do PDL fica fora e o estado avisa. Uma página da LinkdAPI custa até US$ 0,11 e cabe.
 
 `MODO_DADOS=sinteticos` manda sobre as chaves: nenhum provedor nem transporte é criado.
 """
@@ -20,10 +32,24 @@ from backend.fontes.provedores.bright_data import ProvedorBrightData
 from backend.fontes.provedores.cadeia import CadeiaProvedores, ModoDados, VerificadorSupressao
 from backend.fontes.provedores.controles import OrcamentoProvedores
 from backend.fontes.provedores.fonte import FonteProvedores, SituacaoFontes
+from backend.fontes.provedores.linkdapi import (
+    LOCAL_PADRAO,
+    PERFIS_POR_PAGINA_PADRAO,
+    ProvedorLinkdApi,
+    validar_local,
+    validar_perfis_por_pagina,
+)
 from backend.fontes.provedores.modelos import ProvedorDados
 from backend.fontes.provedores.people_data_labs import (
     MIN_LIKELIHOOD_PADRAO,
     ProvedorPeopleDataLabs,
+)
+from backend.fontes.provedores.people_data_labs_busca import (
+    PAIS_PADRAO,
+    TAMANHO_PAGINA_PADRAO,
+    ProvedorPeopleDataLabsBusca,
+    validar_pais,
+    validar_tamanho_pagina,
 )
 from backend.fontes.provedores.transporte import Transporte, TransporteHttp
 from backend.fontes.provedores.url_segura import Resolvedor, resolver_dns
@@ -39,11 +65,22 @@ BRIGHTDATA_ZONA_WEB = "BRIGHTDATA_ZONA_WEB"
 BRIGHTDATA_ZONA_BUSCA = "BRIGHTDATA_ZONA_BUSCA"
 BRIGHTDATA_BUSCA_HABILITADA = "BRIGHTDATA_BUSCA_HABILITADA"
 PDL_API_KEY = "PDL_API_KEY"
+LINK_API_KEY = "LINK_API_KEY"
+LINK_API_KEY_2 = "LINK_API_KEY_2"
+LINKDAPI_LOCAL = "LINKDAPI_LOCAL"
+LINKDAPI_PERFIS_POR_PAGINA = "LINKDAPI_PERFIS_POR_PAGINA"
+MAXIMO_CHAVES_LINKDAPI = 20
 PDL_MIN_LIKELIHOOD = "PDL_MIN_LIKELIHOOD"
+PDL_PAIS = "PDL_PAIS"
+PDL_TAMANHO_PAGINA = "PDL_TAMANHO_PAGINA"
 ORCAMENTO_EMPRESA = "PROVEDORES_ORCAMENTO_EMPRESA_USD"
 ORCAMENTO_EXECUCAO = "PROVEDORES_ORCAMENTO_EXECUCAO_USD"
 NOMES_DE_AMBIENTE = (
     MODO_DADOS,
+    LINK_API_KEY,
+    LINK_API_KEY_2,
+    LINKDAPI_LOCAL,
+    LINKDAPI_PERFIS_POR_PAGINA,
     BRAVE_API_KEY,
     BRIGHTDATA_API_TOKEN,
     BRIGHTDATA_ZONA_WEB,
@@ -51,6 +88,8 @@ NOMES_DE_AMBIENTE = (
     BRIGHTDATA_BUSCA_HABILITADA,
     PDL_API_KEY,
     PDL_MIN_LIKELIHOOD,
+    PDL_PAIS,
+    PDL_TAMANHO_PAGINA,
     ORCAMENTO_EMPRESA,
     ORCAMENTO_EXECUCAO,
 )
@@ -91,6 +130,49 @@ def _provedor_brave(
     return None if chave is None else ProvedorBrave(chave, transporte, relogio=relogio)
 
 
+def _chaves_linkdapi(ambiente: Mapping[str, str]) -> list[tuple[int, str]]:
+    """`LINK_API_KEY`, depois `LINK_API_KEY_2`… até o primeiro número ausente. Em branco, pula."""
+    chaves = []
+    for numero in range(1, MAXIMO_CHAVES_LINKDAPI + 1):
+        nome = LINK_API_KEY if numero == 1 else f"{LINK_API_KEY}_{numero}"
+        if nome not in ambiente:
+            break
+        chave = _valor(ambiente, nome)
+        if chave is not None:
+            chaves.append((numero, chave))
+    return chaves
+
+
+def _provedores_linkdapi(
+    ambiente: Mapping[str, str], transporte: Transporte, relogio: Callable[[], datetime]
+) -> list[ProvedorLinkdApi]:
+    """Uma instância por chave, rotulada pelo número da variável. A chave nunca aparece."""
+    chaves = _chaves_linkdapi(ambiente)
+    if not chaves:
+        return []
+    try:
+        local = validar_local(_valor(ambiente, LINKDAPI_LOCAL) or LOCAL_PADRAO)
+    except ValueError as erro:
+        raise ValueError(f"{LINKDAPI_LOCAL} inválido: {erro}") from None
+    try:
+        perfis = validar_perfis_por_pagina(
+            int(_valor(ambiente, LINKDAPI_PERFIS_POR_PAGINA) or PERFIS_POR_PAGINA_PADRAO)
+        )
+    except ValueError as erro:
+        raise ValueError(f"{LINKDAPI_PERFIS_POR_PAGINA} inválido: {erro}") from None
+    return [
+        ProvedorLinkdApi(
+            chave,
+            transporte,
+            indice=numero,
+            local=local,
+            perfis_por_pagina=perfis,
+            relogio=relogio,
+        )
+        for numero, chave in chaves
+    ]
+
+
 def _zona_da_serp(ambiente: Mapping[str, str], avisos: list[str]) -> str | None:
     """A SERP só liga com as duas variáveis. Configuração pela metade não fica em silêncio."""
     zona = _valor(ambiente, BRIGHTDATA_ZONA_BUSCA)
@@ -128,6 +210,43 @@ def _provedor_bright_data(
     )
 
 
+def _provedor_pdl_busca(
+    ambiente: Mapping[str, str],
+    transporte: Transporte,
+    relogio: Callable[[], datetime],
+    limite_execucao_usd: float,
+    avisos: list[str],
+) -> ProvedorPeopleDataLabsBusca | None:
+    """Se uma página não cabe no orçamento de execução, o provedor fica fora e o estado avisa.
+
+    Dentro da cadeia, ele só acumularia trocas por orçamento: toda resposta seguinte sairia como
+    cobertura parcial, e o resultado vazio deixaria de ir para o cache.
+    """
+    chave = _valor(ambiente, PDL_API_KEY)
+    if chave is None:
+        return None
+    try:
+        pais = validar_pais(_valor(ambiente, PDL_PAIS) or PAIS_PADRAO)
+    except ValueError as erro:
+        raise ValueError(f"{PDL_PAIS} inválido: {erro}") from None
+    try:
+        tamanho = validar_tamanho_pagina(
+            int(_valor(ambiente, PDL_TAMANHO_PAGINA) or TAMANHO_PAGINA_PADRAO)
+        )
+    except ValueError as erro:
+        raise ValueError(f"{PDL_TAMANHO_PAGINA} inválido: {erro}") from None
+    provedor = ProvedorPeopleDataLabsBusca(
+        chave, transporte, pais=pais, tamanho_pagina=tamanho, relogio=relogio
+    )
+    if provedor.custo_por_pagina > limite_execucao_usd:
+        avisos.append(
+            f"busca do PDL fora do orçamento: uma página custa até US$ "
+            f"{provedor.custo_por_pagina:.2f}, acima de {ORCAMENTO_EXECUCAO}; fica fora da cadeia"
+        )
+        return None
+    return provedor
+
+
 def _provedor_pdl(
     ambiente: Mapping[str, str], transporte: Transporte, relogio: Callable[[], datetime]
 ) -> ProvedorPeopleDataLabs | None:
@@ -155,19 +274,26 @@ def montar_fonte_externa(
     """Monta a fonte e registra o estado. A supressão é obrigatória: sem ela, não há cadeia."""
     ambiente = os.environ if ambiente is None else ambiente
     modo = _modo(ambiente)
+    limite_execucao = _limite(ambiente, ORCAMENTO_EXECUCAO, ORCAMENTO_EXECUCAO_PADRAO_USD)
     orcamento = OrcamentoProvedores(
         limite_empresa_usd=_limite(ambiente, ORCAMENTO_EMPRESA, ORCAMENTO_EMPRESA_PADRAO_USD),
-        limite_execucao_usd=_limite(ambiente, ORCAMENTO_EXECUCAO, ORCAMENTO_EXECUCAO_PADRAO_USD),
+        limite_execucao_usd=limite_execucao,
     )
     avisos: list[str] = []
     provedores: list[ProvedorDados] = []
     if modo is ModoDados.REAIS and _valor(ambiente, BRAVE_API_KEY) is None:
         avisos.append(f"{BRAVE_API_KEY} ausente: busca na web indisponível")
-    if modo is ModoDados.REAIS and any(
-        _valor(ambiente, nome) for nome in (BRAVE_API_KEY, BRIGHTDATA_API_TOKEN, PDL_API_KEY)
+    tem_linkdapi = bool(_chaves_linkdapi(ambiente))
+    if modo is ModoDados.REAIS and (
+        tem_linkdapi
+        or any(
+            _valor(ambiente, nome) for nome in (BRAVE_API_KEY, BRIGHTDATA_API_TOKEN, PDL_API_KEY)
+        )
     ):
         saida = transporte or TransporteHttp()
+        provedores.extend(_provedores_linkdapi(ambiente, saida, relogio))
         for provedor in (
+            _provedor_pdl_busca(ambiente, saida, relogio, limite_execucao, avisos),
             _provedor_brave(ambiente, saida, relogio),
             _provedor_bright_data(ambiente, saida, relogio, resolver, avisos),
             _provedor_pdl(ambiente, saida, relogio),

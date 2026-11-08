@@ -23,6 +23,7 @@ from datetime import date
 from enum import StrEnum
 from fractions import Fraction
 
+from backend.agente.regras import externo_sem_autorizacao
 from backend.contratos.criterios import sem_genero, tem_termo_sensivel
 from backend.contratos.interfaces import Analisador
 from backend.contratos.modelos import Analise, Candidato, EstadoBanco, Vaga
@@ -64,6 +65,8 @@ class RegraCorte(StrEnum):
     AUTORIZACAO_VENCIDA = "autorizacao_vencida"
     REQUISITO_NAO_ATENDIDO = "requisito_nao_atendido"
     PERFIL_DESATUALIZADO = "perfil_desatualizado"
+    """Não é mais aplicado: o perfil desatualizado com autorização segue para a análise. Fica
+    para ler cortes antigos."""
     FORA_DO_LIMITE = "fora_do_limite"
     RESERVA = "reserva"
 
@@ -194,21 +197,27 @@ def _separar_duplicatas(
 
 
 def _regra_de_autorizacao(registros: list[Candidato], hoje: date) -> tuple[RegraCorte, str] | None:
-    """Vale a regra mais restritiva: um registro novo de outra fonte não anula uma restrição."""
+    """Vale a regra mais restritiva: um registro novo de outra fonte não anula uma restrição.
+
+    O registro de fonte externa que nunca teve autorização (`externo_sem_autorizacao`) segue para
+    a análise: o contato dele só sai pelo e-mail que a pessoa publicou. Opt-out, remoção e uma
+    autorização vencida em qualquer registro continuam cortando.
+    """
     if any(r.opt_out for r in registros):
         return RegraCorte.OPT_OUT, "a pessoa pediu para não ser contatada"
     if any(r.estado == EstadoBanco.REMOVIDO for r in registros):
         return RegraCorte.ESTADO_BLOQUEADO, "perfil removido"
-    for registro in registros:
+    controlados = [r for r in registros if not externo_sem_autorizacao(r)]
+    for registro in controlados:
         if not registro.autorizou_contato or registro.autorizacao_valida_ate is None:
             return RegraCorte.SEM_AUTORIZACAO, "sem autorização registrada"
-    for registro in registros:
+    for registro in controlados:
         if registro.autorizacao_valida_ate < hoje:
             return (
                 RegraCorte.AUTORIZACAO_VENCIDA,
                 f"autorização vencida em {registro.autorizacao_valida_ate.isoformat()}",
             )
-    for registro in registros:
+    for registro in controlados:
         if registro.estado in (EstadoBanco.PENDENTE, EstadoBanco.EXPIRADO):
             return RegraCorte.ESTADO_BLOQUEADO, f"perfil com estado {registro.estado.value}"
     return None
@@ -242,11 +251,6 @@ def _regra_de_corte(
     bloqueio = _regra_de_autorizacao(registros, hoje)
     if bloqueio is not None:
         return bloqueio
-    if registros[0].estado == EstadoBanco.DESATUALIZADO:
-        return (
-            RegraCorte.PERFIL_DESATUALIZADO,
-            "autorização válida, perfil desatualizado: uma pessoa confirma antes de analisar",
-        )
     faltas = _faltas_de_requisito(vaga, registros, avaliar_requisitos)
     if faltas:
         return (
@@ -268,10 +272,11 @@ def priorizar(
     """Devolve até `limite` candidatos elegíveis, do mais aderente ao menos, com empate por `id`.
 
     Só falta comprovada elimina: dado ausente segue adiante. Perfil desatualizado com autorização
-    válida sai para uma pessoa confirmar, sem análise. Quem tem os requisitos confirmados e não
-    coube sai por `FORA_DO_LIMITE`; os demais que ficam de fora vão para a `RESERVA`, e só entram
-    nesta rodada se os aderentes não bastam para a meta da vaga. Cada saída passa por
-    `registrar_corte`. Candidato de outra empresa levanta `ValueError` antes de qualquer registro.
+    válida segue como os demais: a análise e o pacote pedem para confirmar o perfil com a pessoa.
+    Quem tem os requisitos confirmados e não coube sai por `FORA_DO_LIMITE`; os demais que ficam
+    de fora vão para a `RESERVA`, e só entram nesta rodada se os aderentes não bastam para a meta
+    da vaga. Cada saída passa por `registrar_corte`. Candidato de outra empresa levanta
+    `ValueError` antes de qualquer registro.
     """
     if limite < 0:
         raise ValueError("limite não pode ser negativo")
@@ -299,8 +304,6 @@ def priorizar(
         pessoa = _prioridade(vaga, registros, competencias, avaliar_requisitos)
         if corte is None:
             elegiveis.append(pessoa)
-        elif corte[0] == RegraCorte.PERFIL_DESATUALIZADO and not pessoa.aderente:
-            cortar(registros[0], RegraCorte.RESERVA, MOTIVO_RESERVA)
         else:
             cortar(registros[0], *corte)
 

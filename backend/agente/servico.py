@@ -17,9 +17,12 @@ from typing import Any
 from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
 from backend.agente.configuracao import PerguntaVaga
+from backend.agente.contato_publicado import ContatoPorEmpresa
 from backend.agente.documento import documento_de_ingestao
+from backend.agente.documento_html import documento_html
 from backend.agente.fluxo import (
     REGRA_REVERSAO,
+    DuvidaConvite,
     FluxoVaga,
     Priorizador,
     ProvedorConsultas,
@@ -34,6 +37,7 @@ from backend.agente.fluxo import (
     exigir_humano,
 )
 from backend.agente.mandato import MandatoInvalido, Politica
+from backend.agente.palavras_chave import limpar_palavras_chave
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import requisitos_sem_valor, validar_criterios
 from backend.contratos.erros import ErroContrato
@@ -53,6 +57,7 @@ from backend.contratos.modelos import (
     EstadoVaga,
     EventoFluxo,
     Mandato,
+    PacoteContexto,
     PropostaAjuste,
     RespostaCandidato,
     ResumoExecucao,
@@ -131,6 +136,8 @@ class DependenciasFluxo:
     redator_retorno: RedatorRetorno | None = None
     propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None
     """Recebe a descrição e a empresa. Sem ele, a proposta de critérios fica indisponível."""
+    buscador_contato: ContatoPorEmpresa | None = None
+    """EnvoAPI, só com a busca real e `ENVO_API_KEY`. Guarda o resultado por empresa e pessoa."""
 
 
 def _novo_id_de_vaga() -> str:
@@ -181,6 +188,7 @@ class ServicoVagas:
             redator_convite=d.redator_convite,
             respondedor_duvida=d.respondedor_duvida,
             redator_retorno=d.redator_retorno,
+            buscador_contato=d.buscador_contato,
         )
 
     def _fluxo(self, empresa_id: str, vaga_id: str) -> FluxoVaga:
@@ -201,8 +209,14 @@ class ServicoVagas:
         return self.repositorio.listar_vagas(empresa_id)
 
     def criar_vaga(self, empresa_id: str, dados: dict[str, Any]) -> FluxoVaga:
-        """Grava a vaga e a deixa à espera do mandato. Critério sensível não entra."""
-        vaga = Vaga.model_validate({**dados, "id": self._gerar_id(), "empresa_id": empresa_id})
+        """Grava a vaga e a deixa à espera do mandato. Critério sensível não entra.
+
+        As palavras-chave são gravadas já limpas: é o que a busca vai usar.
+        """
+        palavras = limpar_palavras_chave(dados.get("palavras_chave") or [])
+        vaga = Vaga.model_validate(
+            {**dados, "palavras_chave": palavras, "id": self._gerar_id(), "empresa_id": empresa_id}
+        )
         if requisitos_sem_valor(vaga):
             raise RequisitoIncompleto("todo requisito precisa do atributo e do valor esperado")
         if validar_criterios(vaga):
@@ -343,6 +357,15 @@ class ServicoVagas:
 
     def documento(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
         """O documento de ingestão de quem já foi entregue ao destino, com a conversa."""
+        return documento_de_ingestao(*self._entregue(empresa_id, vaga_id, candidato_id))
+
+    def documento_html(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
+        """O mesmo documento como dossiê HTML para o recrutador, pronto para salvar em PDF."""
+        return documento_html(*self._entregue(empresa_id, vaga_id, candidato_id))
+
+    def _entregue(
+        self, empresa_id: str, vaga_id: str, candidato_id: str
+    ) -> tuple[PacoteContexto, Vaga, list[DuvidaConvite]]:
         fluxo = self._fluxo(empresa_id, vaga_id)
         pacote = next(
             (p for p in fluxo.pacotes_entregues() if p.candidato_id == candidato_id), None
@@ -355,7 +378,7 @@ class ServicoVagas:
             if registro.convite.candidato_id == candidato_id
             for duvida in registro.duvidas
         ]
-        return documento_de_ingestao(pacote, fluxo.vaga, duvidas)
+        return pacote, fluxo.vaga, duvidas
 
     def resumo(self, empresa_id: str, vaga_id: str) -> ResumoExecucao:
         fluxo = self._fluxo(empresa_id, vaga_id)

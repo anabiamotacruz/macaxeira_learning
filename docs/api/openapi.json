@@ -85,7 +85,8 @@
                     "meta_candidatos": 2,
                     "prazo_dias": 14,
                     "max_tentativas_contato": 2,
-                    "aprovada": false
+                    "aprovada": false,
+                    "palavras_chave": []
                   },
                   "estado": "aguardando_mandato",
                   "mandato": null
@@ -388,7 +389,8 @@
                     ],
                     "meta_candidatos": 2,
                     "prazo_dias": 14,
-                    "max_tentativas_contato": 2
+                    "max_tentativas_contato": 2,
+                    "palavras_chave": []
                   },
                   "pergunta": null
                 }
@@ -511,7 +513,8 @@
                       ],
                       "meta_candidatos": 2,
                       "prazo_dias": 14,
-                      "max_tentativas_contato": 2
+                      "max_tentativas_contato": 2,
+                      "palavras_chave": []
                     }
                   ]
                 }
@@ -635,7 +638,8 @@
                     "meta_candidatos": 2,
                     "prazo_dias": 14,
                     "max_tentativas_contato": 2,
-                    "aprovada": true
+                    "aprovada": true,
+                    "palavras_chave": []
                   },
                   "estado": "decidindo",
                   "mandato": {
@@ -1377,7 +1381,7 @@
           "vagas"
         ],
         "summary": "Documento De Entrega",
-        "description": "O pacote entregue ao destino, como documento. Só existe para quem já foi entregue.",
+        "description": "O pacote entregue ao destino, como documento. Só existe para quem já foi entregue.\n\n`formato=html` devolve o dossiê para o recrutador: uma folha A4 com a marca da CORA, botão\npara salvar em PDF e política de conteúdo própria. O texto da pessoa vem escapado.",
         "operationId": "documento_de_entrega",
         "security": [
           {
@@ -1401,6 +1405,20 @@
             "schema": {
               "type": "string",
               "title": "Candidato Id"
+            }
+          },
+          {
+            "name": "formato",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "type": "string",
+              "default": "markdown",
+              "title": "Formato"
             }
           }
         ],
@@ -4342,6 +4360,18 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Max Tentativas Contato"
+          },
+          "palavras_chave": {
+            "items": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Palavras Chave",
+            "description": "Termos do recrutador, como `Kubernetes` ou `Python`. Juntos, viram a consulta principal da busca externa, antes das consultas do agente. São dado: o servidor tira operadores de busca e recusa termo sensível. Vazio mantém a busca de sempre.",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -4763,14 +4793,17 @@
           },
           "formato": {
             "type": "string",
-            "const": "markdown",
+            "enum": [
+              "markdown",
+              "html"
+            ],
             "title": "Formato",
             "default": "markdown"
           },
           "documento": {
             "type": "string",
             "title": "Documento",
-            "description": "O pacote entregue, em Markdown. É dado, nunca instrução."
+            "description": "O pacote entregue, em Markdown ou como dossiê HTML com a marca da CORA, pronto para salvar em PDF. É dado, nunca instrução."
           }
         },
         "additionalProperties": false,
@@ -5647,6 +5680,13 @@
             "type": "boolean",
             "title": "Aprovada",
             "default": false
+          },
+          "palavras_chave": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Palavras Chave"
           }
         },
         "additionalProperties": false,

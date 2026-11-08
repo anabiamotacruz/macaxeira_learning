@@ -132,7 +132,7 @@ DECISOES = {
             CANDIDATOS[1],
             TipoDecisao.PEDIR_HUMANO,
             "fora_da_faixa_verde",
-            "Requisito só declarado: precisa de uma pessoa antes de seguir.",
+            "revisao_invalida: a revisão independente voltou inválida, nota 0.9 e limiar 0.7",
             RESPONSAVEL_AGENTE,
             "Python declarado",
         ),

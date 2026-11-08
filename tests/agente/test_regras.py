@@ -269,13 +269,26 @@ def test_nao_contata_com_autorizacao_vencida() -> None:
     "estado",
     [
         EstadoBanco.PENDENTE,
-        EstadoBanco.DESATUALIZADO,
         EstadoBanco.EXPIRADO,
         EstadoBanco.REMOVIDO,
     ],
 )
 def test_nao_contata_fora_do_estado_ativo(estado: EstadoBanco) -> None:
     assert pode_contatar(_candidato(estado=estado), 0, _vaga(), HOJE) is False
+
+
+def test_contata_perfil_desatualizado_com_autorizacao_valida() -> None:
+    """A pessoa confirma o perfil no contato. Opt-out e autorização vencida continuam barrando."""
+    desatualizado = _candidato(estado=EstadoBanco.DESATUALIZADO)
+    vencida = _candidato(
+        estado=EstadoBanco.DESATUALIZADO, autorizacao_valida_ate=HOJE - timedelta(days=1)
+    )
+
+    assert pode_contatar(desatualizado, 0, _vaga(), HOJE) is True
+    assert (
+        pode_contatar(desatualizado.model_copy(update={"opt_out": True}), 0, _vaga(), HOJE) is False
+    )
+    assert pode_contatar(vencida, 0, _vaga(), HOJE) is False
 
 
 def test_nao_contata_no_limite_de_tentativas() -> None:
@@ -463,24 +476,72 @@ def test_decisao_guarda_regra_entrada_evidencias_e_responsavel() -> None:
     assert decisao.entrada["mandato_versao"] == "1"
 
 
-def test_pede_humano_com_ressalva_do_revisor() -> None:
+def test_ressalva_sem_competencia_nao_muda_a_decisao() -> None:
     decisao = _decidir(analise=_analise(ressalvas_revisor=["exagero possível"]))
+
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert decisao.regra == "faixa_verde_v1"
+    assert "ressalva_do_revisor" in decisao.entrada["sinais"]
+
+
+RESSALVA_BACKEND = 'backend: nota acima da escala Trecho: "Liderou APIs"'
+
+
+@pytest.mark.parametrize("ressalva", [RESSALVA_BACKEND, "nota_sem_evidencia: backend"])
+def test_ressalva_limita_a_nota_da_competencia(ressalva: str) -> None:
+    """A ressalva não manda ao RH: a nota da competência fica limitada a 0.5 antes da média."""
+    decisao = _decidir(analise=_analise(ressalvas_revisor=[ressalva]))
+
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == "abaixo_do_limiar"
+    assert decisao.entrada["nota"] == "0.5"
+    assert decisao.entrada["notas_modelo"] == '{"backend": 0.8}'
+    assert decisao.entrada["notas_usadas"] == '{"backend": 0.5}'
+    assert "backend limitada a 0.5 por ressalva do revisor (modelo deu 0.8)" in decisao.motivo
+
+
+def test_ressalva_nao_sobe_nota_menor_que_o_teto() -> None:
+    analise = _analise(notas={"backend": 0.4}, ressalvas_revisor=[RESSALVA_BACKEND])
+
+    assert _decidir(analise=analise).entrada["nota"] == "0.4"
+
+
+def test_ressalva_sobre_requisito_nao_muda_a_decisao() -> None:
+    """Requisito é decidido pelo código, não pelo revisor."""
+    analise = _analise(ressalvas_revisor=['r1: exagero Trecho: "Cinco anos com Python"'])
+
+    assert _decidir(analise=analise).tipo is TipoDecisao.INDICAR
+
+
+def test_revisao_invalida_fica_com_uma_pessoa() -> None:
+    """Falha do modelo, como a análise inválida: não é ressalva, é falta da revisão."""
+    decisao = _decidir(analise=_analise(ressalvas_revisor=["revisor_resposta_invalida"]))
 
     assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
     assert decisao.regra == "fora_da_faixa_verde"
-    assert "ressalva_do_revisor" in decisao.motivo
-    assert "ressalva_do_revisor" in decisao.entrada["faltas"]
+    assert decisao.entrada["faltas"] == '["revisao_invalida"]'
+    assert "a revisão independente voltou inválida, nota 0.8 e limiar 0.7" in decisao.motivo
 
 
-def test_nao_indica_sem_evidencia() -> None:
+def test_ressalva_sem_trecho_conferido_nao_muda_a_decisao() -> None:
+    decisao = _decidir(analise=_analise(ressalvas_revisor=["revisor_ressalva_sem_trecho"]))
+
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert "ressalva_do_revisor" in decisao.entrada["sinais"]
+
+
+def test_sem_trecho_a_nota_da_competencia_fica_limitada() -> None:
+    """A nota fica, mas sem trecho do perfil não passa de 0.5: nada sem evidência é indicado."""
     decisao = _decidir(analise=_analise(evidencias=[]))
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "sem_evidencia_comprovada:r1" in decisao.motivo
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == "abaixo_do_limiar"
+    assert "backend limitada a 0.5 sem trecho do perfil (modelo deu 0.8)" in decisao.motivo
 
 
 @pytest.mark.parametrize("aceitar_declarada", [False, True])
-def test_inferencia_nao_cumpre_eliminatorio(aceitar_declarada: bool) -> None:
+def test_requisito_e_decidido_pelo_codigo_e_nao_pelo_trecho(aceitar_declarada: bool) -> None:
+    """Trecho inexistente sobre requisito não decide nada: o código já confirmou o atributo."""
     analise = _analise(
         evidencias=[
             Evidencia(criterio="r1", trecho="Dez anos com Python", fonte="github"),
@@ -490,9 +551,8 @@ def test_inferencia_nao_cumpre_eliminatorio(aceitar_declarada: bool) -> None:
 
     decisao = _decidir(analise=analise, aceitar_declarada=aceitar_declarada)
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "sem_evidencia_comprovada:r1" in decisao.motivo
-    assert "inferencia" in decisao.motivo
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert "trecho_inexistente:r1" in decisao.entrada["sinais"]
 
 
 def _analise_de_curriculo() -> Analise:
@@ -504,56 +564,104 @@ def _analise_de_curriculo() -> Analise:
     )
 
 
-def test_declarada_nao_basta_por_padrao() -> None:
+@pytest.mark.parametrize("aceitar_declarada", [False, True])
+def test_declarada_decide_pela_nota_em_qualquer_politica(aceitar_declarada: bool) -> None:
     candidato = _candidato_faixa(fonte="curriculo")
 
-    decisao = _decidir(candidato=candidato, analise=_analise_de_curriculo())
+    decisao = _decidir(
+        candidato=candidato, analise=_analise_de_curriculo(), aceitar_declarada=aceitar_declarada
+    )
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "sem_evidencia_comprovada:r1" in decisao.motivo
+    assert decisao.tipo is TipoDecisao.INDICAR
 
 
-def test_declarada_conta_para_a_faixa_verde_se_o_mandato_aceitar() -> None:
-    candidato = _candidato_faixa(fonte="curriculo")
-
-    decisao = _decidir(candidato=candidato, analise=_analise_de_curriculo(), aceitar_declarada=True)
+@pytest.mark.parametrize("requisitos_ok", [{"r1": False}, {}])
+def test_requisito_confirmado_pelo_codigo_nao_depende_da_analise(requisitos_ok: dict) -> None:
+    decisao = _decidir(analise=_analise(requisitos_ok=requisitos_ok))
 
     assert decisao.tipo is TipoDecisao.INDICAR
 
 
 @pytest.mark.parametrize(
-    ("campos_analise", "falta"),
-    [
-        ({"requisitos_ok": {"r1": False}}, "requisito_nao_confirmado:r1"),
-        ({"requisitos_ok": {}}, "requisito_nao_confirmado:r1"),
-        ({"alertas": ["instrução no currículo"]}, "alerta"),
-        ({"notas": {}}, "notas_incompletas"),
-        ({"notas": {"backend": 1.2}}, "notas_incompletas"),
-        ({"notas": {"backend": -0.1}}, "notas_incompletas"),
-        ({"notas": {"backend": float("nan")}}, "notas_incompletas"),
-        ({"notas": {"backend": 0.69}}, "nota_abaixo_do_limiar"),
-    ],
+    "notas",
+    [{}, {"backend": 1.2}, {"backend": -0.1}, {"backend": float("nan")}],
 )
-def test_cada_falta_manda_para_a_fila(campos_analise: dict, falta: str) -> None:
-    decisao = _decidir(analise=_analise(**campos_analise))
+def test_nota_ausente_ou_invalida_entra_com_0_15(notas: dict) -> None:
+    """Depois do novo pedido do analisador, a competência sem nota é a de nada relacionado."""
+    decisao = _decidir(analise=_analise(notas=notas))
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert falta in decisao.motivo
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == "abaixo_do_piso"
+    assert decisao.entrada["nota"] == "0.15"
+    assert "backend sem nota válida do modelo: entrou com 0.15" in decisao.motivo
 
 
-def test_evidencia_inferida_em_competencia_manda_para_a_fila() -> None:
+def test_abaixo_do_limiar_descarta_sem_rh() -> None:
+    decisao = _decidir(analise=_analise(notas={"backend": 0.69}))
+
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == "abaixo_do_limiar"
+    assert decisao.motivo.startswith("nota 0.69 abaixo do limiar 0.7")
+    assert decisao.entrada["faltas"] == '["nota_abaixo_do_limiar"]'
+
+
+def test_alerta_decide_pela_nota_com_teto_e_fica_registrado() -> None:
+    """Texto dirigido ao avaliador não vai ao RH, mas nunca empurra ninguém para o topo."""
+    analise = _analise(notas={"backend": 1.0}, alertas=["instrução no currículo"])
+
+    decisao = _decidir(analise=analise)
+
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert decisao.entrada["nota"] == "0.8"
+    assert "alerta" in decisao.entrada["sinais"]
+    assert "backend limitada a 0.8 por alerta" in decisao.motivo
+    assert "texto dirigido ao avaliador retirado da análise" in decisao.motivo
+
+
+def test_alerta_com_nota_baixa_descarta() -> None:
+    analise = _analise(notas={"backend": 0.5}, alertas=["instrução no currículo"])
+
+    assert _decidir(analise=analise).regra == "abaixo_do_limiar"
+
+
+def test_competencia_inferida_entra_na_nota_e_decide() -> None:
+    """APIs inferida de microsserviços e filas, com o trecho dessa experiência citado."""
+    perfil = "Desenvolvi serviços Python em produção. Implementei microsserviços e filas."
+    vaga = _vaga_faixa(
+        competencias=[Competencia(nome="Python", peso=1.0), Competencia(nome="APIs", peso=1.0)]
+    )
+    analise = _analise(
+        notas={"Python": 0.9, "APIs": 0.5},
+        evidencias=[
+            Evidencia(criterio="Python", trecho="Desenvolvi serviços Python", fonte="github"),
+            Evidencia(criterio="APIs", trecho="Implementei microsserviços e filas", fonte="github"),
+        ],
+    )
+    candidato = _candidato_faixa(perfil_texto=perfil)
+
+    indicada = _decidir(vaga=vaga, candidato=candidato, analise=analise)
+    descartada = _decidir(vaga=vaga, candidato=candidato, analise=analise, limiar_verde=0.75)
+
+    assert indicada.tipo is TipoDecisao.INDICAR
+    assert indicada.entrada["nota"] == "0.7"
+    assert indicada.entrada["notas_usadas"] == '{"APIs": 0.5, "Python": 0.9}'
+    assert descartada.tipo is TipoDecisao.DESCARTAR
+    assert descartada.regra == "abaixo_do_limiar"
+    assert "nota 0.7 abaixo do limiar 0.75" in descartada.motivo
+
+
+def test_trecho_inexistente_em_competencia_conta_como_sem_trecho() -> None:
     analise = _analise(
         evidencias=[
             Evidencia(criterio="r1", trecho="Cinco anos com Python", fonte="github"),
-            Evidencia(criterio="backend", trecho="Liderou APIs", fonte="github"),
             Evidencia(criterio="backend", trecho="Provavelmente sênior", fonte="github"),
         ]
     )
 
     decisao = _decidir(analise=analise)
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "inferencia" in decisao.motivo
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert "trecho_inexistente:backend" in decisao.entrada["sinais"]
 
 
 def test_competencia_sem_evidencia_nao_vai_para_a_faixa_verde() -> None:
@@ -564,8 +672,8 @@ def test_competencia_sem_evidencia_nao_vai_para_a_faixa_verde() -> None:
 
     decisao = _decidir(analise=analise)
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "sem_evidencia_competencia:backend" in decisao.motivo
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert "backend limitada a 0.5 sem trecho do perfil" in decisao.motivo
 
 
 def test_vaga_sem_requisitos_decide_pelas_competencias() -> None:
@@ -581,11 +689,11 @@ def test_vaga_sem_requisitos_decide_pelas_competencias() -> None:
         requisitos_ok={},
         evidencias=[Evidencia(criterio="outra", trecho="Liderou APIs", fonte="github")],
     )
-    pendente = _decidir(vaga=vaga, analise=sem_evidencia)
+    descartada = _decidir(vaga=vaga, analise=sem_evidencia)
 
-    assert pendente.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "sem_evidencia_competencia:backend" in pendente.motivo
-    assert "vaga_sem_requisitos" not in pendente.motivo
+    assert descartada.tipo is TipoDecisao.DESCARTAR
+    assert descartada.regra == "abaixo_do_limiar"
+    assert "vaga_sem_requisitos" not in descartada.motivo
 
 
 @pytest.mark.parametrize(
@@ -600,10 +708,12 @@ def test_vaga_sem_requisitos_decide_pelas_competencias() -> None:
     ],
 )
 def test_pesos_invalidos_nunca_chegam_a_faixa_verde(competencias: list[Competencia]) -> None:
+    """Vaga sem peso válido não tem nota: é erro de configuração, que fica com uma pessoa."""
     decisao = _decidir(vaga=_vaga_faixa(competencias=competencias))
 
     assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "notas_incompletas" in decisao.motivo
+    assert decisao.regra == "fora_da_faixa_verde"
+    assert "pesos_invalidos" in decisao.motivo
     assert decisao.entrada["nota"] == "indefinida"
 
 
@@ -629,18 +739,21 @@ def test_nota_igual_ao_limiar_indica() -> None:
     assert _decidir(analise=_analise(notas={"backend": 0.7})).tipo is TipoDecisao.INDICAR
 
 
-def test_limiar_nulo_manda_tudo_para_revisao() -> None:
+def test_limiar_nulo_usa_o_padrao() -> None:
     decisao = _decidir(limiar_verde=None)
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "limiar_nao_definido" in decisao.motivo
-    assert decisao.entrada["limiar_verde"] == "nao_calibrado"
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert decisao.entrada["limiar_verde"] == "0.7"
+    assert decisao.entrada["limiar_origem"] == "padrao"
+    assert "limiar padrão 0.7" in decisao.motivo
 
 
-def test_limiar_nulo_nao_descarta_por_piso() -> None:
-    decisao = _decidir(analise=_analise(notas={"backend": 0.1}), limiar_verde=None)
+@pytest.mark.parametrize(("nota", "regra"), [(0.69, "abaixo_do_limiar"), (0.1, "abaixo_do_piso")])
+def test_limiar_nulo_descarta_pelo_padrao(nota: float, regra: str) -> None:
+    decisao = _decidir(analise=_analise(notas={"backend": nota}), limiar_verde=None)
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == regra
 
 
 def test_descarta_abaixo_do_piso_sem_outro_problema() -> None:
@@ -648,16 +761,23 @@ def test_descarta_abaixo_do_piso_sem_outro_problema() -> None:
 
     assert decisao.tipo is TipoDecisao.DESCARTAR
     assert decisao.regra == "abaixo_do_piso"
+    assert decisao.motivo.startswith("nota 0.29 abaixo do piso 0.3")
 
 
-def test_nota_igual_ao_piso_vai_para_a_fila() -> None:
-    assert _decidir(analise=_analise(notas={"backend": 0.3})).tipo is TipoDecisao.PEDIR_HUMANO
+def test_nota_igual_ao_piso_descarta_pelo_limiar() -> None:
+    decisao = _decidir(analise=_analise(notas={"backend": 0.3}))
+
+    assert decisao.tipo is TipoDecisao.DESCARTAR
+    assert decisao.regra == "abaixo_do_limiar"
 
 
-def test_nota_abaixo_do_piso_com_outro_problema_vai_para_a_fila() -> None:
+def test_nota_abaixo_do_piso_com_alerta_descarta_e_registra() -> None:
     analise = _analise(notas={"backend": 0.1}, alertas=["instrução no currículo"])
 
-    assert _decidir(analise=analise).tipo is TipoDecisao.PEDIR_HUMANO
+    decisao = _decidir(analise=analise)
+
+    assert decisao.regra == "abaixo_do_piso"
+    assert "alerta" in decisao.entrada["sinais"]
 
 
 @pytest.mark.parametrize(
@@ -715,13 +835,36 @@ def test_regra_eliminatoria_e_estavel_entre_varios_requisitos() -> None:
     assert "r2" in decisao.motivo
 
 
-def test_atributo_ausente_vai_para_uma_pessoa() -> None:
-    """Lacuna não é penalidade, mas trecho citado não substitui a verificação do requisito."""
+def test_atributo_ausente_decide_pela_nota_e_vira_confirmacao() -> None:
+    """Sem dado, o código não confirma nem nega: decide a nota e a pessoa confirma no convite."""
     decisao = _decidir(candidato=_candidato_faixa(atributos={}))
 
-    assert decisao.tipo is TipoDecisao.PEDIR_HUMANO
-    assert "requisito_sem_dado:r1" in decisao.motivo
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert "requisito_sem_dado:r1" in decisao.entrada["sinais"]
+    assert "confirmar com a pessoa o requisito r1" in decisao.motivo
     assert decisao.entrada["requisitos"] == '{"r1": "sem_dado"}'
+
+
+def test_atributo_ausente_com_nota_baixa_descarta() -> None:
+    decisao = _decidir(
+        candidato=_candidato_faixa(atributos={}), analise=_analise(notas={"backend": 0.5})
+    )
+
+    assert decisao.regra == "abaixo_do_limiar"
+
+
+def test_perfil_desatualizado_com_autorizacao_decide_pela_nota() -> None:
+    decisao = _decidir(candidato=_candidato_faixa(estado=EstadoBanco.DESATUALIZADO))
+
+    assert decisao.tipo is TipoDecisao.INDICAR
+    assert "perfil_desatualizado" in decisao.entrada["sinais"]
+    assert "perfil desatualizado: confirmar com a pessoa" in decisao.motivo
+
+
+def test_perfil_desatualizado_sem_autorizacao_descarta() -> None:
+    candidato = _candidato_faixa(estado=EstadoBanco.DESATUALIZADO, opt_out=True)
+
+    assert _decidir(candidato=candidato).regra == "sem_autorizacao"
 
 
 def test_mandato_de_vaga_alterada_levanta_erro() -> None:
@@ -761,11 +904,14 @@ PARES_NOME_GENERO = [
     (("Ana Fictícia", "feminino"), ("João Fictício", "masculino")),
     (("Maria Fictícia", "feminino"), ("Alex Fictício", "não binário")),
 ]
-CAMPOS_ANALISE_POR_RESULTADO = {
-    TipoDecisao.INDICAR: {},
-    TipoDecisao.PEDIR_HUMANO: {"ressalvas_revisor": ["exagero possível"]},
-    TipoDecisao.DESCARTAR: {"notas": {"backend": 0.1}},
-}
+CASOS_POR_RESULTADO = [
+    (TipoDecisao.INDICAR, "faixa_verde_v1", {}),
+    (TipoDecisao.INDICAR, "faixa_verde_v1", {"alertas": ["instrução no currículo"]}),
+    (TipoDecisao.DESCARTAR, "abaixo_do_limiar", {"ressalvas_revisor": [RESSALVA_BACKEND]}),
+    (TipoDecisao.DESCARTAR, "abaixo_do_limiar", {"notas": {"backend": 0.5}}),
+    (TipoDecisao.DESCARTAR, "abaixo_do_piso", {"notas": {"backend": 0.1}}),
+    (TipoDecisao.DESCARTAR, "abaixo_do_piso", {"notas": {}}),
+]
 
 
 def _candidato_identidade(nome: str, genero: str, **campos) -> Candidato:
@@ -777,17 +923,35 @@ def _candidato_identidade(nome: str, genero: str, **campos) -> Candidato:
     )
 
 
-@pytest.mark.parametrize("resultado", list(CAMPOS_ANALISE_POR_RESULTADO))
+@pytest.mark.parametrize(("resultado", "regra", "campos"), CASOS_POR_RESULTADO)
 @pytest.mark.parametrize(("pessoa_a", "pessoa_b"), PARES_NOME_GENERO)
 def test_trocar_nome_ou_genero_nao_muda_decisao(
-    pessoa_a: tuple[str, str], pessoa_b: tuple[str, str], resultado: TipoDecisao
+    pessoa_a: tuple[str, str],
+    pessoa_b: tuple[str, str],
+    resultado: TipoDecisao,
+    regra: str,
+    campos: dict,
 ) -> None:
-    analise = _analise(**CAMPOS_ANALISE_POR_RESULTADO[resultado])
+    analise = _analise(**campos)
 
     decisao_a = _decidir(candidato=_candidato_identidade(*pessoa_a), analise=analise)
     decisao_b = _decidir(candidato=_candidato_identidade(*pessoa_b), analise=analise)
 
     assert decisao_a.tipo is resultado
+    assert decisao_a.regra == regra
+    assert decisao_a == decisao_b
+
+
+@pytest.mark.parametrize(("pessoa_a", "pessoa_b"), PARES_NOME_GENERO)
+def test_trocar_nome_ou_genero_nao_muda_a_decisao_de_quem_vai_a_uma_pessoa(
+    pessoa_a: tuple[str, str], pessoa_b: tuple[str, str]
+) -> None:
+    vaga = _vaga_faixa(competencias=[])
+
+    decisao_a = _decidir(vaga=vaga, candidato=_candidato_identidade(*pessoa_a))
+    decisao_b = _decidir(vaga=vaga, candidato=_candidato_identidade(*pessoa_b))
+
+    assert decisao_a.tipo is TipoDecisao.PEDIR_HUMANO
     assert decisao_a == decisao_b
 
 

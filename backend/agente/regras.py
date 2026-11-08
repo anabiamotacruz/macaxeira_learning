@@ -46,14 +46,36 @@ CORTES_POR_AUTORIZACAO = frozenset(
 """Quem sai por estes cortes não autorizou o uso do perfil nesta vaga."""
 
 CORTES_QUE_DESCARTAM = CORTES_POR_AUTORIZACAO | {"duplicata", "requisito_nao_atendido"}
-"""Fora do limite não descarta: a pessoa é elegível e só não coube nas análises da rodada.
-Perfil desatualizado também não: a autorização vale, e uma pessoa confirma o perfil."""
+"""Fora do limite não descarta: a pessoa é elegível e só não coube nas análises da rodada."""
 
 CORTES_SEM_DECISAO = frozenset({"reserva"})
 """Ninguém decidiu sobre a pessoa: ela segue no banco, sem análise, e pode voltar em outra rodada.
 Fica só o evento, para não encher a fila humana com quem não mostrou ligação com a vaga."""
 
 REGRA_PERFIL_DESATUALIZADO = "perfil_desatualizado"
+"""Não é mais corte: com autorização válida, o perfil desatualizado é analisado e decidido, e o
+pacote pede para confirmar o perfil com a pessoa."""
+
+ESTADOS_COM_AUTORIZACAO = frozenset({EstadoBanco.ATIVO, EstadoBanco.DESATUALIZADO})
+"""Perfil desatualizado continua autorizado: o que envelheceu é o texto, não o consentimento."""
+
+LIMIAR_PADRAO = 0.7
+"""Limiar usado quando o mandato não define `limiar_verde`: o agente decide sempre."""
+
+NOTA_SEM_RESPOSTA = 0.15
+"""Nota de quem segue sem nota válida depois do novo pedido: a de nada no perfil se relaciona."""
+
+TETO_SEM_TRECHO = 0.5
+"""Sem trecho do perfil, a nota não passa da de competência inferida: nada sem evidência indica."""
+
+TETO_COM_RESSALVA = 0.5
+"""A ressalva do revisor sobre uma competência limita a nota dela antes da média."""
+
+TETO_COM_ALERTA = 0.8
+"""Com texto dirigido ao avaliador, nenhuma nota chega ao topo da escala."""
+
+RESSALVA_NOTA_SEM_EVIDENCIA = "nota_sem_evidencia"
+RESSALVA_REVISOR_INVALIDO = "revisor_resposta_invalida"
 
 
 class CorteFunil(Protocol):
@@ -114,7 +136,7 @@ def requisitos_sem_valor(vaga: Vaga) -> list[str]:
 
 
 def validar_criterios(vaga: Vaga) -> list[str]:
-    """Lista os problemas da vaga: critérios, título e descrição com dado sensível.
+    """Lista os problemas da vaga: critérios, título, descrição e palavras-chave com dado sensível.
 
     Título e descrição são texto livre e costumam trazer aviso de não discriminação, que cita
     esses mesmos termos: só a frase que restringe quem concorre, como `apenas homens`, é problema.
@@ -124,6 +146,9 @@ def validar_criterios(vaga: Vaga) -> list[str]:
         problemas.append(f"título usa dado sensível: {', '.join(termos_sensiveis(vaga.titulo))}")
     for _, termos in frases_restritivas(vaga.descricao):
         problemas.append(f"descrição restringe por dado sensível: {', '.join(termos)}")
+    for palavra in vaga.palavras_chave:
+        if termos := termos_sensiveis(palavra):
+            problemas.append(f"palavra-chave usa dado sensível: {', '.join(termos)}")
     return problemas
 
 
@@ -166,12 +191,47 @@ def autorizacao_ativa(candidato: Candidato, hoje: date) -> bool:
     """Diz se a pessoa está ativa e autorizou. A autorização vale até o dia de `valida_ate`."""
     validade = candidato.autorizacao_valida_ate
     return (
-        candidato.estado == EstadoBanco.ATIVO
+        candidato.estado in ESTADOS_COM_AUTORIZACAO
         and candidato.autorizou_contato
         and not candidato.opt_out
         and validade is not None
         and validade >= hoje
     )
+
+
+MAX_CONTATOS_PELO_PUBLICADO = 2
+"""E-mail inicial e um único lembrete, como em `backend/contato/email_inicial.py`."""
+
+
+def externo_sem_autorizacao(candidato: Candidato) -> bool:
+    """Veio de fonte externa e nunca registrou autorização: pode ser analisada (decisão de 8/11).
+
+    É como `candidato_de_item` entrega quem vem da busca real: dado real, pendente, sem
+    autorização e sem validade. Opt-out, remoção e autorização que existiu e venceu ficam de fora
+    e continuam cortando. O contato dessa pessoa só sai pelo e-mail que ela mesma publicou
+    (`pode_contatar_pelo_publicado`), e o aceite do convite registra a autorização.
+
+    Limites conhecidos:
+    - A autorização vencida só corta quando o registro do banco tem o mesmo `id` do registro
+      externo. Casar a mesma pessoa entre fontes com ids diferentes depende da resolução de
+      identidade (spec 004, T044); até lá, um registro externo de id novo segue para a análise.
+    - A busca real só gera convite quando a fonte traz um e-mail publicado pela própria pessoa.
+      O e-mail de provedor vem marcado como não publicado. Com `ENVO_API_KEY`, o fluxo consulta
+      a EnvoAPI pelo e-mail que a pessoa publicou no LinkedIn, só para quem indicou. Sem ele, a
+      pessoa fica indicada e o motivo `contato_nao_publicado` vai para os eventos.
+    """
+    return (
+        not candidato.simulado
+        and not candidato.opt_out
+        and not candidato.autorizou_contato
+        and candidato.autorizacao_valida_ate is None
+        and candidato.estado == EstadoBanco.PENDENTE
+    )
+
+
+def pode_ir_ao_modelo(candidato: Candidato, hoje: date) -> bool:
+    """Autorização ativa ou pessoa externa que nunca teve autorização registrada."""
+    return autorizacao_ativa(candidato, hoje) or externo_sem_autorizacao(candidato)
 
 
 @dataclass(frozen=True)
@@ -196,17 +256,14 @@ def corte_de_autorizacao(candidato: Candidato, hoje: date) -> CorteDeAutorizacao
         return corte("opt_out", "a pessoa pediu para não ser contatada")
     if candidato.estado == EstadoBanco.REMOVIDO:
         return corte("estado_bloqueado", "perfil removido")
+    if externo_sem_autorizacao(candidato):
+        return None
     if not candidato.autorizou_contato or validade is None:
         return corte("sem_autorizacao", "sem autorização registrada")
     if validade < hoje:
         return corte("autorizacao_vencida", f"autorização vencida em {validade.isoformat()}")
     if candidato.estado in (EstadoBanco.PENDENTE, EstadoBanco.EXPIRADO):
         return corte("estado_bloqueado", f"perfil com estado {candidato.estado}")
-    if candidato.estado == EstadoBanco.DESATUALIZADO:
-        return corte(
-            REGRA_PERFIL_DESATUALIZADO,
-            "autorização válida, perfil desatualizado: uma pessoa confirma antes de analisar",
-        )
     return None
 
 
@@ -217,6 +274,18 @@ def pode_contatar(candidato: Candidato, tentativas: int, vaga: Vaga, hoje: date)
     """
     _exigir_mesma_empresa(vaga, candidato)
     return autorizacao_ativa(candidato, hoje) and 0 <= tentativas < vaga.max_tentativas_contato
+
+
+def pode_contatar_pelo_publicado(
+    candidato: Candidato, tentativas: int, vaga: Vaga, *, tem_contato_publicado: bool
+) -> bool:
+    """Contato de quem nunca autorizou: só pelo e-mail que a pessoa publicou, no máximo duas vezes.
+
+    `tem_contato_publicado` vem de `contato_publicado`: contato inferido ou de provedor não vale.
+    """
+    _exigir_mesma_empresa(vaga, candidato)
+    limite = min(vaga.max_tentativas_contato, MAX_CONTATOS_PELO_PUBLICADO)
+    return tem_contato_publicado and externo_sem_autorizacao(candidato) and 0 <= tentativas < limite
 
 
 def _trecho_no_perfil(trecho: str, perfil: str) -> bool:
@@ -243,7 +312,11 @@ def classificar_evidencia(evidencia: Evidencia, candidato: Candidato) -> TipoEvi
 
 @dataclass(frozen=True)
 class Faixa:
-    """Resultado da regra da faixa verde, antes de virar `Decisao`."""
+    """Resultado da regra da faixa verde, antes de virar `Decisao`.
+
+    `faltas` diz o que levou à decisão; `sinais` registra o que foi visto e não a mudou;
+    `ajustes` explica cada nota que a regra limitou ou completou antes da média.
+    """
 
     tipo: TipoDecisao
     regra: str
@@ -251,38 +324,108 @@ class Faixa:
     nota: float | None
     requisitos: dict[str, StatusRequisito]
     evidencias: tuple[tuple[str, TipoEvidencia], ...]
+    limiar: float = LIMIAR_PADRAO
+    piso: float = 0.0
+    limiar_do_mandato: bool = True
+    notas_modelo: tuple[tuple[str, float | None], ...] = ()
+    notas_usadas: tuple[tuple[str, float], ...] = ()
+    ajustes: tuple[str, ...] = ()
+    sinais: tuple[str, ...] = ()
 
 
-def _nota_ponderada(vaga: Vaga, analise: Analise) -> float | None:
-    """Média das notas pelos pesos. Devolve None se algum peso ou nota não servir."""
+def _pesos_validos(vaga: Vaga) -> bool:
     pesos = [c.peso for c in vaga.competencias]
-    notas = [analise.notas.get(c.nome) for c in vaga.competencias]
-    if not all(math.isfinite(peso) and peso >= 0 for peso in pesos) or sum(pesos) <= 0:
-        return None
-    if not all(nota is not None and 0 <= nota <= 1 for nota in notas):
-        return None
-    return round(sum(p * n for p, n in zip(pesos, notas, strict=True)) / sum(pesos), 6)
+    return all(math.isfinite(peso) and peso >= 0 for peso in pesos) and sum(pesos) > 0
 
 
-def _faltas_de_evidencia(
-    vaga: Vaga,
-    analise: Analise,
-    evidencias: tuple[tuple[str, TipoEvidencia], ...],
-    aceitas: frozenset[TipoEvidencia],
-) -> list[str]:
-    faltas: list[str] = []
-    for requisito in sorted(vaga.requisitos, key=lambda r: r.id):
-        if analise.requisitos_ok.get(requisito.id) is not True:
-            faltas.append(f"requisito_nao_confirmado:{requisito.id}")
-        if not any(c == requisito.id and tipo in aceitas for c, tipo in evidencias):
-            faltas.append(f"sem_evidencia_comprovada:{requisito.id}")
+def _nota_ponderada(vaga: Vaga, notas: dict[str, float]) -> float | None:
+    """Média das notas pelos pesos. Devolve None se a vaga não tem peso válido."""
+    if not _pesos_validos(vaga):
+        return None
+    pesos = [c.peso for c in vaga.competencias]
+    valores = [notas[c.nome] for c in vaga.competencias]
+    return round(sum(p * n for p, n in zip(pesos, valores, strict=True)) / sum(pesos), 6)
+
+
+def _criterio_da_ressalva(ressalva: str) -> str | None:
+    """`criterio: problema Trecho: ...` do revisor, ou `nota_sem_evidencia: criterio`."""
+    prefixo, separador, resto = ressalva.partition(":")
+    if not separador:
+        return None
+    return resto.strip() if prefixo.strip() == RESSALVA_NOTA_SEM_EVIDENCIA else prefixo.strip()
+
+
+def _nota_valida(nota: float | None) -> bool:
+    return nota is not None and math.isfinite(nota) and 0 <= nota <= 1
+
+
+def _formatar(nota: float) -> str:
+    return f"{round(nota, 6):g}"
+
+
+def _notas_da_decisao(
+    vaga: Vaga, analise: Analise, evidencias: tuple[tuple[str, TipoEvidencia], ...]
+) -> tuple[dict[str, float], list[str], list[str]]:
+    """A nota de cada competência que entra na média, com os ajustes e os sinais que a explicam.
+
+    Sem nota válida, entra `NOTA_SEM_RESPOSTA`. Depois, cada teto que vale para a competência:
+    sem trecho do perfil, com ressalva do revisor e com alerta. O teto só reduz, nunca sobe.
+    """
+    com_trecho = {c for c, tipo in evidencias if tipo != TipoEvidencia.INFERIDA}
+    ressalvadas = {_criterio_da_ressalva(r) for r in analise.ressalvas_revisor}
+    usadas: dict[str, float] = {}
+    ajustes: list[str] = []
+    sinais: list[str] = []
     for competencia in vaga.competencias:
-        verificada = any(
-            c == competencia.nome and tipo != TipoEvidencia.INFERIDA for c, tipo in evidencias
-        )
-        if competencia.peso > 0 and not verificada:
-            faltas.append(f"sem_evidencia_competencia:{competencia.nome}")
-    return faltas
+        nome = competencia.nome
+        original = analise.notas.get(nome)
+        if _nota_valida(original):
+            nota = float(original)
+        else:
+            nota = NOTA_SEM_RESPOSTA
+            ajustes.append(f"{nome} sem nota válida do modelo: entrou com {NOTA_SEM_RESPOSTA}")
+            sinais.append(f"nota_padrao:{nome}")
+        tetos = []
+        if nome not in com_trecho:
+            tetos.append((TETO_SEM_TRECHO, "sem trecho do perfil"))
+            sinais.append(f"sem_trecho:{nome}")
+        if nome in ressalvadas:
+            tetos.append((TETO_COM_RESSALVA, "por ressalva do revisor"))
+            sinais.append(f"ressalva_do_revisor:{nome}")
+        if analise.alertas:
+            tetos.append((TETO_COM_ALERTA, "por alerta"))
+        for teto, porque in sorted(tetos):
+            if nota > teto:
+                ajustes.append(
+                    f"{nome} limitada a {_formatar(teto)} {porque} (modelo deu {_formatar(nota)})"
+                )
+                nota = teto
+        usadas[nome] = nota
+    return usadas, ajustes, sinais
+
+
+def _sinais_da_analise(
+    vaga: Vaga,
+    candidato: Candidato,
+    analise: Analise,
+    requisitos: dict[str, StatusRequisito],
+    evidencias: tuple[tuple[str, TipoEvidencia], ...],
+) -> list[str]:
+    """O que não muda a decisão, mas precisa ficar registrado e chegar ao pacote."""
+    competencias = {c.nome for c in vaga.competencias}
+    sinais = [f"requisito_sem_dado:{i}" for i, s in sorted(requisitos.items()) if s == SEM_DADO]
+    if candidato.estado == EstadoBanco.DESATUALIZADO:
+        sinais.append(REGRA_PERFIL_DESATUALIZADO)
+    if analise.alertas:
+        sinais.append("alerta")
+    for ressalva in analise.ressalvas_revisor:
+        if ressalva.strip() == RESSALVA_REVISOR_INVALIDO:
+            continue
+        if _criterio_da_ressalva(ressalva) not in competencias:
+            sinais.append("ressalva_do_revisor")
+    inexistentes = sorted({c for c, tipo in evidencias if tipo == TipoEvidencia.INFERIDA})
+    sinais += [f"trecho_inexistente:{c}" for c in inexistentes]
+    return list(dict.fromkeys(sinais))
 
 
 def _exigir_mesma_execucao(
@@ -305,12 +448,16 @@ def classificar_faixa(
     hoje: date,
     agora: datetime,
 ) -> Faixa:
-    """Aplica a regra da faixa verde: indicar, descartar ou pedir uma pessoa.
+    """Aplica a regra da faixa verde: o agente indica ou descarta pela nota, como recrutador.
 
-    Não usa nome, atributo sensível nem confiança declarada pelo modelo. Requisito sem dado nunca
-    indica nem descarta: vai para uma pessoa. Levanta `ValueError`
-    se as peças são de empresas, vagas ou candidatos diferentes, e `MandatoInvalido` se o
-    mandato não vale para a vaga ou se ela usa critério sensível, para o fluxo pausar.
+    Autorização e requisito eliminatório não atendido descartam só por código. Fora isso, a nota
+    ponderada decide: a partir do limiar indica, abaixo dele descarta, e o RH pode reverter.
+    Requisito sem dado, perfil desatualizado, alerta e ressalva não levam a uma pessoa: ficam em
+    `sinais`, e alerta e ressalva limitam notas antes da média. Só vão a uma pessoa a vaga sem peso
+    válido e a revisão que falhou, como a análise inválida. Não usa nome, atributo sensível nem
+    confiança declarada pelo modelo. Levanta `ValueError` se as peças são de empresas, vagas ou
+    candidatos diferentes, e `MandatoInvalido` se o mandato não vale para a vaga ou se ela usa
+    critério sensível, para o fluxo pausar.
     """
     _exigir_mesma_execucao(vaga, candidato, analise, mandato)
     if not mandato_valido(mandato, vaga, agora):
@@ -324,47 +471,45 @@ def classificar_faixa(
     evidencias = tuple(
         (e.criterio, classificar_evidencia(e, candidato)) for e in analise.evidencias
     )
-    nota = _nota_ponderada(vaga, analise)
+    limiar = LIMIAR_PADRAO if politica.limiar_verde is None else politica.limiar_verde
+    usadas, ajustes, sinais_notas = _notas_da_decisao(vaga, analise, evidencias)
+    nota = _nota_ponderada(vaga, usadas)
+    sinais = (*_sinais_da_analise(vaga, candidato, analise, requisitos, evidencias), *sinais_notas)
 
     def faixa(tipo: TipoDecisao, regra: str, faltas: tuple[str, ...] = ()) -> Faixa:
-        return Faixa(tipo, regra, faltas, nota, requisitos, evidencias)
+        return Faixa(
+            tipo,
+            regra,
+            faltas,
+            nota,
+            requisitos,
+            evidencias,
+            limiar=limiar,
+            piso=politica.piso_nota,
+            limiar_do_mandato=politica.limiar_verde is not None,
+            notas_modelo=tuple((c.nome, analise.notas.get(c.nome)) for c in vaga.competencias),
+            notas_usadas=tuple(sorted(usadas.items())),
+            ajustes=tuple(ajustes),
+            sinais=sinais,
+        )
 
-    if not autorizacao_ativa(candidato, hoje):
-        corte = corte_de_autorizacao(candidato, hoje)
-        if corte is not None and corte.regra == REGRA_PERFIL_DESATUALIZADO:
-            return faixa(
-                TipoDecisao.PEDIR_HUMANO, REGRA_PERFIL_DESATUALIZADO, (REGRA_PERFIL_DESATUALIZADO,)
-            )
+    if not pode_ir_ao_modelo(candidato, hoje):
         return faixa(TipoDecisao.DESCARTAR, "sem_autorizacao")
     reprovados = sorted(i for i, s in requisitos.items() if s == StatusRequisito.NAO_ATENDE)
     if reprovados:
         faltas = tuple(f"requisito_eliminatorio:{i}" for i in reprovados)
         return faixa(TipoDecisao.DESCARTAR, faltas[0], faltas)
-
-    aceitas = {TipoEvidencia.COMPROVADA}
-    if politica.aceitar_declarada:
-        aceitas.add(TipoEvidencia.DECLARADA)
-    faltas = _faltas_de_evidencia(vaga, analise, evidencias, frozenset(aceitas))
-    # Sem dado, nenhum trecho citado substitui a verificação: a decisão fica com uma pessoa.
-    faltas += [f"requisito_sem_dado:{i}" for i, s in sorted(requisitos.items()) if s == SEM_DADO]
-    if analise.ressalvas_revisor:
-        faltas.append("ressalva_do_revisor")
-    if analise.alertas:
-        faltas.append("alerta")
-    if any(tipo == TipoEvidencia.INFERIDA for _, tipo in evidencias):
-        faltas.append("inferencia")
     if nota is None:
-        faltas.append("notas_incompletas")
-    elif politica.limiar_verde is None:
-        faltas.append("limiar_nao_definido")
-    elif nota < politica.limiar_verde:
-        faltas.append("nota_abaixo_do_limiar")
-
-    if not faltas:
+        # A vaga não tem peso válido: é configuração, não algo que a nota da pessoa resolva.
+        return faixa(TipoDecisao.PEDIR_HUMANO, "fora_da_faixa_verde", ("pesos_invalidos",))
+    if RESSALVA_REVISOR_INVALIDO in (r.strip() for r in analise.ressalvas_revisor):
+        # Falha do modelo, como a análise inválida: sem a revisão independente, decide uma pessoa.
+        return faixa(TipoDecisao.PEDIR_HUMANO, "fora_da_faixa_verde", ("revisao_invalida",))
+    if nota >= limiar:
         return faixa(TipoDecisao.INDICAR, "faixa_verde_v1")
-    if faltas == ["nota_abaixo_do_limiar"] and nota < politica.piso_nota:
-        return faixa(TipoDecisao.DESCARTAR, "abaixo_do_piso", tuple(faltas))
-    return faixa(TipoDecisao.PEDIR_HUMANO, "fora_da_faixa_verde", tuple(faltas))
+    if nota < politica.piso_nota:
+        return faixa(TipoDecisao.DESCARTAR, "abaixo_do_piso", ("nota_abaixo_do_piso",))
+    return faixa(TipoDecisao.DESCARTAR, "abaixo_do_limiar", ("nota_abaixo_do_limiar",))
 
 
 _PARECE_INSTRUCAO = re.compile(
@@ -391,7 +536,6 @@ def _entrada(
     vaga: Vaga, candidato: Candidato, mandato: Mandato, faixa: Faixa, hoje: date
 ) -> dict[str, str]:
     """O que sustentou a decisão, sem nome, atributos nem texto do candidato."""
-    limiar = mandato.politica.limiar_verde
     return {
         "vaga_id": vaga.id,
         "candidato_id": candidato.id,
@@ -399,14 +543,54 @@ def _entrada(
         "mandato_id": mandato.id,
         "mandato_versao": str(mandato.versao),
         "hash_vaga": mandato.hash_vaga,
-        "limiar_verde": "nao_calibrado" if limiar is None else str(limiar),
+        "limiar_verde": str(faixa.limiar),
+        "limiar_origem": "mandato" if faixa.limiar_do_mandato else "padrao",
         "piso_nota": str(mandato.politica.piso_nota),
         "aceitar_declarada": str(mandato.politica.aceitar_declarada).lower(),
         "nota": "indefinida" if faixa.nota is None else str(faixa.nota),
+        "notas_modelo": json.dumps(dict(faixa.notas_modelo), sort_keys=True),
+        "notas_usadas": json.dumps(dict(faixa.notas_usadas), sort_keys=True),
+        "ajustes": json.dumps(faixa.ajustes, ensure_ascii=False),
+        "sinais": json.dumps(faixa.sinais, ensure_ascii=False),
         "requisitos": json.dumps(faixa.requisitos, sort_keys=True),
         "tipos_evidencia": json.dumps(sorted(faixa.evidencias)),
         "faltas": json.dumps(faixa.faltas),
     }
+
+
+_TEXTO_DO_SINAL = {
+    REGRA_PERFIL_DESATUALIZADO: "perfil desatualizado: confirmar com a pessoa",
+    "alerta": "alerta: texto dirigido ao avaliador retirado da análise",
+    "ressalva_do_revisor": "ressalva do revisor sem competência da vaga",
+}
+
+
+def _motivo(faixa: Faixa) -> str:
+    """Nota e limiar, depois cada ajuste e cada sinal: dá para refazer a conta a partir dele."""
+    if faixa.nota is None:
+        partes = [", ".join(faixa.faltas)]
+    elif faixa.tipo == TipoDecisao.PEDIR_HUMANO:
+        partes = [
+            f"{', '.join(faixa.faltas)}: a revisão independente voltou inválida, "
+            f"nota {_formatar(faixa.nota)} e limiar {_formatar(faixa.limiar)}"
+        ]
+    else:
+        nota, limiar = _formatar(faixa.nota), _formatar(faixa.limiar)
+        if faixa.tipo == TipoDecisao.INDICAR:
+            partes = [f"nota {nota} atinge o limiar {limiar}"]
+        elif faixa.regra == "abaixo_do_piso":
+            partes = [f"nota {nota} abaixo do piso {_formatar(faixa.piso)} (limiar {limiar})"]
+        else:
+            partes = [f"nota {nota} abaixo do limiar {limiar}"]
+    if not faixa.limiar_do_mandato:
+        partes.append(f"limiar padrão {_formatar(LIMIAR_PADRAO)}: o mandato não define limiar")
+    partes += faixa.ajustes
+    for sinal in faixa.sinais:
+        if sinal in _TEXTO_DO_SINAL:
+            partes.append(_TEXTO_DO_SINAL[sinal])
+        elif sinal.startswith("requisito_sem_dado:"):
+            partes.append(f"confirmar com a pessoa o requisito {sinal.partition(':')[2]}")
+    return "; ".join(partes)
 
 
 def decidir(
@@ -420,7 +604,13 @@ def decidir(
 ) -> Decisao:
     """Transforma a faixa em `Decisao`, com regra, entrada, evidências e responsável."""
     faixa = classificar_faixa(vaga, candidato, analise, mandato, hoje, agora)
-    motivo = ", ".join(faixa.faltas) or "dentro da faixa verde do mandato"
+    if faixa.regra == "sem_autorizacao":
+        corte = corte_de_autorizacao(candidato, hoje)
+        motivo = "sem autorização válida" if corte is None else corte.motivo
+    elif faixa.regra.startswith("requisito_eliminatorio:"):
+        motivo = ", ".join(faixa.faltas)
+    else:
+        motivo = _motivo(faixa)
     evidencias = [e for e in analise.evidencias if _evidencia_completa(e)]
     return Decisao(
         empresa_id=vaga.empresa_id,
@@ -437,13 +627,42 @@ def decidir(
     )
 
 
-def nao_priorizada(decisao: Decisao, limite: int) -> Decisao:
-    """Passa à fila quem ficou na faixa verde além de `max_indicacoes`, sem descartar ninguém."""
+def alem_do_teto(decisao: Decisao, limite: int) -> Decisao:
+    """Segura quem estava na faixa verde além do teto de segurança do mandato.
+
+    Não vai a uma pessoa: fica registrada como descarte com a nota e o teto, para o RH reverter.
+    """
+    nota = decisao.entrada.get("nota")
+    nota_texto = f"nota {float(nota):.2f}" if nota is not None else "nota não informada"
     return decisao.model_copy(
         update={
-            "tipo": TipoDecisao.PEDIR_HUMANO,
-            "regra": "nao_priorizado",
-            "motivo": f"dentro da faixa verde, além do limite de {limite} indicações do mandato",
+            "tipo": TipoDecisao.DESCARTAR,
+            "regra": "alem_do_teto_do_mandato",
+            "motivo": (
+                f"estava na faixa verde ({nota_texto}), mas o teto de segurança do mandato "
+                f"é de {limite} indicações; o RH pode reverter"
+            ),
+        }
+    )
+
+
+def fora_da_taxa_verde(decisao: Decisao, vagas: int, analisados: int) -> Decisao:
+    """Segura quem estava na faixa verde quando ela ficou cheia demais.
+
+    O agente fica mais seletivo sozinho, nunca menos que o mandato: mantém as `vagas` melhores
+    notas e registra os demais como descarte com a nota e o corte, para o RH reverter.
+    """
+    nota = decisao.entrada.get("nota")
+    nota_texto = f"nota {float(nota):.2f}" if nota is not None else "nota não informada"
+    return decisao.model_copy(
+        update={
+            "tipo": TipoDecisao.DESCARTAR,
+            "regra": "fora_da_taxa_verde",
+            "motivo": (
+                f"estava na faixa verde ({nota_texto}), mas a faixa ficou cheia demais para "
+                f"{analisados} analisados; o agente ficou com as {vagas} melhores notas "
+                "(empate decidido pelo id); o RH pode reverter"
+            ),
         }
     )
 

@@ -92,7 +92,6 @@ def rodar(
     return fluxo, analisador, mensageiro
 
 
-
 class TransporteFora(TransporteSimulado):
     def enviar(self, pedido):
         self.pedidos.append(pedido)
@@ -111,7 +110,11 @@ def test_provedores_fora_do_ar_deixam_o_fluxo_com_cobertura_parcial(tmp_path):
     assert "FonteProvedores" in cobertura[0].mensagem
 
 
-def test_pessoa_vinda_de_provedor_nao_vai_ao_modelo_nem_recebe_convite(tmp_path):
+def test_pessoa_vinda_de_provedor_vai_ao_modelo_e_sem_email_publicado_nao_recebe_convite(
+    tmp_path,
+):
+    """Decisão de 8/11: quem vem da busca real é analisado. O convite só sai pelo e-mail que a
+    pessoa publicou, e esta página não traz nenhum."""
     busca = resposta_json(
         {
             "web": {
@@ -133,13 +136,15 @@ def test_pessoa_vinda_de_provedor_nao_vai_ao_modelo_nem_recebe_convite(tmp_path)
         }
     )
     transporte = TransporteSimulado(busca, pagina)
-    _, analisador, mensageiro = rodar(tmp_path, [fonte_externa(transporte)])
+    fluxo, analisador, mensageiro = rodar(tmp_path, [fonte_externa(transporte)])
 
     assert len(transporte.pedidos) == 2
     assert transporte.pedidos[0].url == URL_BUSCA
     assert transporte.pedidos[1].url == URL_API
-    assert analisador.analisados == []
+    [analisado] = analisador.analisados
+    assert analisado.startswith("ext-")
     assert mensageiro.enviados == {}
+    assert all(r.convite.candidato_id != analisado for r in fluxo.convites())
 
 
 def test_chave_recusada_na_busca_deixa_o_fluxo_com_cobertura_parcial(tmp_path):
