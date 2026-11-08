@@ -4,8 +4,10 @@ Etapa "Resolver identidade" do pipeline de coleta, em código puro: sem rede, se
 sem estado e sem efeito colateral. A entrada já está na memória.
 
 Só sinal forte une: o mesmo e-mail, a mesma URL de perfil ou o mesmo par de host e usuário
-de uma URL de perfil. Nome e cidade parecidos nunca unem; viram sugestão para uma pessoa
-decidir. Na dúvida, os registros ficam separados.
+numa plataforma em que o primeiro segmento do caminho é o usuário (`PLATAFORMAS_DE_USUARIO`).
+Em qualquer outro site, o primeiro segmento é uma seção (`sites.google.com/view`,
+`ufpe.br/docentes`), e só a URL inteira une. Nome e cidade parecidos nunca unem; viram
+sugestão para uma pessoa decidir. Na dúvida, os registros ficam separados.
 
 URL do LinkedIn não serve de chave: o coletor recusa esses domínios por completo
 (`DOMINIOS_LINKEDIN` e `_LINK_PROIBIDO` em `backend/fontes/provedores/url_segura.py`), então
@@ -34,6 +36,26 @@ DOMINIOS_LINKEDIN = ("linkedin.com", "linkedin.cn", "linked.in", "licdn.com", "l
 de um módulo de provedor estar instalado."""
 
 ESQUEMAS_DE_PERFIL = frozenset({"http", "https"})
+PLATAFORMAS_DE_USUARIO = frozenset(
+    {
+        "behance.net",
+        "bitbucket.org",
+        "codeberg.org",
+        "dev.to",
+        "dribbble.com",
+        "github.com",
+        "gitlab.com",
+        "huggingface.co",
+        "kaggle.com",
+        "medium.com",
+        "orcid.org",
+    }
+)
+"""Hosts em que `host/primeiro_segmento` é a pessoa. Lista fechada: na dúvida, separado."""
+SEGMENTOS_RESERVADOS = frozenset(
+    {"about", "explore", "orgs", "p", "settings", "sponsors", "tag", "tags", "topics", "users"}
+)
+"""Primeiros segmentos que são páginas da plataforma, não usuários."""
 CAMPOS_DE_PERFIL = ("links", "perfis")
 CAMPOS_DE_LOCAL = ("cidade", "local")
 
@@ -210,8 +232,14 @@ def _chaves_fortes(sinal: SinaisIdentidade) -> frozenset[str]:
             continue
         chaves.add(f"perfil:{perfil}")
         host, barra, caminho = perfil.partition("/")
-        if barra and caminho:
-            chaves.add(f"perfil:{host}/{caminho.split('/')[0]}")
+        usuario = caminho.split("/")[0]
+        if (
+            barra
+            and usuario
+            and host in PLATAFORMAS_DE_USUARIO
+            and usuario.casefold() not in SEGMENTOS_RESERVADOS
+        ):
+            chaves.add(f"perfil:{host}/{usuario}")
     return frozenset(chaves)
 
 

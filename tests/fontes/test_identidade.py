@@ -107,6 +107,43 @@ def test_usuarios_diferentes_no_mesmo_host_nao_se_juntam():
     assert [g.registros for g in resolucao.grupos] == [("a",), ("b",)]
 
 
+@pytest.mark.parametrize(
+    ("um", "outro"),
+    [
+        ("https://sites.google.com/view/ana-silva", "https://sites.google.com/view/joao-souza"),
+        ("https://ufpe.br/docentes/ana", "https://ufpe.br/docentes/joao"),
+        ("https://exemplo.dev/blog/post-1", "https://exemplo.dev/blog/post-2"),
+    ],
+)
+def test_primeiro_segmento_fora_das_plataformas_nao_vira_usuario(um, outro):
+    """Em site qualquer, o primeiro segmento é seção, não pessoa: só a URL inteira une."""
+    resolucao = resolver([sinal("a", perfis=[um]), sinal("b", perfis=[outro])])
+
+    assert [g.registros for g in resolucao.grupos] == [("a",), ("b",)]
+
+
+def test_pagina_reservada_da_plataforma_nao_vira_usuario():
+    resolucao = resolver(
+        [
+            sinal("a", perfis=["https://github.com/orgs/aurora"]),
+            sinal("b", perfis=["https://github.com/orgs/boreal"]),
+        ]
+    )
+
+    assert [g.registros for g in resolucao.grupos] == [("a",), ("b",)]
+
+
+def test_mesma_url_inteira_em_site_qualquer_ainda_une():
+    [grupo] = resolver(
+        [
+            sinal("a", perfis=["https://sites.google.com/view/ana-silva"]),
+            sinal("b", perfis=["sites.google.com/view/ana-silva/"]),
+        ]
+    ).grupos
+
+    assert grupo.registros == ("a", "b")
+
+
 def test_uniao_e_transitiva_entre_email_e_perfil():
     resolucao = resolver(
         [
