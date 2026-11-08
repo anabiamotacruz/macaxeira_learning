@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from avaliacoes.auditoria import escrever_trilha
+from avaliacoes.canal import medir_cobertura
 from avaliacoes.casos import Caso, carregar_casos, hash_do_conjunto, pares_de_vies
 from avaliacoes.execucao import Rodada, rodar
 from avaliacoes.metricas import TipoAchado
@@ -31,6 +32,9 @@ LIMITES = (
     "O cenário de cada caso é a intenção editorial do gerador, não rotulagem "
     "independente feita por pessoa de RH.",
     "Taxa sem casos aparece nula, nunca zero. O denominador vai junto de cada taxa.",
+    "A cobertura de canal descreve este conjunto sintético, onde ninguém publicou URL "
+    "de origem de contato: ela não estima a cobertura de uma base real, e a cobertura "
+    "real tende a ser o maior gargalo do produto.",
 )
 """O que esta rodada não prova. Entra no relatório para nenhum número viajar sozinho."""
 
@@ -47,6 +51,7 @@ def _descrever_conjunto(casos: Sequence[Caso], pares: int) -> dict[str, Any]:
         "por_particao": dict(
             sorted(Counter(caso.particao.value for caso in casos).items())
         ),
+        "cobertura_de_canal": medir_cobertura(casos).model_dump(mode="json"),
         "hash": hash_do_conjunto(list(casos)),
     }
 

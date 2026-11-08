@@ -7,10 +7,19 @@ do modelo. A rodada usa os modelos de prova: não precisa de chave nem gasta.
 
 import pytest
 
+from avaliacoes.canal import (
+    CHAVE_DE_ENDERECO,
+    SituacaoCanal,
+    contato_do_candidato,
+    medir_cobertura,
+    situacao_do_candidato,
+)
 from avaliacoes.casos import CENARIOS_INELEGIVEIS, carregar_casos, pares_de_vies
 from avaliacoes.execucao import rodar
 from avaliacoes.metricas import TIPOS_QUE_PRECISAM_SER_ZERO, TipoAchado
 from avaliacoes.modelos_de_prova import MODELOS_DE_PROVA, NOTA_MAXIMA_HONESTA
+from backend.contato.email_inicial import ContatoBloqueado, _conferir_contato
+from backend.contato.supressao import ListaSupressao
 from backend.fontes.banco_talentos import BancoTalentos
 from backend.fontes.funil import priorizar
 
@@ -46,6 +55,15 @@ def banco(casos):
             ],
         )
     return banco
+
+
+@pytest.fixture(scope="module")
+def cobertura(casos):
+    return medir_cobertura(casos)
+
+
+CENARIOS_SUPRIMIDOS = frozenset({"opt_out", "autorizacao_vencida", "sem_autorizacao"})
+"""Cenários que saem da busca antes de qualquer pergunta sobre canal de contato."""
 
 
 def _consulta(caso) -> str:
@@ -250,6 +268,66 @@ def test_falha_do_modelo_nao_altera_a_verificacao_de_requisitos(rodadas):
         outra = por_caso[resultado.id_caso]
         assert outra is not None
         assert outra.requisitos_ok == resultado.analise.requisitos_ok
+
+
+def test_nenhum_candidato_sintetico_tem_canal_publicado(cobertura, casos):
+    """Fixa o fato: a cobertura publicada do conjunto sintético é zero.
+
+    Todo perfil do gerador traz `email` e nenhum traz a URL de origem, então o
+    produto não poderia contatar ninguém. O caminho "sem canal", que no mundo
+    real vale para a maioria das pessoas, não é exercitado pela suíte nem pela
+    demo. O número abaixo é retrato do conjunto, não qualidade do produto.
+    """
+    assert all(caso.candidato.atributos.get(CHAVE_DE_ENDERECO) for caso in casos)
+    assert cobertura.por_situacao[SituacaoCanal.PUBLICADO] == 0
+    assert cobertura.considerados > 0
+    assert cobertura.taxa_de_canal_publicado.valor == 0.0
+    assert cobertura.por_situacao[SituacaoCanal.ENDERECO_SEM_ORIGEM] == cobertura.considerados
+
+
+def test_o_portao_de_contato_recusa_todo_candidato_sintetico(casos):
+    """Não é opinião do arnês: é `_conferir_contato` de produção recusando."""
+    lista = ListaSupressao(b"segredo-de-teste")
+    recusados = 0
+    for caso in casos:
+        contato = contato_do_candidato(caso.candidato)
+        assert contato is not None, caso.id_caso
+        with pytest.raises(ContatoBloqueado) as erro:
+            _conferir_contato(caso.candidato.empresa_id, contato, lista)
+        assert erro.value.regra == "contato_nao_publicado", caso.id_caso
+        recusados += 1
+    assert recusados == len(casos)
+
+
+def test_cobertura_de_canal_traz_denominador(cobertura):
+    """A taxa nunca aparece sem o total de onde ela saiu."""
+    taxa = cobertura.taxa_de_canal_publicado
+    assert taxa.casos == cobertura.considerados
+    assert (taxa.valor is None) == (taxa.casos == 0)
+    assert (taxa.wilson_inferior is None) == (taxa.casos == 0)
+    assert (taxa.wilson_superior is None) == (taxa.casos == 0)
+    assert sum(cobertura.por_situacao.values()) == cobertura.total
+    assert cobertura.total <= cobertura.casos_lidos
+
+
+def test_quem_esta_em_opt_out_ou_sem_autorizacao_nao_conta_como_sem_canal(cobertura, casos):
+    """Falta de canal e falta de autorização são coisas diferentes.
+
+    Misturar as duas inflaria `sem_endereco` e desinflaria o denominador da
+    cobertura, escondendo o gargalo que a métrica existe para mostrar.
+    """
+    suprimidos = {
+        caso.grupo for caso in casos if caso.cenario in CENARIOS_SUPRIMIDOS
+    }
+    assert suprimidos
+    for caso in casos:
+        situacao = situacao_do_candidato(caso.candidato, hoje=caso.hoje)
+        esperado_suprimido = caso.cenario in CENARIOS_SUPRIMIDOS
+        assert (situacao is SituacaoCanal.SUPRIMIDO) == esperado_suprimido, caso.id_caso
+        if esperado_suprimido:
+            assert caso.candidato.atributos.get(CHAVE_DE_ENDERECO), caso.id_caso
+    assert cobertura.por_situacao[SituacaoCanal.SUPRIMIDO] == len(suprimidos)
+    assert cobertura.considerados == cobertura.total - len(suprimidos)
 
 
 @pytest.mark.xfail(

@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from avaliacoes.canal import SituacaoCanal, medir_cobertura
 from avaliacoes.casos import carregar_casos, hash_do_conjunto, pares_de_vies
 from avaliacoes.execucao import rodar
 from avaliacoes.metricas import TipoAchado
@@ -38,6 +39,23 @@ def test_relatorio_descreve_o_conjunto(relatorio, casos):
     assert sum(conjunto["por_cenario"].values()) == len(casos)
     assert sum(conjunto["por_particao"].values()) == len(casos)
     assert conjunto["hash"] == hash_do_conjunto(casos)
+
+
+def test_relatorio_traz_a_cobertura_de_canal(relatorio, casos):
+    cobertura = relatorio["conjunto"]["cobertura_de_canal"]
+    assert cobertura == medir_cobertura(casos).model_dump(mode="json")
+    assert set(cobertura["por_situacao"]) == {s.value for s in SituacaoCanal}
+    assert sum(cobertura["por_situacao"].values()) == cobertura["total"]
+
+
+def test_cobertura_no_relatorio_nunca_traz_taxa_sem_denominador(relatorio):
+    taxa = relatorio["conjunto"]["cobertura_de_canal"]["taxa_de_canal_publicado"]
+    assert taxa["casos"] == relatorio["conjunto"]["cobertura_de_canal"]["considerados"]
+    assert (taxa["valor"] is None) == (taxa["casos"] == 0)
+
+
+def test_limites_avisam_que_a_cobertura_sintetica_nao_estima_a_real():
+    assert any("cobertura de canal" in limite.lower() for limite in LIMITES)
 
 
 def test_relatorio_tem_uma_entrada_por_rodada(relatorio):

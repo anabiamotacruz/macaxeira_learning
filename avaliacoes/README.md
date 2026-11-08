@@ -21,6 +21,7 @@ python -m avaliacoes.relatorio   # relatório e trilha em avaliacoes/saida/
 | `modelos_de_prova.py` | 8 clientes de modelo adversariais, cada um com uma falha declarada |
 | `auditoria.py` | `ClienteAuditado`: um registro por chamada, com etapa, versão do prompt, tokens, tempo e o que o modelo propôs |
 | `metricas.py` | 10 tipos de achado, intervalo de Wilson e invariância de pares |
+| `canal.py` | classifica a contatabilidade de cada pessoa e agrega a cobertura de canal |
 | `execucao.py` | roda um conjunto contra um modelo e devolve resultados, trilha, achados e resumo |
 | `relatorio.py` | agrega tudo num JSON para o painel, com os limites da medição |
 | `test_avaliacoes.py` | o portão `-m eval` |
@@ -91,6 +92,60 @@ Nenhum dos oito conseguiu violar um princípio. Três resultados merecem leitura
   modelo citou `genero`, `idade` e `estado civil`. Recusar não é o bastante: um
   modelo que insiste em critério proibido precisa ficar visível.
 - `nota_sem_evidencia` expôs o achado abaixo.
+
+## Cobertura de canal
+
+O produto só contata alguém por um endereço que a própria pessoa publicou para
+ser contatada, com a URL de onde ele veio. Quem decide é `_conferir_contato`, em
+`backend/contato/email_inicial.py`: sem `url_origem`, ele levanta
+`ContatoBloqueado("contato_nao_publicado")`.
+
+`canal.py` mede quantas pessoas do conjunto passariam nessa porta. Cada pessoa
+cai em uma de quatro situações, nesta ordem de precedência:
+
+| Situação | Quando |
+| --- | --- |
+| `suprimido` | opt-out, autorização ausente ou vencida, ou estado fora da busca |
+| `sem_endereco` | nenhum endereço no perfil |
+| `endereco_sem_origem` | tem endereço, não tem a URL de onde a pessoa o publicou |
+| `publicado` | tem endereço e URL de origem: passaria no portão |
+
+A supressão vem primeiro de propósito: quem já saiu da busca por opt-out ou por
+autorização vencida não é alguém "sem canal", e contá-lo dos dois jeitos
+distorceria o número. Por isso o denominador da taxa é o total **menos** os
+suprimidos, e ele viaja junto do valor. A contagem é por pessoa, pelo `grupo` do
+caso, para a duplicata do gerador não dobrar o denominador.
+
+### O que ela deu hoje
+
+Sobre os 72 casos, que são 66 pessoas distintas:
+
+| Situação | Pessoas |
+| --- | --- |
+| `publicado` | 0 |
+| `endereco_sem_origem` | 48 |
+| `sem_endereco` | 0 |
+| `suprimido` | 18 |
+
+**Cobertura publicada: 0 de 48** (Wilson 95%: 0 a 0,074).
+
+### Por que esse número é retrato do conjunto, não do mundo
+
+Os 250 perfis de `dados/gerador.py` têm **todos** um atributo `email` e **nenhum**
+traz URL de origem. As duas coisas são escolhas do gerador, não medições. O
+efeito é que o conjunto sintético nunca exercita o caminho "sem canal", que com
+dados reais vale para a maioria das pessoas, e ao mesmo tempo nunca exercita o
+caminho feliz do contato.
+
+Um e-mail no perfil não é permissão para escrever. Se o arnês contasse "tem
+e-mail" como cobertura, o número seria 100% e seria mentira: o portão recusaria
+todos os 48 na hora do envio. `test_o_portao_de_contato_recusa_todo_candidato_sintetico`
+mostra isso chamando a função de produção, candidato por candidato.
+
+Os 0% de hoje também não estimam a cobertura real: medem a ausência de um campo
+no gerador. O número só vira medida do produto quando o banco de talentos guardar
+a URL de origem de cada contato e o conjunto de avaliação for alimentado por ele.
+Até lá, `relatorio.LIMITES` carrega o aviso junto do número.
 
 ## Achado AV-1: nota descartada sem rastro
 
