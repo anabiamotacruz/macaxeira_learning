@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.agente.api import criar_app
-from backend.agente.montagem import COM_MODELO, montar_com_modelo, montar_servico
+from backend.agente.montagem import COM_MODELO, montar_com_modelo, montar_demo, montar_servico
 from backend.contratos.erros import ModeloIndisponivel
 from backend.contratos.simulacoes import ClienteModeloSimulado
 from backend.fontes.analisador import ETAPA_ANALISE
@@ -101,3 +101,33 @@ def test_opt_in_com_chave_usa_o_cliente_criado(tmp_path):
     _rodar_vaga(servico)
 
     assert modelo.chamadas
+
+
+def _servico_com_modelo(tmp_path):
+    return montar_com_modelo(
+        tmp_path / "c.db", cliente=ClienteModeloSimulado(RESPOSTAS), medidor_gasto=lambda: 0.0
+    )
+
+
+def test_modelo_ligado_analisa_cinco_por_vez(tmp_path, monkeypatch):
+    monkeypatch.delenv("CONCORRENCIA_MODELO", raising=False)
+
+    servico = _servico_com_modelo(tmp_path)
+
+    assert servico._dependencias.concorrencia == 5
+
+
+def test_variavel_de_ambiente_manda_na_concorrencia(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONCORRENCIA_MODELO", "3")
+
+    servico = _servico_com_modelo(tmp_path)
+
+    assert servico._dependencias.concorrencia == 3
+
+
+def test_demo_sem_modelo_segue_uma_por_vez(tmp_path, monkeypatch):
+    monkeypatch.delenv("CONCORRENCIA_MODELO", raising=False)
+
+    servico = montar_demo(tmp_path / "d.db")
+
+    assert servico._dependencias.concorrencia == 1
