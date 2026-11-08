@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
 from backend.agente.documento import documento_de_ingestao
 from backend.agente.fluxo import (
@@ -51,6 +52,7 @@ from backend.contratos.modelos import (
     EstadoVaga,
     EventoFluxo,
     Mandato,
+    PropostaAjuste,
     RespostaCandidato,
     ResumoExecucao,
     SaidaPersonalizada,
@@ -314,6 +316,16 @@ class ServicoVagas:
             simulado=True,
             momento=self._dependencias.relogio(),
         )
+
+    def sugestao_de_ajuste(self, empresa_id: str, vaga_id: str) -> PropostaAjuste | None:
+        """Lê os resultados do destino e sugere ajuste. Só alerta: nada muda na vaga."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        try:
+            resultados = self._dependencias.destino.resultados(empresa_id, vaga_id)
+        except (ErroContrato, OSError) as erro:
+            logger.warning("sem resultados do destino para sugerir ajuste: %s", type(erro).__name__)
+            return None
+        return propor_ajuste(fluxo.vaga, resultados)
 
     def documento(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
         """O documento de ingestão de quem já foi entregue ao destino, com a conversa."""

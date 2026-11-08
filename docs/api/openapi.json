@@ -1119,6 +1119,118 @@
         }
       }
     },
+    "/vagas/{id}/ajuste": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Sugerir Ajuste",
+        "description": "Sugere mais peso ao critério em que os entrevistados reprovam repetidamente.\n\nSó alerta: nada muda na vaga. Quem decide ajustar é uma pessoa do RH.",
+        "operationId": "sugerir_ajuste",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaAjuste"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "sugestao": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/vagas/{id}/entrega/{candidato_id}/documento": {
       "get": {
         "tags": [
@@ -4244,6 +4356,45 @@
         ],
         "title": "Requisito"
       },
+      "RespostaAjuste": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "sugestao": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SugestaoAjuste"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "sugestao"
+        ],
+        "title": "RespostaAjuste"
+      },
       "RespostaCandidatos": {
         "properties": {
           "simulado": {
@@ -5096,6 +5247,53 @@
           "incerta"
         ],
         "title": "SituacaoResposta"
+      },
+      "SugestaoAjuste": {
+        "properties": {
+          "criterio": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Criterio"
+          },
+          "peso_atual": {
+            "type": "number",
+            "title": "Peso Atual"
+          },
+          "peso_sugerido": {
+            "type": "number",
+            "title": "Peso Sugerido"
+          },
+          "motivo": {
+            "type": "string",
+            "title": "Motivo"
+          },
+          "reprovacoes": {
+            "type": "integer",
+            "title": "Reprovacoes"
+          },
+          "resultados_lidos": {
+            "type": "integer",
+            "title": "Resultados Lidos"
+          },
+          "aplicada": {
+            "type": "boolean",
+            "const": false,
+            "title": "Aplicada",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "criterio",
+          "peso_atual",
+          "peso_sugerido",
+          "motivo",
+          "reprovacoes",
+          "resultados_lidos"
+        ],
+        "title": "SugestaoAjuste",
+        "description": "Sugestão para a próxima vaga. É alerta: a vaga só muda se uma pessoa a editar."
       },
       "TaxaMedida": {
         "properties": {
