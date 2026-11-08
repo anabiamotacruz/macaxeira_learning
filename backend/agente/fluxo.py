@@ -64,6 +64,7 @@ from backend.agente.regras import (
     CORTES_POR_AUTORIZACAO,
     CORTES_SEM_DECISAO,
     REGRA_ABAIXO_DO_LIMIAR,
+    REGRA_FUNIL_REQUISITO,
     RESSALVA_REVISOR_INVALIDO,
     CorteFunil,
     StatusRequisito,
@@ -78,6 +79,7 @@ from backend.agente.regras import (
     decisao_de_corte,
     decisao_por_novos_requisitos,
     decisao_sem_analise,
+    evidencias_de_requisito_nao_atendido,
     externo_sem_autorizacao,
     fora_da_taxa_verde,
     na_faixa_potencial,
@@ -1614,6 +1616,8 @@ class FluxoVaga:
             decisao = decisao_de_corte(
                 corte, mandato, agora, self._rastro_id(progresso, corte.candidato_id)
             )
+            if decisao.regra == REGRA_FUNIL_REQUISITO:
+                decisao = self._com_requisitos_reprovados(decisao, registros)
             chave = (
                 decisao.candidato_id,
                 decisao.regra,
@@ -1629,6 +1633,16 @@ class FluxoVaga:
                     candidato = _sem_dados_do_perfil(candidato)
                 if candidato.id not in {c.id for c in progresso.cortados}:
                     progresso.cortados.append(candidato)
+
+    def _com_requisitos_reprovados(
+        self, decisao: Decisao, registros: dict[tuple[str, str, str], Candidato]
+    ) -> Decisao:
+        """Guarda o valor que reprovou cada requisito: é o trecho do feedback a pedido."""
+        da_pessoa = [c for (id_, _, _), c in registros.items() if id_ == decisao.candidato_id]
+        reprovados = evidencias_de_requisito_nao_atendido(self.vaga, da_pessoa)
+        if not reprovados:
+            return decisao
+        return decisao.model_copy(update={"evidencias": [*decisao.evidencias, *reprovados]})
 
     def _percorrer(self, progresso: ProgressoFluxo, percurso: _Percurso) -> None:
         """Passa pelos candidatos da etapa, com até `concorrencia` chamadas ao modelo juntas.

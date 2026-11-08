@@ -3,6 +3,7 @@
 import json
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
@@ -39,6 +40,9 @@ FONTE_REGRA = "regra_deterministica"
 
 
 PREFIXO_REGRA_FUNIL = "funil:"
+REGRA_FUNIL_REQUISITO = f"{PREFIXO_REGRA_FUNIL}requisito_nao_atendido"
+"""Descarte do funil por requisito eliminatório não atendido."""
+_TAMANHO_MAXIMO_VALOR = 200
 PREFIXO_RESPONSAVEL_AGENTE = "agente:"
 CORTES_POR_AUTORIZACAO = frozenset(
     {"autorizacao_vencida", "estado_bloqueado", "opt_out", "sem_autorizacao"}
@@ -174,6 +178,36 @@ def avaliar_requisitos(vaga: Vaga, candidato: Candidato) -> dict[str, StatusRequ
     """Compara cada requisito com o atributo do candidato. Dado ausente é SEM_DADO."""
     _exigir_mesma_empresa(vaga, candidato)
     return {r.id: _status_requisito(r, candidato) for r in vaga.requisitos}
+
+
+def evidencias_de_requisito_nao_atendido(
+    vaga: Vaga, registros: Iterable[Candidato]
+) -> list[Evidencia]:
+    """O valor que reprovou cada requisito, para o feedback a pedido. Só código, sem modelo.
+
+    Como no funil, cada requisito vale pelo primeiro registro da pessoa que tem o dado.
+    """
+    status: dict[str, tuple[StatusRequisito, Candidato]] = {}
+    for candidato in registros:
+        for requisito in vaga.requisitos:
+            atual = status.get(requisito.id)
+            if atual is None or atual[0] == StatusRequisito.SEM_DADO:
+                status[requisito.id] = (_status_requisito(requisito, candidato), candidato)
+    evidencias = []
+    for requisito in vaga.requisitos:
+        situacao = status.get(requisito.id)
+        if situacao is None or situacao[0] != StatusRequisito.NAO_ATENDE:
+            continue
+        candidato = situacao[1]
+        valor = " ".join(str(candidato.atributos.get(requisito.campo, "")).split())
+        evidencias.append(
+            Evidencia(
+                criterio=requisito.id,
+                trecho=f"{requisito.campo}: {valor[:_TAMANHO_MAXIMO_VALOR]}",
+                fonte=candidato.fonte,
+            )
+        )
+    return evidencias
 
 
 def verificar_requisitos(vaga: Vaga, candidato: Candidato) -> dict[str, bool]:
