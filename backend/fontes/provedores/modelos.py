@@ -58,7 +58,12 @@ class ContatoColetado(Contrato):
 
 
 class ItemColetado(Contrato):
-    """Um achado, com a procedência completa."""
+    """Um achado, com a procedência completa.
+
+    `descoberta` marca o achado que só aponta uma página a ler, como o resultado da Brave. Ele
+    vive em memória durante a execução e nunca vira candidato, evidência nem registro: só o que
+    vier da leitura da página fica.
+    """
 
     provedor: Texto
     fonte: Texto
@@ -70,6 +75,7 @@ class ItemColetado(Contrato):
     atributos: dict[str, TextoExterno] = Field(default_factory=dict)
     historico: list[Experiencia] = Field(default_factory=list)
     contatos: list[ContatoColetado] = Field(default_factory=list)
+    descoberta: bool = False
 
     @field_validator("url")
     @classmethod
@@ -212,3 +218,5 @@ class ResultadoCadeia(Contrato):
     suprimidos: int = 0
     cobertura_parcial: bool = False
     motivo_recusa: MotivoTroca | None = None
+    descobertas_sem_leitura: int = 0
+    """Descobertas cuja página não foi lida. Só a contagem: sem URL e sem texto."""

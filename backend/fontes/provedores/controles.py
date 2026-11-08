@@ -1,4 +1,4 @@
-"""Orçamento, cache e métricas dos provedores. Em memória: recomeçam quando o processo reinicia."""
+"""Orçamento, caches e métricas dos provedores. Em memória: recomeçam quando o processo reinicia."""
 
 import math
 import threading
@@ -12,6 +12,9 @@ from backend.fontes.provedores.modelos import ResultadoCadeia
 
 TTL_CACHE_PADRAO_S = 24 * 60 * 60.0
 CACHE_MAXIMO_PADRAO = 1000
+TTL_DESCOBERTAS_S = 5 * 60.0
+CACHE_DESCOBERTAS_MAXIMO = 32
+"""Prazo e limite do cache das descobertas da Brave. Ver `CacheDescobertas`."""
 
 
 def _exigir_limite(limite: float, nome: str) -> float:
@@ -103,6 +106,67 @@ class CacheConsultas:
             self._entradas.pop((empresa_id, chave), None)
 
 
+class CacheDescobertas:
+    """Cache transitório do que a Brave devolve: só em memória, só da execução, curto e pequeno.
+
+    Os termos da Brave Search API (seção 3(b)(i)) proíbem guardar, fazer cache ou montar base com
+    os resultados, salvo armazenamento transitório. Por isso o resultado dela não vai ao
+    `CacheConsultas`, que dura 24 horas e serve a todas as execuções: fica aqui, com a chave presa
+    à execução, prazo de minutos e poucas entradas, e nunca em disco. Cada acesso varre o que
+    venceu, mesmo de outra execução, para nada ficar além do prazo. Uma execução nunca lê a
+    entrada de outra. Se a execução não é conhecida, a cadeia nem chega a guardar.
+    """
+
+    def __init__(
+        self,
+        *,
+        ttl_s: float = TTL_DESCOBERTAS_S,
+        maximo: int = CACHE_DESCOBERTAS_MAXIMO,
+        relogio: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._ttl_s = ttl_s
+        self._maximo = maximo
+        self._relogio = relogio
+        self._trava = threading.Lock()
+        self._entradas: OrderedDict[tuple[str, str, str], tuple[float, ResultadoCadeia]] = (
+            OrderedDict()
+        )
+
+    def __len__(self) -> int:
+        with self._trava:
+            self._varrer()
+            return len(self._entradas)
+
+    def _varrer(self) -> None:
+        """Chamado com a trava. As entradas estão em ordem de gravação: a mais antiga vem antes."""
+        limite = self._relogio() - self._ttl_s
+        while self._entradas:
+            gravado_em, _ = next(iter(self._entradas.values()))
+            if gravado_em >= limite:
+                break
+            self._entradas.popitem(last=False)
+
+    def obter(self, empresa_id: str, execucao_id: str, chave: str) -> ResultadoCadeia | None:
+        with self._trava:
+            self._varrer()
+            entrada = self._entradas.get((empresa_id, execucao_id, chave))
+            return None if entrada is None else entrada[1]
+
+    def guardar(
+        self, empresa_id: str, execucao_id: str, chave: str, resultado: ResultadoCadeia
+    ) -> None:
+        with self._trava:
+            self._varrer()
+            self._entradas[(empresa_id, execucao_id, chave)] = (self._relogio(), resultado)
+            self._entradas.move_to_end((empresa_id, execucao_id, chave))
+            while len(self._entradas) > self._maximo:
+                self._entradas.popitem(last=False)
+
+    def esquecer(self, empresa_id: str, execucao_id: str, chave: str) -> None:
+        with self._trava:
+            self._entradas.pop((empresa_id, execucao_id, chave), None)
+
+
 class MetricasProvedores:
     """Contagens e custo por provedor, sem nada que identifique consulta ou pessoa."""
 
@@ -110,6 +174,7 @@ class MetricasProvedores:
         self._trava = threading.Lock()
         self._provedores: dict[str, dict] = {}
         self._acertos_de_cache = 0
+        self._descobertas_sem_leitura = 0
 
     def _de(self, provedor: str) -> dict:
         return self._provedores.setdefault(
@@ -141,10 +206,16 @@ class MetricasProvedores:
         with self._trava:
             self._acertos_de_cache += 1
 
+    def registrar_descobertas_sem_leitura(self, quantidade: int) -> None:
+        """Só a contagem: nem a URL nem o texto da descoberta entram aqui."""
+        with self._trava:
+            self._descobertas_sem_leitura += quantidade
+
     def fotografia(self) -> dict:
         with self._trava:
             return {
                 "cache_acertos": self._acertos_de_cache,
+                "descobertas_sem_leitura": self._descobertas_sem_leitura,
                 "provedores": {
                     nome: {**metricas, "trocas": dict(metricas["trocas"])}
                     for nome, metricas in self._provedores.items()

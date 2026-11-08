@@ -19,6 +19,7 @@ from backend.agente.auditoria import SEM_CONTEXTO, contexto_atual
 from backend.contratos.erros import FonteIndisponivel
 from backend.fontes.provedores.controles import (
     CacheConsultas,
+    CacheDescobertas,
     MetricasProvedores,
     OrcamentoProvedores,
 )
@@ -74,6 +75,11 @@ class VerificadorSupressao(Protocol):
     def suprimida(self, empresa_id: str, candidato_id: str, email: str | None) -> bool: ...
 
 
+def _so_descoberta(provedor: ProvedorDados) -> bool:
+    """Provedor cujo resultado só aponta páginas a ler, como a Brave."""
+    return getattr(provedor, "so_descoberta", False) is True
+
+
 @dataclass
 class _Percurso:
     """O andamento de uma consulta pela cadeia."""
@@ -97,6 +103,7 @@ class CadeiaProvedores:
         supressao: VerificadorSupressao,
         orcamento: OrcamentoProvedores,
         cache: CacheConsultas | None = None,
+        cache_descobertas: CacheDescobertas | None = None,
         metricas: MetricasProvedores | None = None,
         modo: ModoDados = ModoDados.REAIS,
         tentativas: int = TENTATIVAS_PADRAO,
@@ -113,6 +120,7 @@ class CadeiaProvedores:
         self._supressao = supressao
         self._orcamento = orcamento
         self._cache = cache or CacheConsultas()
+        self._descobertas = cache_descobertas or CacheDescobertas()
         self._tentativas = tentativas
         self._espera = espera
         self._tempo_limite = tempo_limite
@@ -145,15 +153,46 @@ class CadeiaProvedores:
             return ResultadoCadeia(situacao=SituacaoConsulta.SUPRIMIDO)
 
         chave = consulta.chave()
+        execucao = self._execucao_atual()
         trava = self._travas[hash((empresa_id, chave)) % TRAVAS_POR_CONSULTA]
         with trava:  # a segunda chamada igual espera e sai pelo cache: não paga de novo
+            guardado = self._descobertas.obter(empresa_id, execucao, chave)
+            if guardado is not None:
+                return self._do_cache(
+                    consulta,
+                    guardado,
+                    empresa_id,
+                    lambda: self._descobertas.esquecer(empresa_id, execucao, chave),
+                )
             guardado = self._cache.obter(empresa_id, chave)
             if guardado is not None:
-                return self._do_cache(empresa_id, chave, consulta, guardado)
+                return self._do_cache(
+                    consulta, guardado, empresa_id, lambda: self._cache.esquecer(empresa_id, chave)
+                )
             resultado = self._percorrer(empresa_id, consulta)
             if self._pode_guardar(resultado):
-                self._cache.guardar(empresa_id, chave, resultado)
+                self._guardar(empresa_id, execucao, chave, consulta, resultado)
         return resultado
+
+    def _guardar(
+        self,
+        empresa_id: str,
+        execucao: str,
+        chave: str,
+        consulta: ConsultaProvedor,
+        resultado: ResultadoCadeia,
+    ) -> None:
+        """Resultado de descoberta só fica no cache da execução, e fora de uma, em lugar nenhum."""
+        if not self._de_descoberta(consulta, resultado):
+            self._cache.guardar(empresa_id, chave, resultado)
+        elif execucao != SEM_CONTEXTO:
+            self._descobertas.guardar(empresa_id, execucao, chave, resultado)
+
+    def _de_descoberta(self, consulta: ConsultaProvedor, resultado: ResultadoCadeia) -> bool:
+        """Também o vazio: "a Brave não achou" ainda é resultado dela."""
+        if resultado.itens:
+            return any(item.descoberta for item in resultado.itens)
+        return any(_so_descoberta(p) and p.aceita(consulta) for p in self.provedores)
 
     @staticmethod
     def _validar_politica(consulta: ConsultaProvedor) -> None:
@@ -202,13 +241,17 @@ class CadeiaProvedores:
         return [i for i in itens if not self._item_suprimido(empresa_id, consulta, i)]
 
     def _do_cache(
-        self, empresa_id: str, chave: str, consulta: ConsultaProvedor, guardado: ResultadoCadeia
+        self,
+        consulta: ConsultaProvedor,
+        guardado: ResultadoCadeia,
+        empresa_id: str,
+        esquecer: Callable[[], None],
     ) -> ResultadoCadeia:
         """Quem saiu depois de guardado não volta: a supressão é conferida a cada leitura."""
         self.metricas.registrar_acerto_de_cache()
         itens = self._sem_suprimidos(empresa_id, consulta, guardado.itens)
         if guardado.itens and not itens:
-            self._cache.esquecer(empresa_id, chave)
+            esquecer()
             return ResultadoCadeia(
                 situacao=SituacaoConsulta.SUPRIMIDO, suprimidos=len(guardado.itens), do_cache=True
             )

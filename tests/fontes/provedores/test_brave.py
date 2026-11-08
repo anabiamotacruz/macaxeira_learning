@@ -4,6 +4,7 @@ import logging
 import httpx2
 import pytest
 
+from backend.agente.auditoria import contexto_rastro
 from backend.contratos.erros import FonteIndisponivel
 from backend.fontes.provedores.brave import (
     CUSTO_REQUISICAO_USD,
@@ -435,11 +436,12 @@ def test_cadeia_repete_429_e_na_segunda_tentativa_responde():
     assert len(transporte.pedidos) == 2
 
 
-def test_cadeia_nao_paga_duas_vezes_pela_mesma_consulta():
+def test_cadeia_nao_paga_duas_vezes_pela_mesma_consulta_na_mesma_execucao():
     p, transporte = provedor(busca(resultado()))
     c = cadeia(p)
-    c.consultar(EMPRESA, POR_TEXTO)
-    segunda = c.consultar(EMPRESA, POR_TEXTO)
+    with contexto_rastro(empresa_id=EMPRESA, execucao_id="exec-1"):
+        c.consultar(EMPRESA, POR_TEXTO)
+        segunda = c.consultar(EMPRESA, POR_TEXTO)
     assert segunda.do_cache
     assert segunda.custo_usd == 0.0
     assert len(transporte.pedidos) == 1
