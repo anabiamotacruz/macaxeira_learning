@@ -9,7 +9,8 @@
         "id": "experiencia_backend",
         "descricao": "Atuação profissional demonstrada em Desenvolvimento backend",
         "campo": "experiencia_backend",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -41,7 +42,8 @@
         "id": "experiencia_backend",
         "descricao": "Atuação profissional demonstrada em Desenvolvimento backend",
         "campo": "experiencia_backend",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -73,7 +75,8 @@
         "id": "experiencia_frontend",
         "descricao": "Atuação profissional demonstrada em Desenvolvimento frontend",
         "campo": "experiencia_frontend",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -105,7 +108,8 @@
         "id": "experiencia_frontend",
         "descricao": "Atuação profissional demonstrada em Desenvolvimento frontend",
         "campo": "experiencia_frontend",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -137,7 +141,8 @@
         "id": "experiencia_mobile",
         "descricao": "Atuação profissional demonstrada em Desenvolvimento mobile",
         "campo": "experiencia_mobile",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -169,7 +174,8 @@
         "id": "experiencia_mobile",
         "descricao": "Atuação profissional demonstrada em Desenvolvimento mobile",
         "campo": "experiencia_mobile",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -201,7 +207,8 @@
         "id": "experiencia_dados",
         "descricao": "Atuação profissional demonstrada em Engenharia de dados",
         "campo": "experiencia_dados",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -233,7 +240,8 @@
         "id": "experiencia_dados",
         "descricao": "Atuação profissional demonstrada em Engenharia de dados",
         "campo": "experiencia_dados",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -265,7 +273,8 @@
         "id": "experiencia_qa",
         "descricao": "Atuação profissional demonstrada em Qualidade de software",
         "campo": "experiencia_qa",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -297,7 +306,8 @@
         "id": "experiencia_qa",
         "descricao": "Atuação profissional demonstrada em Qualidade de software",
         "campo": "experiencia_qa",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -329,7 +339,8 @@
         "id": "experiencia_sre",
         "descricao": "Atuação profissional demonstrada em Engenharia de confiabilidade",
         "campo": "experiencia_sre",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -361,7 +372,8 @@
         "id": "experiencia_sre",
         "descricao": "Atuação profissional demonstrada em Engenharia de confiabilidade",
         "campo": "experiencia_sre",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -393,7 +405,8 @@
         "id": "experiencia_seguranca",
         "descricao": "Atuação profissional demonstrada em Segurança da informação",
         "campo": "experiencia_seguranca",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -425,7 +438,8 @@
         "id": "experiencia_seguranca",
         "descricao": "Atuação profissional demonstrada em Segurança da informação",
         "campo": "experiencia_seguranca",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -457,7 +471,8 @@
         "id": "experiencia_ml",
         "descricao": "Atuação profissional demonstrada em Engenharia de aprendizado de máquina",
         "campo": "experiencia_ml",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -489,7 +504,8 @@
         "id": "experiencia_ml",
         "descricao": "Atuação profissional demonstrada em Engenharia de aprendizado de máquina",
         "campo": "experiencia_ml",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -521,7 +537,8 @@
         "id": "experiencia_produto",
         "descricao": "Atuação profissional demonstrada em Gestão de produto",
         "campo": "experiencia_produto",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -553,7 +570,8 @@
         "id": "experiencia_produto",
         "descricao": "Atuação profissional demonstrada em Gestão de produto",
         "campo": "experiencia_produto",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -585,7 +603,8 @@
         "id": "experiencia_ux",
         "descricao": "Atuação profissional demonstrada em Design de experiência do usuário",
         "campo": "experiencia_ux",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -617,7 +636,8 @@
         "id": "experiencia_ux",
         "descricao": "Atuação profissional demonstrada em Design de experiência do usuário",
         "campo": "experiencia_ux",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -649,7 +669,8 @@
         "id": "experiencia_plataforma",
         "descricao": "Atuação profissional demonstrada em Engenharia de plataforma",
         "campo": "experiencia_plataforma",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -681,7 +702,8 @@
         "id": "experiencia_plataforma",
         "descricao": "Atuação profissional demonstrada em Engenharia de plataforma",
         "campo": "experiencia_plataforma",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -713,7 +735,8 @@
         "id": "experiencia_integracoes",
         "descricao": "Atuação profissional demonstrada em Engenharia de integrações",
         "campo": "experiencia_integracoes",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
@@ -745,7 +768,8 @@
         "id": "experiencia_integracoes",
         "descricao": "Atuação profissional demonstrada em Engenharia de integrações",
         "campo": "experiencia_integracoes",
-        "valor_esperado": "sim"
+        "valor_esperado": "sim",
+        "desenvolvivel": false
       }
     ],
     "competencias": [
