@@ -69,6 +69,7 @@ from tests.agente.apoio import (
     NaraFalhaDepoisDeAceitar,
     NaraForaDoAr,
     Relogio,
+    RevisorQueFalhaPara,
     RevisorSemRessalva,
     candidato_exemplo,
     vaga_exemplo,
@@ -449,7 +450,8 @@ def test_guarda_uma_decisao_por_candidato(tmp_path: Path) -> None:
 
     decisoes = {d.candidato_id: d for d in m.repo.listar_decisoes("empresa-a", "v1")}
     assert decisoes["c1"].tipo is TipoDecisao.INDICAR
-    assert decisoes["c2"].tipo is TipoDecisao.PEDIR_HUMANO
+    assert decisoes["c2"].tipo is TipoDecisao.DESCARTAR
+    assert decisoes["c2"].regra == "abaixo_do_limiar"
     assert decisoes["c3"].tipo is TipoDecisao.DESCARTAR
     assert decisoes["c3"].regra == "requisito_eliminatorio:r1"
     assert len(m.repo.listar_decisoes("empresa-a", "v1")) == 3
@@ -819,16 +821,17 @@ def test_excedentes_da_faixa_verde_ficam_nao_priorizados(tmp_path: Path) -> None
     assert set(_convites_por_candidato(m)) == {"c1", "c2"}
 
 
-def test_limiar_nulo_vai_para_revisao_com_evento(tmp_path: Path) -> None:
+def test_limiar_nulo_usa_o_padrao_e_avisa_com_evento(tmp_path: Path) -> None:
     m = Montagem(tmp_path, _dois_candidatos())
     fluxo = m.fluxo()
 
     _assinar_fluxo(fluxo, limiar_verde=None)
 
-    tipos = {d.tipo for d in m.repo.listar_decisoes("empresa-a", "v1")}
-    assert tipos == {TipoDecisao.PEDIR_HUMANO}
+    decisoes = m.repo.listar_decisoes("empresa-a", "v1")
+    assert {d.tipo for d in decisoes} == {TipoDecisao.INDICAR}
+    assert {d.entrada["limiar_origem"] for d in decisoes} == {"padrao"}
     assert [e for e in fluxo.eventos if e.etapa == "limiar_nao_calibrado"]
-    assert m.mensageiro.enviados == {}
+    assert set(_convites_por_candidato(m)) == {"c1", "c2"}
 
 
 def test_fonte_nao_traz_candidato_de_outra_empresa(tmp_path: Path) -> None:
@@ -1340,7 +1343,7 @@ def test_revisor_invalido_vira_ressalva_e_nao_faixa_verde(tmp_path: Path) -> Non
 
     decisoes = _decisoes(m)
     assert decisoes["c1"].tipo is TipoDecisao.PEDIR_HUMANO
-    assert "ressalva_do_revisor" in decisoes["c1"].motivo
+    assert "revisao_invalida" in decisoes["c1"].motivo
     assert decisoes["c2"].tipo is TipoDecisao.INDICAR
 
 
@@ -1700,12 +1703,14 @@ def test_menos_de_dez_analisados_nao_mede_taxa(tmp_path: Path) -> None:
 
 
 def test_limiar_nulo_nao_conta_como_taxa_anomala(tmp_path: Path) -> None:
+    """Com o limiar padrão, todos os dez entram na faixa verde, e a vaga não pausa por isso."""
     m = Montagem(tmp_path, _dez_candidatos())
     fluxo = m.fluxo()
 
     _assinar_fluxo(fluxo, limiar_verde=None)
 
-    assert fluxo.estado is E.CONCLUIDA
+    assert fluxo.estado is E.CONVIDANDO
+    assert fluxo.resumo().motivo_pausa is None
 
 
 RH = "Pessoa Recrutadora"
@@ -1716,13 +1721,17 @@ def _decisoes_de(m: Montagem, candidato_id: str) -> list[Decisao]:
 
 
 def _montagem_com_fila(tmp_path: Path, **pecas) -> Montagem:
-    """c1 vai para a faixa verde, c2 para a fila e c3 é descartado por requisito."""
+    """c1 vai para a faixa verde, c2 para a fila e c3 é descartado por requisito.
+
+    A revisão de c2 falha: é o caso que continua com uma pessoa, como a análise inválida.
+    """
     candidatos = [
         candidato_exemplo("c1"),
         candidato_exemplo("c2"),
         candidato_exemplo("c3", atributos={"python": "nao"}),
     ]
-    pecas.setdefault("analisador", AnalisadorComEvidencias(notas={"c2": 0.5}))
+    pecas.setdefault("analisador", AnalisadorComEvidencias())
+    pecas.setdefault("revisor", RevisorQueFalhaPara({"c2"}))
     pecas.setdefault("vaga", vaga_exemplo(meta_candidatos=1))
     return Montagem(tmp_path, candidatos, **pecas)
 
@@ -1984,7 +1993,12 @@ def test_inferida_nao_sustenta_indicacao_pela_fila(tmp_path: Path) -> None:
             ]
             return analise.model_copy(update={"evidencias": inventadas})
 
-    m = Montagem(tmp_path, [candidato_exemplo("c1")], analisador=SoInferencia())
+    m = Montagem(
+        tmp_path,
+        [candidato_exemplo("c1")],
+        analisador=SoInferencia(),
+        revisor=RevisorQueFalhaPara({"c1"}),
+    )
     fluxo = m.fluxo()
     _assinar_fluxo(fluxo)
 
@@ -2238,8 +2252,10 @@ def test_analise_sem_evidencia_e_analise_invalida_nao_travam_o_fluxo(tmp_path: P
     _assinar_fluxo(fluxo)
 
     decisoes = m.repo.listar_decisoes("empresa-a", "v1")
-    assert [d.tipo for d in decisoes] == [TipoDecisao.PEDIR_HUMANO] * 2
+    # Sem trecho, a nota de cada competência fica limitada e a pessoa sai pela nota, com motivo.
+    assert [d.regra for d in decisoes] == ["abaixo_do_limiar"] * 2
     assert all(d.evidencias for d in decisoes)
+    assert all("sem trecho do perfil" in d.motivo for d in decisoes)
 
     invalida = Montagem(
         _pasta_nova(tmp_path),
@@ -2352,7 +2368,7 @@ def test_barreira_segura_a_entrega_tardia_ate_a_liberacao(tmp_path: Path) -> Non
         tmp_path,
         _dois_candidatos(),
         vaga=vaga_exemplo(meta_candidatos=1),
-        analisador=AnalisadorComEvidencias(notas={"c2": 0.5}),
+        revisor=RevisorQueFalhaPara({"c2"}),
     )
     fluxo = m.fluxo()
     _assinar_fluxo(fluxo, modo_entrega=ModoEntrega.NA_DECISAO)
@@ -2976,10 +2992,15 @@ def test_quem_ficou_na_reserva_volta_na_ampliacao(tmp_path: Path) -> None:
             return [c for c in candidatos if c.id == "c1"]
         return [c for c in candidatos if c.id == "c2"]
 
-    banco = _banco_com(
-        _sem_nenhum_termo_da_consulta("c1"), _sem_nenhum_termo_da_consulta("c2")
+    banco = _banco_com(_sem_nenhum_termo_da_consulta("c1"), _sem_nenhum_termo_da_consulta("c2"))
+    m = Montagem(
+        tmp_path,
+        [],
+        banco=banco,
+        fontes=[],
+        priorizador=priorizador,
+        analisador=AnalisadorComEvidencias(notas={"c1": 0.5}),
     )
-    m = Montagem(tmp_path, [], banco=banco, fontes=[], priorizador=priorizador)
 
     _assinar_fluxo(m.fluxo(), max_ampliacoes=1, max_indicacoes=1)
 

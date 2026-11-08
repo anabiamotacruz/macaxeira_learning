@@ -307,12 +307,13 @@ def test_desatualizado_sem_ligacao_com_a_vaga_fica_na_reserva():
     assert _regras(cortes) == {"b": RegraCorte.RESERVA}
 
 
-def test_desatualizado_que_cita_a_funcao_continua_com_uma_pessoa():
+def test_desatualizado_que_cita_a_funcao_segue_como_os_demais():
     sem_dado = _pessoa("b", "Software engineer.", atributos={}, estado=EstadoBanco.DESATUALIZADO)
 
-    _, cortes = _priorizar(_vaga(meta_candidatos=1), [_pessoa("a"), sem_dado])
+    selecionados, cortes = _priorizar(_vaga(meta_candidatos=1), [_pessoa("a"), sem_dado])
 
-    assert _regras(cortes) == {"b": RegraCorte.PERFIL_DESATUALIZADO}
+    assert RegraCorte.PERFIL_DESATUALIZADO not in _regras(cortes).values()
+    assert "b" in _ids(selecionados) or _regras(cortes).get("b") == RegraCorte.RESERVA
 
 
 def test_corte_da_reserva_nao_traz_dados_do_perfil():
@@ -324,11 +325,20 @@ def test_corte_da_reserva_nao_traz_dados_do_perfil():
     assert "Consultoria" not in cortes[0].motivo
 
 
-def test_perfil_desatualizado_com_autorizacao_valida_sai_para_uma_pessoa_confirmar():
+def test_perfil_desatualizado_com_autorizacao_valida_segue_para_a_analise():
     selecionados, cortes = _priorizar(_vaga(), [_pessoa("a", estado=EstadoBanco.DESATUALIZADO)])
 
+    assert _ids(selecionados) == ["a"]
+    assert cortes == []
+
+
+def test_perfil_desatualizado_sem_autorizacao_continua_fora():
+    vencida = _pessoa("a", estado=EstadoBanco.DESATUALIZADO, opt_out=True)
+
+    selecionados, cortes = _priorizar(_vaga(), [vencida])
+
     assert selecionados == []
-    assert [(c.candidato_id, c.regra) for c in cortes] == [("a", RegraCorte.PERFIL_DESATUALIZADO)]
+    assert _regras(cortes) == {"a": RegraCorte.OPT_OUT}
 
 
 def test_ordem_nao_muda_com_nome_ou_genero():

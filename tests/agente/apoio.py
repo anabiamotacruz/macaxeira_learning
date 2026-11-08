@@ -6,6 +6,7 @@ from backend.agente.auditoria import RegistroRastro
 from backend.agente.montagem import consultas_por_modelo, priorizador_do_funil
 from backend.agente.persistencia import Repositorio
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
+from backend.contratos.erros import RespostaInvalida
 from backend.contratos.modelos import (
     Analise,
     Candidato,
@@ -128,6 +129,19 @@ class RevisorSemRessalva:
         return analise
 
 
+class RevisorQueFalhaPara(RevisorSemRessalva):
+    """Revisão inválida para as pessoas indicadas: a decisão delas fica com uma pessoa."""
+
+    def __init__(self, candidatos: set[str]) -> None:
+        super().__init__()
+        self.candidatos = candidatos
+
+    def revisar(self, vaga: Vaga, candidato: Candidato, analise: Analise) -> Analise:
+        if candidato.id in self.candidatos:
+            raise RespostaInvalida("revisão inválida")
+        return super().revisar(vaga, candidato, analise)
+
+
 class NaraFalhaDepoisDeAceitar(ClienteNaraSimulado):
     """Guarda o pacote e responde falha, como uma resposta perdida no caminho de volta."""
 
@@ -208,8 +222,9 @@ def servico_de_teste(caminho, *, candidatos=None, **pecas) -> ServicoVagas:
         "repositorio": Repositorio(caminho),
         "banco": BancoTalentosSimulado(),
         "fontes": [FonteSimulada(candidatos_de_teste() if candidatos is None else candidatos)],
-        "analisador": AnalisadorComEvidencias(notas={"fila": 0.6}),
-        "revisor": RevisorSemRessalva(),
+        "analisador": AnalisadorComEvidencias(),
+        # A revisão de "fila" falha: é o caso que continua com uma pessoa.
+        "revisor": RevisorQueFalhaPara({"fila"}),
         "mensageiro": MensageiroSimulado(),
         "destino": ClienteNaraSimulado(),
         "relogio": Relogio(),

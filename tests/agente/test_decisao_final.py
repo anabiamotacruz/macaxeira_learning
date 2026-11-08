@@ -165,10 +165,10 @@ def test_sem_autorizacao_recusa_por_regra_objetiva(campos: dict) -> None:
     assert decisao.regra == "sem_autorizacao"
 
 
-def test_perfil_desatualizado_vai_para_uma_pessoa() -> None:
+def test_perfil_desatualizado_com_autorizacao_decide_como_os_demais() -> None:
     decisao = decidir_teste(candidato=candidato_teste(estado=EstadoBanco.DESATUALIZADO))
-    assert decisao.destino == DestinoDecisao.REVISAO_HUMANA
-    assert decisao.regra == "perfil_desatualizado"
+    assert decisao.destino == DestinoDecisao.APROVAR
+    assert decisao.regra != "perfil_desatualizado"
 
 
 @pytest.mark.parametrize("nota", [0.0, 0.1, 0.49])
@@ -382,8 +382,8 @@ def test_peso_invalido_para_em_uma_pessoa() -> None:
     assert decisao.score.nota_geral is None
 
 
-def test_sinais_mudam_o_resultado_que_a_faixa_verde_mandaria_para_a_fila() -> None:
-    """Relatado na entrega: `decidir` segue igual, e esta função nova aprova o que ele enfileira."""
+def test_faixa_verde_e_decisao_final_concordam_com_trecho_inventado_em_competencia() -> None:
+    """Sem trecho do perfil, as duas limitam a competência a metade da nota e decidem igual."""
     vaga = vaga_teste()
     evidencias = [
         Evidencia(criterio="r1", trecho=TRECHO_REQ, fonte="rede_simulada"),
@@ -394,8 +394,10 @@ def test_sinais_mudam_o_resultado_que_a_faixa_verde_mandaria_para_a_fila() -> No
     candidato = candidato_teste()
     mandato = mandato_teste(vaga)
     antiga = decidir(vaga, candidato, analise, mandato, HOJE, AGORA, "r")
-    assert antiga.tipo == TipoDecisao.PEDIR_HUMANO
-    assert decidir_teste(vaga, candidato, analise, mandato).destino == DestinoDecisao.APROVAR
+    nova = decidir_teste(vaga, candidato, analise, mandato)
+    assert antiga.tipo == TipoDecisao.INDICAR
+    assert nova.destino == DestinoDecisao.APROVAR
+    assert float(antiga.entrada["nota"]) == pytest.approx(nova.score.nota_geral, abs=1e-5)
 
 
 # Score
