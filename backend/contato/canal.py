@@ -44,14 +44,13 @@ ALERTA_INSTRUCAO = "perfil com texto dirigido ao avaliador, tratado como dado e 
 class MotivoSemCanal(StrEnum):
     """Por que a pessoa ficou sem canal de contato.
 
-    O valor é a mesma `regra` que `ContatoBloqueado` registra, para o motivo
-    guardado na fila ser idêntico à regra aplicada. `CONTATO_SEM_ORIGEM` é apelido
-    de `SEM_CONTATO_PUBLICADO` porque `_conferir_contato` aplica uma única regra ao
-    endereço não publicado e ao endereço sem origem.
+    Os valores seguem a `regra` de `ContatoBloqueado`, menos `CONTATO_SEM_ORIGEM`: o
+    portão aplica `contato_nao_publicado` também ao endereço sem URL de origem, e a
+    fila separa os dois casos para quem a lê.
     """
 
     SEM_CONTATO_PUBLICADO = "contato_nao_publicado"
-    CONTATO_SEM_ORIGEM = "contato_nao_publicado"
+    CONTATO_SEM_ORIGEM = "contato_sem_origem"
     CANAL_NAO_SUPORTADO = "canal_nao_e_email"
     LISTA_SUPRESSAO = "lista_supressao"
 
@@ -237,13 +236,19 @@ def encaminhar_para_humano(
     cliente_modelo: ClienteModelo,
     fila: FilaAbordagemManual,
     criado_em: datetime,
+    identidades: list[str] | None = None,
 ) -> ResultadoEncaminhamento:
     """Tenta o e-mail e, sem contato publicado, registra a abordagem manual.
 
     Quem pediu para sair ou está na lista de supressão não entra na fila: abordar
-    por outro canal continua sendo abordar. O e-mail montado não é enviado daqui.
+    por outro canal continua sendo abordar. `identidades` são outros identificadores
+    públicos da pessoa, como a URL do perfil, conferidos na lista mesmo sem contato
+    publicado. O e-mail montado não é enviado daqui.
     """
-    if candidato.opt_out:
+    conferir = list(identidades or [])
+    if contato is not None:
+        conferir.append(contato.endereco)
+    if candidato.opt_out or (conferir and lista.esta_suprimido(vaga.empresa_id, conferir)):
         return ResultadoEncaminhamento(
             caminho=Caminho.BLOQUEADO, motivo=MotivoSemCanal.LISTA_SUPRESSAO
         )

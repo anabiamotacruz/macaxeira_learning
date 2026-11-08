@@ -192,7 +192,14 @@ def test_endereco_sem_url_de_origem_fica_sem_canal(lista, fila):
 
     assert resultado.caminho == Caminho.SEM_CANAL
     assert resultado.item.motivo == MotivoSemCanal.CONTATO_SEM_ORIGEM
-    assert resultado.item.motivo == "contato_nao_publicado"
+    assert resultado.item.motivo == "contato_sem_origem"
+
+
+def test_motivos_sem_canal_sao_distintos():
+    valores = [motivo.value for motivo in MotivoSemCanal]
+
+    assert len(valores) == len(set(valores)) == 4
+    assert MotivoSemCanal.CONTATO_SEM_ORIGEM is not MotivoSemCanal.SEM_CONTATO_PUBLICADO
 
 
 def test_canal_nao_suportado_fica_sem_canal(lista, fila):
@@ -289,6 +296,27 @@ def test_suprimido_nao_entra_na_fila(lista, fila):
     assert resultado.motivo == MotivoSemCanal.LISTA_SUPRESSAO
     assert resultado.email is None
     assert resultado.item is None
+    assert fila.listar("empresa-a") == []
+
+
+def test_suprimido_sem_contato_publicado_nao_entra_na_fila(lista, fila):
+    perfil = "https://github.com/ana-dev"
+    lista.suprimir("empresa-a", [perfil])
+
+    resultado = _encaminhar(lista, fila, contato=None, identidades=[perfil])
+
+    assert resultado.caminho == Caminho.BLOQUEADO
+    assert resultado.motivo == MotivoSemCanal.LISTA_SUPRESSAO
+    assert fila.listar("empresa-a") == []
+
+
+def test_endereco_nao_publicado_mas_suprimido_nao_entra_na_fila(lista, fila):
+    lista.suprimir("empresa-a", [ENDERECO])
+
+    resultado = _encaminhar(lista, fila, contato=_contato(publicado_para_contato=False))
+
+    assert resultado.caminho == Caminho.BLOQUEADO
+    assert resultado.motivo == MotivoSemCanal.LISTA_SUPRESSAO
     assert fila.listar("empresa-a") == []
 
 
