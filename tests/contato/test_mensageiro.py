@@ -1,6 +1,7 @@
 import pytest
 
 from backend.contato.mensageiro import (
+    AVISO_SIMULACAO,
     MensageiroSimulado,
     PreferenciasContato,
     chave_convite,
@@ -211,6 +212,23 @@ def test_empresa_pode_desligar_personalizacao():
     assert "mensageria" in convite.mensagem
 
 
+def test_mensagem_padrao_cita_cada_criterio_uma_vez_pela_descricao():
+    analise = _analise(
+        evidencias=[
+            Evidencia(criterio="r1", trecho="Ana Souza usa Python há 5 anos.", fonte="banco"),
+            Evidencia(
+                criterio="mensageria",
+                trecho="Ana Souza liderou a migração para Kafka.",
+                fonte="banco",
+            ),
+        ]
+    )
+    convite = _convite(analise=analise, preferencias=PreferenciasContato(personalizar=False))
+
+    assert "por: Python, mensageria." in convite.mensagem
+    assert "r1" not in convite.mensagem
+
+
 def test_mensagem_padrao_e_deterministica():
     preferencias = PreferenciasContato(personalizar=False)
     assert _convite(preferencias=preferencias).mensagem == (
@@ -332,3 +350,21 @@ def test_mensageiro_recusa_convite_nao_simulado():
 def test_mensageiro_exige_empresa():
     with pytest.raises(ValueError):
         MensageiroSimulado().enviados("")
+
+
+@pytest.mark.parametrize("personalizar", [True, False])
+def test_convite_traz_origem_do_contato_e_aviso_de_simulacao(personalizar):
+    candidato = _candidato(fonte="rede_simulada", origem="importacao_rede_sintetica")
+    convite = _convite(
+        candidato=candidato, preferencias=PreferenciasContato(personalizar=personalizar)
+    )
+
+    assert "rede_simulada (importacao_rede_sintetica)" in convite.mensagem
+    assert convite.mensagem.endswith(AVISO_SIMULACAO)
+
+
+def test_rodape_do_convite_nao_vai_ao_modelo():
+    modelo = _modelo()
+    _convite(cliente_modelo=modelo, candidato=_candidato(fonte="rede_simulada"))
+
+    assert all("rede_simulada" not in str(chamada) for chamada in modelo.chamadas)

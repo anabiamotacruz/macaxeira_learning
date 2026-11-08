@@ -1,0 +1,4595 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API do agente recrutador (proposta simulada)",
+    "description": "**Proposta**, válida enquanto o acordo das frentes não sair: rotas, campos e erros podem mudar.\n\n**Simulação.** A sessão é simulada e os dados são sintéticos: toda resposta traz `simulado: true`.\n`exemplo_fixo: true` marca o que ainda não vem da lógica: hoje, as métricas sem provedor de medição\ne o reinício sem dados para recarregar. Os números dessas respostas são ilustrativos e não medem o\nagente. Os exemplos desta documentação também são fictícios.\n\n**Execução.** Assinar o mandato e retomar respondem na hora e seguem em segundo plano: acompanhe por\n`GET /vagas/{id}` e `GET /vagas/{id}/eventos`.\n\n**Limites do agente.** O agente não agenda, não entrevista e não decide contratações.\nO destino da pessoa é registrado por alguém do RH.\n\n**Sessão.** `empresa_id` vem da sessão, simulada pelo cabeçalho `X-Empresa-Id`, nunca do corpo.\nO que é de outra empresa não existe para esta sessão: a resposta é 404.\n\n**Erros.** `{\"erro\": {\"codigo\": \"...\", \"mensagem\": \"...\"}, \"simulado\": true}`.\n\n**Gerar este arquivo.** `uv run python -m backend.agente.gerar_openapi`\n",
+    "version": "0.1.0-proposta"
+  },
+  "paths": {
+    "/vagas": {
+      "post": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Criar Vaga",
+        "description": "Cria a vaga da empresa da sessão, que espera o mandato.",
+        "operationId": "criar_vaga",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoVaga"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                    "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                    "requisitos": [
+                      {
+                        "id": "python",
+                        "descricao": "Experiência com Python",
+                        "campo": "linguagem",
+                        "valor_esperado": "python",
+                        "desenvolvivel": false
+                      }
+                    ],
+                    "competencias": [
+                      {
+                        "nome": "APIs",
+                        "peso": 1.0
+                      }
+                    ],
+                    "meta_candidatos": 2,
+                    "prazo_dias": 14,
+                    "max_tentativas_contato": 2
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaVaga"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga": {
+                    "id": "vaga-exemplo-1",
+                    "empresa_id": "empresa-exemplo",
+                    "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                    "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                    "requisitos": [
+                      {
+                        "id": "python",
+                        "descricao": "Experiência com Python",
+                        "campo": "linguagem",
+                        "valor_esperado": "python",
+                        "desenvolvivel": false
+                      }
+                    ],
+                    "competencias": [
+                      {
+                        "nome": "APIs",
+                        "peso": 1.0
+                      }
+                    ],
+                    "meta_candidatos": 2,
+                    "prazo_dias": 14,
+                    "max_tentativas_contato": 2,
+                    "aprovada": false
+                  },
+                  "estado": "aguardando_mandato",
+                  "mandato": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ]
+      }
+    },
+    "/vagas/{id}/mandato": {
+      "post": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Assinar Mandato",
+        "description": "Registra o mandato assinado por uma pessoa e segue a vaga em segundo plano.\n\nEm vaga pausada, vira um aditivo, que só vale depois de `/retomar`.",
+        "operationId": "assinar_mandato",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoMandato"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "assinante": "Pessoa Responsável Fictícia",
+                    "limite_gasto_usd": 5.0,
+                    "politica": {
+                      "limiar_verde": 0.8,
+                      "piso_nota": 0.5,
+                      "max_indicacoes": 2,
+                      "max_ampliacoes": 1,
+                      "modo_entrega": "apos_aceite",
+                      "aceitar_declarada": false,
+                      "lapidar_exige_confirmacao": true,
+                      "prazo_garden_dias": 180
+                    },
+                    "valido_ate": "2026-11-21T12:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaMandato"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "mandato": {
+                    "id": "mandato-exemplo-1",
+                    "versao": 1,
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "hash_vaga": "hash-de-exemplo",
+                    "assinante": "Pessoa Responsável Fictícia",
+                    "limite_gasto_usd": 5.0,
+                    "politica": {
+                      "limiar_verde": 0.8,
+                      "piso_nota": 0.5,
+                      "max_indicacoes": 2,
+                      "max_ampliacoes": 1,
+                      "modo_entrega": "apos_aceite",
+                      "aceitar_declarada": false,
+                      "lapidar_exige_confirmacao": true,
+                      "prazo_garden_dias": 180
+                    },
+                    "assinado_em": "2026-11-07T12:00:00Z",
+                    "valido_ate": "2026-11-21T12:00:00Z"
+                  },
+                  "estado": "buscando"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/modelos": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Listar Modelos De Vaga",
+        "description": "Vagas sintéticas de exemplo. Declarada antes de `/vagas/{id}` para não ser lida como id.",
+        "operationId": "listar_modelos_de_vaga",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaModelosVaga"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "itens": [
+                    {
+                      "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                      "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                      "requisitos": [
+                        {
+                          "id": "python",
+                          "descricao": "Experiência com Python",
+                          "campo": "linguagem",
+                          "valor_esperado": "python",
+                          "desenvolvivel": false
+                        }
+                      ],
+                      "competencias": [
+                        {
+                          "nome": "APIs",
+                          "peso": 1.0
+                        }
+                      ],
+                      "meta_candidatos": 2,
+                      "prazo_dias": 14,
+                      "max_tentativas_contato": 2
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ]
+      }
+    },
+    "/vagas/{id}": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Consultar Vaga",
+        "description": "Devolve a vaga, o estado e o mandato.",
+        "operationId": "consultar_vaga",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaVaga"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga": {
+                    "id": "vaga-exemplo-1",
+                    "empresa_id": "empresa-exemplo",
+                    "titulo": "Pessoa Desenvolvedora Python (vaga fictícia)",
+                    "descricao": "Vaga sintética para demonstrar o contrato da API.",
+                    "requisitos": [
+                      {
+                        "id": "python",
+                        "descricao": "Experiência com Python",
+                        "campo": "linguagem",
+                        "valor_esperado": "python",
+                        "desenvolvivel": false
+                      }
+                    ],
+                    "competencias": [
+                      {
+                        "nome": "APIs",
+                        "peso": 1.0
+                      }
+                    ],
+                    "meta_candidatos": 2,
+                    "prazo_dias": 14,
+                    "max_tentativas_contato": 2,
+                    "aprovada": true
+                  },
+                  "estado": "decidindo",
+                  "mandato": {
+                    "id": "mandato-exemplo-1",
+                    "versao": 1,
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "hash_vaga": "hash-de-exemplo",
+                    "assinante": "Pessoa Responsável Fictícia",
+                    "limite_gasto_usd": 5.0,
+                    "politica": {
+                      "limiar_verde": 0.8,
+                      "piso_nota": 0.5,
+                      "max_indicacoes": 2,
+                      "max_ampliacoes": 1,
+                      "modo_entrega": "apos_aceite",
+                      "aceitar_declarada": false,
+                      "lapidar_exige_confirmacao": true,
+                      "prazo_garden_dias": 180
+                    },
+                    "assinado_em": "2026-11-07T12:00:00Z",
+                    "valido_ate": "2026-11-21T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/candidatos": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Listar Candidatos",
+        "description": "Lista os candidatos da vaga, com a decisão do agente e o destino dado pelo RH.",
+        "operationId": "listar_candidatos",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Pagina"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limite"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaCandidatos"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "pagina": 1,
+                  "limite": 20,
+                  "total": 3,
+                  "itens": [
+                    {
+                      "candidato": {
+                        "id": "candidato-exemplo-1",
+                        "empresa_id": "empresa-exemplo",
+                        "nome": "Pessoa Fictícia Um",
+                        "fonte": "banco_de_talentos_simulado",
+                        "simulado": true,
+                        "origem": "dados_sinteticos_de_exemplo",
+                        "atualizado_em": "2026-11-07",
+                        "autorizacao_valida_ate": "2027-11-07",
+                        "estado": "ativo",
+                        "perfil_texto": "Perfil fictício: cinco anos de Python em APIs.",
+                        "atributos": {
+                          "linguagem": "python"
+                        },
+                        "historico": [],
+                        "autorizou_contato": true,
+                        "opt_out": false
+                      },
+                      "decisao": "indicar",
+                      "destino": null
+                    },
+                    {
+                      "candidato": {
+                        "id": "candidato-exemplo-2",
+                        "empresa_id": "empresa-exemplo",
+                        "nome": "Pessoa Fictícia Dois",
+                        "fonte": "banco_de_talentos_simulado",
+                        "simulado": true,
+                        "origem": "dados_sinteticos_de_exemplo",
+                        "atualizado_em": "2026-11-07",
+                        "autorizacao_valida_ate": "2027-11-07",
+                        "estado": "ativo",
+                        "perfil_texto": "Perfil fictício: Python declarado, sem projeto citado.",
+                        "atributos": {
+                          "linguagem": "python"
+                        },
+                        "historico": [],
+                        "autorizou_contato": true,
+                        "opt_out": false
+                      },
+                      "decisao": "pedir_humano",
+                      "destino": null
+                    },
+                    {
+                      "candidato": {
+                        "id": "candidato-exemplo-3",
+                        "empresa_id": "empresa-exemplo",
+                        "nome": "Pessoa Fictícia Três",
+                        "fonte": "banco_de_talentos_simulado",
+                        "simulado": true,
+                        "origem": "dados_sinteticos_de_exemplo",
+                        "atualizado_em": "2026-11-07",
+                        "autorizacao_valida_ate": "2027-11-07",
+                        "estado": "ativo",
+                        "perfil_texto": "Perfil fictício: oito anos de Java em sistemas internos.",
+                        "atributos": {
+                          "linguagem": "java"
+                        },
+                        "historico": [],
+                        "autorizou_contato": true,
+                        "opt_out": false
+                      },
+                      "decisao": "descartar",
+                      "destino": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/eventos": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Listar Eventos",
+        "description": "Lista os eventos da vaga, para o painel consultar periodicamente.",
+        "operationId": "listar_eventos",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Pagina"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limite"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaEventos"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "pagina": 1,
+                  "limite": 20,
+                  "total": 3,
+                  "itens": [
+                    {
+                      "empresa_id": "empresa-exemplo",
+                      "vaga_id": "vaga-exemplo-1",
+                      "etapa": "buscando",
+                      "mensagem": "aguardando_mandato -> buscando",
+                      "candidato_id": null,
+                      "custo_usd": 0.0,
+                      "momento": "2026-11-07T12:00:00Z"
+                    },
+                    {
+                      "empresa_id": "empresa-exemplo",
+                      "vaga_id": "vaga-exemplo-1",
+                      "etapa": "analisando",
+                      "mensagem": "buscando -> analisando",
+                      "candidato_id": "candidato-exemplo-1",
+                      "custo_usd": 0.14,
+                      "momento": "2026-11-07T12:00:00Z"
+                    },
+                    {
+                      "empresa_id": "empresa-exemplo",
+                      "vaga_id": "vaga-exemplo-1",
+                      "etapa": "decidindo",
+                      "mensagem": "revisando -> decidindo",
+                      "candidato_id": "candidato-exemplo-1",
+                      "custo_usd": 0.28,
+                      "momento": "2026-11-07T12:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/entrega": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Consultar Entrega",
+        "description": "Devolve a saída personalizada: só o contexto dos indicados, para quem segue o processo.",
+        "operationId": "consultar_entrega",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaEntrega"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "saida": {
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "pacotes": [
+                      {
+                        "empresa_id": "empresa-exemplo",
+                        "vaga_id": "vaga-exemplo-1",
+                        "candidato_id": "candidato-exemplo-1",
+                        "motivo_por_criterio": {
+                          "python": "Trecho da fonte cita cinco anos de Python."
+                        },
+                        "historico": [
+                          {
+                            "empresa": "Empresa Fictícia",
+                            "cargo": "Pessoa Desenvolvedora",
+                            "inicio": "2021-11-01",
+                            "fim": null,
+                            "descricao": "Experiência sintética."
+                          }
+                        ],
+                        "evidencias": [
+                          {
+                            "criterio": "python",
+                            "trecho": "cinco anos de Python",
+                            "fonte": "banco_de_talentos_simulado"
+                          }
+                        ],
+                        "lacunas": [
+                          "Sem dado sobre testes automatizados."
+                        ],
+                        "pontos_a_aprofundar": [
+                          "Tamanho dos sistemas em que atuou."
+                        ],
+                        "ressalvas_revisor": [],
+                        "autorizacao": "valida_ate:2027-11-07",
+                        "fonte": "banco_de_talentos_simulado",
+                        "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
+                        "chave_idempotencia": "entrega:empresa-exemplo:vaga-exemplo-1:candidato-exemplo-1",
+                        "simulado": true,
+                        "pontos_a_explorar": [],
+                        "respostas_pre_triagem": []
+                      }
+                    ],
+                    "simulado": true,
+                    "momento": "2026-11-07T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/convites": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Listar Convites",
+        "description": "Lista os convites da vaga com o estado de cada um. Todo convite aqui é simulado.",
+        "operationId": "listar_convites",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaConvites"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "itens": [
+                    {
+                      "id": "convite:vaga-exemplo-1:candidato-exemplo-1:1",
+                      "candidato_id": "candidato-exemplo-1",
+                      "canal": "simulado",
+                      "mensagem": "[SIMULAÇÃO] Convite fictício para a vaga de exemplo.",
+                      "link_destino": null,
+                      "simulado": true,
+                      "estado": "aguardando",
+                      "tentativa": 1,
+                      "duvidas": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/resumo": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Consultar Resumo",
+        "description": "Devolve as contagens e o gasto da vaga, para o controle depois da ação.",
+        "operationId": "consultar_resumo",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaResumo"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "resumo": {
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "estado": "decidindo",
+                    "analisados": 3,
+                    "indicados": 1,
+                    "descartados": 1,
+                    "na_fila_humana": 1,
+                    "revertidos": 0,
+                    "gasto_usd": 0.42,
+                    "limite_gasto_usd": 5.0,
+                    "simulado": true,
+                    "momento": "2026-11-07T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/metricas": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Consultar Metricas",
+        "description": "Devolve taxas com casos e intervalo de Wilson.\n\nSem provedor de medição, os valores são ilustrativos e vêm com `exemplo_fixo: true`.",
+        "operationId": "consultar_metricas",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaMetricas"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": true,
+                  "vaga_id": "vaga-exemplo-1",
+                  "sem_revisao": {
+                    "valor": 0.8,
+                    "casos": 20,
+                    "wilson_inferior": 0.584,
+                    "wilson_superior": 0.9193
+                  },
+                  "erros_por_tipo": {
+                    "indicacao_errada": {
+                      "valor": 0.1,
+                      "casos": 10,
+                      "wilson_inferior": 0.0179,
+                      "wilson_superior": 0.4042
+                    },
+                    "descarte_errado": {
+                      "valor": null,
+                      "casos": 0,
+                      "wilson_inferior": null,
+                      "wilson_superior": null
+                    },
+                    "violacao_eliminatoria": {
+                      "valor": 0.0,
+                      "casos": 10,
+                      "wilson_inferior": 0.0,
+                      "wilson_superior": 0.2775
+                    },
+                    "contato_opt_out": {
+                      "valor": 0.0,
+                      "casos": 10,
+                      "wilson_inferior": 0.0,
+                      "wilson_superior": 0.2775
+                    },
+                    "mudanca_nome_genero": {
+                      "valor": null,
+                      "casos": 0,
+                      "wilson_inferior": null,
+                      "wilson_superior": null
+                    },
+                    "afirmacao_sem_evidencia": {
+                      "valor": 0.0,
+                      "casos": 10,
+                      "wilson_inferior": 0.0,
+                      "wilson_superior": 0.2775
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/parar": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Parar Vaga",
+        "description": "Pausa a vaga a pedido de uma pessoa. A execução em curso sai antes do próximo candidato.",
+        "operationId": "parar_vaga",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoControle"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "responsavel": "Pessoa Responsável Fictícia",
+                    "motivo": "Pausa pedida pelo RH (exemplo).",
+                    "chave_idempotencia": "exemplo-parar-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaControle"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "estado": "pausada",
+                  "estado_anterior": "decidindo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vagas/{id}/retomar": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Retomar Vaga",
+        "description": "Devolve a vaga ao estado anterior à pausa e segue em segundo plano.",
+        "operationId": "retomar_vaga",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoControle"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "responsavel": "Pessoa Responsável Fictícia",
+                    "motivo": "Motivo da pausa resolvido (exemplo).",
+                    "chave_idempotencia": "exemplo-retomar-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaControle"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "estado": "decidindo",
+                  "estado_anterior": "pausada"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidatos/{id}/decisao": {
+      "get": {
+        "tags": [
+          "candidatos"
+        ],
+        "summary": "Consultar Decisao",
+        "description": "Explica a decisão vigente sobre o candidato, com regra, evidências e rastro.",
+        "operationId": "consultar_decisao",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "vaga_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Vaga da decisão, pois a pessoa pode estar em mais de uma.",
+              "title": "Vaga Id"
+            },
+            "description": "Vaga da decisão, pois a pessoa pode estar em mais de uma."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaDecisao"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "decisao": {
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "candidato_id": "candidato-exemplo-1",
+                    "tipo": "indicar",
+                    "regra": "faixa_verde_v1",
+                    "motivo": "Requisito atendido com trecho da fonte, dentro do mandato.",
+                    "responsavel": "agente:mandato:mandato-exemplo-1:v1:assinante:Pessoa Responsável Fictícia",
+                    "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
+                    "entrada": {
+                      "requisito": "python"
+                    },
+                    "evidencias": [
+                      {
+                        "criterio": "python",
+                        "trecho": "cinco anos de Python",
+                        "fonte": "banco_de_talentos_simulado"
+                      }
+                    ],
+                    "momento": "2026-11-07T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidatos/{id}/reverter": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Reverter Decisao",
+        "description": "Devolve a decisão à fila humana. A nova fica ao lado da original, que nunca é apagada.",
+        "operationId": "reverter_decisao",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoReversao"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "vaga_id": "vaga-exemplo-1",
+                    "motivo": "Revisão humana discordou da decisão (exemplo).",
+                    "responsavel": "Pessoa Responsável Fictícia",
+                    "chave_idempotencia": "exemplo-reverter-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaReversao"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "decisao_original": {
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "candidato_id": "candidato-exemplo-1",
+                    "tipo": "indicar",
+                    "regra": "faixa_verde_v1",
+                    "motivo": "Requisito atendido com trecho da fonte, dentro do mandato.",
+                    "responsavel": "agente:mandato:mandato-exemplo-1:v1:assinante:Pessoa Responsável Fictícia",
+                    "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
+                    "entrada": {
+                      "requisito": "python"
+                    },
+                    "evidencias": [
+                      {
+                        "criterio": "python",
+                        "trecho": "cinco anos de Python",
+                        "fonte": "banco_de_talentos_simulado"
+                      }
+                    ],
+                    "momento": "2026-11-07T12:00:00Z"
+                  },
+                  "decisao_nova": {
+                    "empresa_id": "empresa-exemplo",
+                    "vaga_id": "vaga-exemplo-1",
+                    "candidato_id": "candidato-exemplo-1",
+                    "tipo": "pedir_humano",
+                    "regra": "reversao_humana",
+                    "motivo": "Decisão revertida por uma pessoa; a original continua registrada.",
+                    "responsavel": "humano:Pessoa Responsável Fictícia",
+                    "rastro_id": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1",
+                    "entrada": {
+                      "rastro_revertido": "execucao-exemplo:vaga-exemplo-1:candidato-exemplo-1"
+                    },
+                    "evidencias": [
+                      {
+                        "criterio": "python",
+                        "trecho": "cinco anos de Python",
+                        "fonte": "banco_de_talentos_simulado"
+                      }
+                    ],
+                    "momento": "2026-11-07T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidatos/{id}/destino": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Registrar Destino",
+        "description": "Registra o destino que uma pessoa do RH decidiu. O agente não decide.",
+        "operationId": "registrar_destino",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoDestino"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "vaga_id": "vaga-exemplo-1",
+                    "destino": "talent_garden",
+                    "responsavel": "Pessoa Responsável Fictícia",
+                    "chave_idempotencia": "exemplo-destino-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaDestino"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "candidato_id": "candidato-exemplo-1",
+                  "destino": "talent_garden",
+                  "responsavel": "Pessoa Responsável Fictícia"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/convites/{id}/resposta": {
+      "post": {
+        "tags": [
+          "controle"
+        ],
+        "summary": "Registrar Resposta",
+        "description": "Registra a resposta da pessoa ao convite. Aceite leva o contexto ao agente de destino.",
+        "operationId": "registrar_resposta",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoResposta"
+              },
+              "examples": {
+                "exemplo": {
+                  "summary": "Exemplo fictício",
+                  "value": {
+                    "vaga_id": "vaga-exemplo-1",
+                    "tipo": "aceite",
+                    "texto": "",
+                    "chave_idempotencia": "exemplo-resposta-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaRegistroResposta"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "vaga_id": "vaga-exemplo-1",
+                  "convite_id": "convite:vaga-exemplo-1:candidato-exemplo-1:1",
+                  "tipo": "aceite"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A ação não vale no estado atual, ou a chave já foi usada em outro pedido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "transicao_invalida",
+                    "mensagem": "A vaga não permite esta ação no estado atual."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessoes/reiniciar": {
+      "post": {
+        "tags": [
+          "sessoes"
+        ],
+        "summary": "Reiniciar Sessao",
+        "description": "Reinicia os dados sintéticos da empresa da sessão, se houver dados para recarregar.\n\nSem eles, nada é apagado, e a resposta traz `exemplo_fixo: true`.",
+        "operationId": "reiniciar_sessao",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaReinicio"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "empresa_id": "empresa-exemplo",
+                  "dados_recarregados": true,
+                  "mensagem": "Dados sintéticos da empresa recarregados."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                },
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Candidato": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "fonte": {
+            "type": "string",
+            "title": "Fonte"
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "origem": {
+            "type": "string",
+            "title": "Origem"
+          },
+          "atualizado_em": {
+            "type": "string",
+            "format": "date",
+            "title": "Atualizado Em"
+          },
+          "autorizacao_valida_ate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autorizacao Valida Ate"
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoBanco"
+          },
+          "perfil_texto": {
+            "type": "string",
+            "title": "Perfil Texto"
+          },
+          "atributos": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Atributos"
+          },
+          "historico": {
+            "items": {
+              "$ref": "#/components/schemas/Experiencia"
+            },
+            "type": "array",
+            "title": "Historico"
+          },
+          "autorizou_contato": {
+            "type": "boolean",
+            "title": "Autorizou Contato"
+          },
+          "opt_out": {
+            "type": "boolean",
+            "title": "Opt Out",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "empresa_id",
+          "nome",
+          "fonte",
+          "simulado",
+          "origem",
+          "atualizado_em",
+          "autorizacao_valida_ate",
+          "estado",
+          "perfil_texto",
+          "atributos",
+          "historico",
+          "autorizou_contato"
+        ],
+        "title": "Candidato"
+      },
+      "Competencia": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "peso": {
+            "type": "number",
+            "title": "Peso"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nome",
+          "peso"
+        ],
+        "title": "Competencia"
+      },
+      "DadoPreTriagem": {
+        "properties": {
+          "pergunta_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pergunta Id"
+          },
+          "criterio": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Criterio"
+          },
+          "situacao": {
+            "$ref": "#/components/schemas/SituacaoResposta"
+          },
+          "trecho": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Trecho"
+          },
+          "fonte": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Fonte"
+          },
+          "coletado_em": {
+            "type": "string",
+            "format": "date",
+            "title": "Coletado Em"
+          },
+          "nivel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NivelCriterio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "voltar_em": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voltar Em"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pergunta_id",
+          "criterio",
+          "situacao",
+          "trecho",
+          "fonte",
+          "coletado_em"
+        ],
+        "title": "DadoPreTriagem",
+        "description": "Uma resposta da pré-triagem, com o trecho da mensagem, a fonte e a data."
+      },
+      "Decisao": {
+        "properties": {
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "vaga_id": {
+            "type": "string",
+            "title": "Vaga Id"
+          },
+          "candidato_id": {
+            "type": "string",
+            "title": "Candidato Id"
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/TipoDecisao"
+          },
+          "regra": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Regra"
+          },
+          "motivo": {
+            "type": "string",
+            "title": "Motivo"
+          },
+          "responsavel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Responsavel"
+          },
+          "rastro_id": {
+            "type": "string",
+            "title": "Rastro Id"
+          },
+          "entrada": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Entrada"
+          },
+          "evidencias": {
+            "items": {
+              "$ref": "#/components/schemas/Evidencia"
+            },
+            "type": "array",
+            "title": "Evidencias"
+          },
+          "momento": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Momento"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "empresa_id",
+          "vaga_id",
+          "candidato_id",
+          "tipo",
+          "regra",
+          "motivo",
+          "responsavel",
+          "rastro_id",
+          "entrada",
+          "evidencias",
+          "momento"
+        ],
+        "title": "Decisao"
+      },
+      "DestinoPessoa": {
+        "type": "string",
+        "enum": [
+          "banco",
+          "talent_garden",
+          "contratada"
+        ],
+        "title": "DestinoPessoa",
+        "description": "Destino da pessoa depois da vaga, sempre decidido pelo RH, nunca pelo agente."
+      },
+      "DuvidaConvite": {
+        "properties": {
+          "pergunta": {
+            "type": "string",
+            "title": "Pergunta"
+          },
+          "resposta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resposta"
+          },
+          "encaminhada_a_pessoa": {
+            "type": "boolean",
+            "title": "Encaminhada A Pessoa"
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "momento": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Momento"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pergunta",
+          "resposta",
+          "encaminhada_a_pessoa",
+          "simulado",
+          "momento"
+        ],
+        "title": "DuvidaConvite",
+        "description": "Dúvida da pessoa sobre o convite. O texto dela fica aqui, nunca nos eventos."
+      },
+      "Erro": {
+        "properties": {
+          "codigo": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Codigo"
+          },
+          "mensagem": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Mensagem"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "codigo",
+          "mensagem"
+        ],
+        "title": "Erro"
+      },
+      "EstadoBanco": {
+        "type": "string",
+        "enum": [
+          "pendente",
+          "ativo",
+          "desatualizado",
+          "expirado",
+          "removido"
+        ],
+        "title": "EstadoBanco"
+      },
+      "EstadoConvite": {
+        "type": "string",
+        "enum": [
+          "a_enviar",
+          "aguardando",
+          "aceito",
+          "encerrado",
+          "cancelado"
+        ],
+        "title": "EstadoConvite"
+      },
+      "EstadoVaga": {
+        "type": "string",
+        "enum": [
+          "rascunho",
+          "aguardando_mandato",
+          "buscando",
+          "analisando",
+          "revisando",
+          "decidindo",
+          "meta_em_risco",
+          "convidando",
+          "entregando",
+          "pausada",
+          "concluida"
+        ],
+        "title": "EstadoVaga",
+        "description": "Estados da vaga, usados pela máquina de estados e expostos ao painel."
+      },
+      "EventoFluxo": {
+        "properties": {
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "vaga_id": {
+            "type": "string",
+            "title": "Vaga Id"
+          },
+          "etapa": {
+            "type": "string",
+            "title": "Etapa"
+          },
+          "mensagem": {
+            "type": "string",
+            "title": "Mensagem"
+          },
+          "candidato_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidato Id"
+          },
+          "custo_usd": {
+            "type": "number",
+            "title": "Custo Usd",
+            "default": 0
+          },
+          "momento": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Momento"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "empresa_id",
+          "vaga_id",
+          "etapa",
+          "mensagem",
+          "momento"
+        ],
+        "title": "EventoFluxo"
+      },
+      "Evidencia": {
+        "properties": {
+          "criterio": {
+            "type": "string",
+            "title": "Criterio"
+          },
+          "trecho": {
+            "type": "string",
+            "title": "Trecho"
+          },
+          "fonte": {
+            "type": "string",
+            "title": "Fonte"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "criterio",
+          "trecho",
+          "fonte"
+        ],
+        "title": "Evidencia"
+      },
+      "Experiencia": {
+        "properties": {
+          "empresa": {
+            "type": "string",
+            "title": "Empresa"
+          },
+          "cargo": {
+            "type": "string",
+            "title": "Cargo"
+          },
+          "inicio": {
+            "type": "string",
+            "format": "date",
+            "title": "Inicio"
+          },
+          "fim": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fim"
+          },
+          "descricao": {
+            "type": "string",
+            "title": "Descricao"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "empresa",
+          "cargo",
+          "inicio",
+          "fim",
+          "descricao"
+        ],
+        "title": "Experiencia"
+      },
+      "ItemCandidato": {
+        "properties": {
+          "candidato": {
+            "$ref": "#/components/schemas/Candidato"
+          },
+          "decisao": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TipoDecisao"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "destino": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DestinoPessoa"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidato",
+          "decisao",
+          "destino"
+        ],
+        "title": "ItemCandidato"
+      },
+      "ItemConvite": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "canal": {
+            "type": "string",
+            "title": "Canal"
+          },
+          "mensagem": {
+            "type": "string",
+            "title": "Mensagem"
+          },
+          "link_destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Destino",
+            "description": "Link do agente de destino que a pessoa usa, se houver."
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoConvite"
+          },
+          "tentativa": {
+            "type": "integer",
+            "title": "Tentativa"
+          },
+          "duvidas": {
+            "items": {
+              "$ref": "#/components/schemas/DuvidaConvite"
+            },
+            "type": "array",
+            "title": "Duvidas",
+            "description": "Dúvidas da pessoa e resposta do agente; sem resposta, uma pessoa atende.",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "candidato_id",
+          "canal",
+          "mensagem",
+          "simulado",
+          "estado",
+          "tentativa"
+        ],
+        "title": "ItemConvite",
+        "description": "O convite como o painel mostra. O agente não agenda: o link é do agente de destino."
+      },
+      "Mandato": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "versao": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Versao"
+          },
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "hash_vaga": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Hash Vaga"
+          },
+          "assinante": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Assinante"
+          },
+          "limite_gasto_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Limite Gasto Usd"
+          },
+          "politica": {
+            "$ref": "#/components/schemas/Politica"
+          },
+          "assinado_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assinado Em"
+          },
+          "valido_ate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valido Ate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "versao",
+          "empresa_id",
+          "vaga_id",
+          "hash_vaga",
+          "assinante",
+          "limite_gasto_usd",
+          "politica",
+          "assinado_em"
+        ],
+        "title": "Mandato",
+        "description": "Critérios, limite de gasto e política assinados por uma pessoa responsável."
+      },
+      "ModoEntrega": {
+        "type": "string",
+        "enum": [
+          "apos_aceite",
+          "na_decisao"
+        ],
+        "title": "ModoEntrega"
+      },
+      "NivelCriterio": {
+        "type": "string",
+        "enum": [
+          "nega",
+          "generica",
+          "parcial",
+          "direta"
+        ],
+        "title": "NivelCriterio",
+        "description": "Escala ancorada: o perfil nega, alega sem exemplo, mostra parte ou mostra direto."
+      },
+      "PacoteContexto": {
+        "properties": {
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "motivo_por_criterio": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Motivo Por Criterio"
+          },
+          "historico": {
+            "items": {
+              "$ref": "#/components/schemas/Experiencia"
+            },
+            "type": "array",
+            "title": "Historico"
+          },
+          "evidencias": {
+            "items": {
+              "$ref": "#/components/schemas/Evidencia"
+            },
+            "type": "array",
+            "title": "Evidencias"
+          },
+          "lacunas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lacunas"
+          },
+          "pontos_a_aprofundar": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pontos A Aprofundar"
+          },
+          "ressalvas_revisor": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ressalvas Revisor"
+          },
+          "autorizacao": {
+            "type": "string",
+            "title": "Autorizacao"
+          },
+          "fonte": {
+            "type": "string",
+            "title": "Fonte"
+          },
+          "rastro_id": {
+            "type": "string",
+            "title": "Rastro Id"
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "pontos_a_explorar": {
+            "items": {
+              "$ref": "#/components/schemas/PontoExplorar"
+            },
+            "type": "array",
+            "title": "Pontos A Explorar",
+            "default": []
+          },
+          "respostas_pre_triagem": {
+            "items": {
+              "$ref": "#/components/schemas/DadoPreTriagem"
+            },
+            "type": "array",
+            "title": "Respostas Pre Triagem",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "empresa_id",
+          "vaga_id",
+          "candidato_id",
+          "motivo_por_criterio",
+          "historico",
+          "evidencias",
+          "lacunas",
+          "pontos_a_aprofundar",
+          "ressalvas_revisor",
+          "autorizacao",
+          "fonte",
+          "rastro_id",
+          "chave_idempotencia",
+          "simulado"
+        ],
+        "title": "PacoteContexto"
+      },
+      "PedidoControle": {
+        "properties": {
+          "responsavel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Responsavel",
+            "description": "Pessoa que pediu a ação."
+          },
+          "motivo": {
+            "type": "string",
+            "title": "Motivo",
+            "default": ""
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "responsavel",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoControle",
+        "description": "Parar ou retomar a vaga. Repetir com a mesma chave não muda o resultado."
+      },
+      "PedidoDestino": {
+        "properties": {
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "destino": {
+            "$ref": "#/components/schemas/DestinoPessoa"
+          },
+          "responsavel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Responsavel",
+            "description": "Pessoa do RH que decidiu o destino. O agente não decide o destino."
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vaga_id",
+          "destino",
+          "responsavel",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoDestino"
+      },
+      "PedidoMandato": {
+        "properties": {
+          "assinante": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Assinante"
+          },
+          "limite_gasto_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Limite Gasto Usd"
+          },
+          "politica": {
+            "$ref": "#/components/schemas/Politica"
+          },
+          "valido_ate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valido Ate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assinante",
+          "limite_gasto_usd",
+          "politica"
+        ],
+        "title": "PedidoMandato",
+        "description": "O que a pessoa assina. Identificador, versão, hash e horário são do servidor."
+      },
+      "PedidoResposta": {
+        "properties": {
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/TipoResposta"
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto",
+            "description": "Texto da pessoa. É dado, nunca instrução, e não vai aos eventos.",
+            "default": ""
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vaga_id",
+          "tipo",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoResposta",
+        "description": "Resposta da pessoa ao convite. Na demonstração, quem testa faz o papel da pessoa."
+      },
+      "PedidoReversao": {
+        "properties": {
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "motivo": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Motivo"
+          },
+          "responsavel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Responsavel",
+            "description": "Pessoa que reverteu a decisão."
+          },
+          "chave_idempotencia": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chave Idempotencia"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vaga_id",
+          "motivo",
+          "responsavel",
+          "chave_idempotencia"
+        ],
+        "title": "PedidoReversao"
+      },
+      "PedidoVaga": {
+        "properties": {
+          "titulo": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Titulo"
+          },
+          "descricao": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Descricao"
+          },
+          "requisitos": {
+            "items": {
+              "$ref": "#/components/schemas/Requisito"
+            },
+            "type": "array",
+            "title": "Requisitos"
+          },
+          "competencias": {
+            "items": {
+              "$ref": "#/components/schemas/Competencia"
+            },
+            "type": "array",
+            "title": "Competencias"
+          },
+          "meta_candidatos": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Meta Candidatos"
+          },
+          "prazo_dias": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Prazo Dias"
+          },
+          "max_tentativas_contato": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Max Tentativas Contato"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "titulo",
+          "descricao",
+          "requisitos",
+          "competencias",
+          "meta_candidatos",
+          "prazo_dias",
+          "max_tentativas_contato"
+        ],
+        "title": "PedidoVaga",
+        "description": "Dados da vaga. `id` e `empresa_id` não vêm do cliente."
+      },
+      "Politica": {
+        "properties": {
+          "limiar_verde": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limiar Verde"
+          },
+          "piso_nota": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Piso Nota"
+          },
+          "max_indicacoes": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Max Indicacoes"
+          },
+          "max_ampliacoes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Max Ampliacoes"
+          },
+          "modo_entrega": {
+            "$ref": "#/components/schemas/ModoEntrega",
+            "default": "apos_aceite"
+          },
+          "aceitar_declarada": {
+            "type": "boolean",
+            "title": "Aceitar Declarada",
+            "default": false
+          },
+          "lapidar_exige_confirmacao": {
+            "type": "boolean",
+            "title": "Lapidar Exige Confirmacao",
+            "default": true
+          },
+          "prazo_garden_dias": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Prazo Garden Dias",
+            "default": 180
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "limiar_verde",
+          "piso_nota",
+          "max_indicacoes",
+          "max_ampliacoes"
+        ],
+        "title": "Politica",
+        "description": "Limites dentro dos quais o agente decide sozinho."
+      },
+      "PontoExplorar": {
+        "properties": {
+          "tipo": {
+            "$ref": "#/components/schemas/TipoPonto"
+          },
+          "criterio": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Criterio"
+          },
+          "descricao": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Descricao"
+          },
+          "trecho": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Trecho"
+          },
+          "fonte": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Fonte"
+          },
+          "verificado": {
+            "type": "boolean",
+            "title": "Verificado"
+          },
+          "inferencia": {
+            "type": "boolean",
+            "title": "Inferencia",
+            "default": false
+          },
+          "rotulo": {
+            "type": "string",
+            "enum": [
+              "Verificado",
+              "Não verificado"
+            ],
+            "title": "Rotulo",
+            "default": "Não verificado"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tipo",
+          "criterio",
+          "descricao",
+          "trecho",
+          "fonte",
+          "verificado"
+        ],
+        "title": "PontoExplorar",
+        "description": "O que o recrutador e a entrevista podem aprofundar, sempre com trecho e fonte."
+      },
+      "Requisito": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "descricao": {
+            "type": "string",
+            "title": "Descricao"
+          },
+          "campo": {
+            "type": "string",
+            "title": "Campo"
+          },
+          "valor_esperado": {
+            "type": "string",
+            "title": "Valor Esperado"
+          },
+          "desenvolvivel": {
+            "type": "boolean",
+            "title": "Desenvolvivel",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "descricao",
+          "campo",
+          "valor_esperado"
+        ],
+        "title": "Requisito"
+      },
+      "RespostaCandidatos": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "pagina": {
+            "type": "integer",
+            "title": "Pagina"
+          },
+          "limite": {
+            "type": "integer",
+            "title": "Limite"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemCandidato"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "pagina",
+          "limite",
+          "total",
+          "itens"
+        ],
+        "title": "RespostaCandidatos"
+      },
+      "RespostaControle": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoVaga"
+          },
+          "estado_anterior": {
+            "$ref": "#/components/schemas/EstadoVaga"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "estado",
+          "estado_anterior"
+        ],
+        "title": "RespostaControle"
+      },
+      "RespostaConvites": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemConvite"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "itens"
+        ],
+        "title": "RespostaConvites"
+      },
+      "RespostaDecisao": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "decisao": {
+            "$ref": "#/components/schemas/Decisao"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "decisao"
+        ],
+        "title": "RespostaDecisao"
+      },
+      "RespostaDestino": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "candidato_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidato Id"
+          },
+          "destino": {
+            "$ref": "#/components/schemas/DestinoPessoa"
+          },
+          "responsavel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Responsavel"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "candidato_id",
+          "destino",
+          "responsavel"
+        ],
+        "title": "RespostaDestino"
+      },
+      "RespostaEntrega": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "saida": {
+            "$ref": "#/components/schemas/SaidaPersonalizada"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "saida"
+        ],
+        "title": "RespostaEntrega"
+      },
+      "RespostaErro": {
+        "properties": {
+          "erro": {
+            "$ref": "#/components/schemas/Erro"
+          },
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "erro",
+          "simulado"
+        ],
+        "title": "RespostaErro"
+      },
+      "RespostaEventos": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "pagina": {
+            "type": "integer",
+            "title": "Pagina"
+          },
+          "limite": {
+            "type": "integer",
+            "title": "Limite"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/EventoFluxo"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "pagina",
+          "limite",
+          "total",
+          "itens"
+        ],
+        "title": "RespostaEventos"
+      },
+      "RespostaMandato": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "mandato": {
+            "$ref": "#/components/schemas/Mandato"
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoVaga"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "mandato",
+          "estado"
+        ],
+        "title": "RespostaMandato"
+      },
+      "RespostaMetricas": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "sem_revisao": {
+            "$ref": "#/components/schemas/TaxaMedida"
+          },
+          "erros_por_tipo": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TaxaMedida"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/TipoErro"
+            },
+            "type": "object",
+            "title": "Erros Por Tipo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "sem_revisao",
+          "erros_por_tipo"
+        ],
+        "title": "RespostaMetricas",
+        "description": "Taxas da vaga. Sem casos, a taxa aparece como não medida: `valor` nulo."
+      },
+      "RespostaModelosVaga": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/PedidoVaga"
+            },
+            "type": "array",
+            "title": "Itens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "itens"
+        ],
+        "title": "RespostaModelosVaga",
+        "description": "Vagas de exemplo, sintéticas, para preencher o formulário de `POST /vagas`."
+      },
+      "RespostaRegistroResposta": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "convite_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Convite Id"
+          },
+          "tipo": {
+            "$ref": "#/components/schemas/TipoResposta"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga_id",
+          "convite_id",
+          "tipo"
+        ],
+        "title": "RespostaRegistroResposta"
+      },
+      "RespostaReinicio": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "dados_recarregados": {
+            "type": "boolean",
+            "title": "Dados Recarregados",
+            "description": "Falso quando não há dados a recarregar: nada foi apagado."
+          },
+          "mensagem": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Mensagem"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "empresa_id",
+          "dados_recarregados",
+          "mensagem"
+        ],
+        "title": "RespostaReinicio"
+      },
+      "RespostaResumo": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "resumo": {
+            "$ref": "#/components/schemas/ResumoExecucao"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "resumo"
+        ],
+        "title": "RespostaResumo"
+      },
+      "RespostaReversao": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "decisao_original": {
+            "$ref": "#/components/schemas/Decisao"
+          },
+          "decisao_nova": {
+            "$ref": "#/components/schemas/Decisao"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "decisao_original",
+          "decisao_nova"
+        ],
+        "title": "RespostaReversao",
+        "description": "A reversão acrescenta uma decisão: a original nunca é apagada."
+      },
+      "RespostaVaga": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "vaga": {
+            "$ref": "#/components/schemas/Vaga"
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoVaga"
+          },
+          "mandato": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Mandato"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "vaga",
+          "estado",
+          "mandato"
+        ],
+        "title": "RespostaVaga"
+      },
+      "ResumoExecucao": {
+        "properties": {
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "estado": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Estado"
+          },
+          "analisados": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Analisados"
+          },
+          "indicados": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Indicados"
+          },
+          "descartados": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Descartados"
+          },
+          "na_fila_humana": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Na Fila Humana"
+          },
+          "revertidos": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revertidos"
+          },
+          "gasto_usd": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Gasto Usd"
+          },
+          "limite_gasto_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limite Gasto Usd"
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "momento": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Momento"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "empresa_id",
+          "vaga_id",
+          "estado",
+          "analisados",
+          "indicados",
+          "descartados",
+          "na_fila_humana",
+          "revertidos",
+          "gasto_usd",
+          "limite_gasto_usd",
+          "simulado",
+          "momento"
+        ],
+        "title": "ResumoExecucao",
+        "description": "Contagens e gasto de uma vaga, para o controle depois da ação."
+      },
+      "SaidaPersonalizada": {
+        "properties": {
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "pacotes": {
+            "items": {
+              "$ref": "#/components/schemas/PacoteContexto"
+            },
+            "type": "array",
+            "title": "Pacotes"
+          },
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado"
+          },
+          "momento": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Momento"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "empresa_id",
+          "vaga_id",
+          "pacotes",
+          "simulado",
+          "momento"
+        ],
+        "title": "SaidaPersonalizada",
+        "description": "Pacotes de contexto dos indicados de uma vaga, para leitura na interface.\n\nO pacote só leva contexto: agendar, entrevistar e contratar ficam fora do agente."
+      },
+      "SituacaoResposta": {
+        "type": "string",
+        "enum": [
+          "confirma",
+          "nega",
+          "incerta"
+        ],
+        "title": "SituacaoResposta"
+      },
+      "TaxaMedida": {
+        "properties": {
+          "valor": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor"
+          },
+          "casos": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Casos"
+          },
+          "wilson_inferior": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wilson Inferior"
+          },
+          "wilson_superior": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wilson Superior"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "valor",
+          "casos",
+          "wilson_inferior",
+          "wilson_superior"
+        ],
+        "title": "TaxaMedida",
+        "description": "Taxa com o tamanho da amostra e o intervalo de Wilson.\n\nSem casos, a taxa não foi medida: valor e intervalo ficam nulos, nunca zero."
+      },
+      "TipoDecisao": {
+        "type": "string",
+        "enum": [
+          "descartar",
+          "indicar",
+          "pedir_humano"
+        ],
+        "title": "TipoDecisao"
+      },
+      "TipoErro": {
+        "type": "string",
+        "enum": [
+          "indicacao_errada",
+          "descarte_errado",
+          "violacao_eliminatoria",
+          "contato_opt_out",
+          "mudanca_nome_genero",
+          "afirmacao_sem_evidencia"
+        ],
+        "title": "TipoErro"
+      },
+      "TipoPonto": {
+        "type": "string",
+        "enum": [
+          "lacuna",
+          "contradicao",
+          "afirmacao_sem_exemplo",
+          "experiencia_parecida"
+        ],
+        "title": "TipoPonto"
+      },
+      "TipoResposta": {
+        "type": "string",
+        "enum": [
+          "aceite",
+          "recusa",
+          "duvida",
+          "silencio",
+          "opt_out"
+        ],
+        "title": "TipoResposta"
+      },
+      "Vaga": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "empresa_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Empresa Id"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "descricao": {
+            "type": "string",
+            "title": "Descricao"
+          },
+          "requisitos": {
+            "items": {
+              "$ref": "#/components/schemas/Requisito"
+            },
+            "type": "array",
+            "title": "Requisitos"
+          },
+          "competencias": {
+            "items": {
+              "$ref": "#/components/schemas/Competencia"
+            },
+            "type": "array",
+            "title": "Competencias"
+          },
+          "meta_candidatos": {
+            "type": "integer",
+            "title": "Meta Candidatos"
+          },
+          "prazo_dias": {
+            "type": "integer",
+            "title": "Prazo Dias"
+          },
+          "max_tentativas_contato": {
+            "type": "integer",
+            "title": "Max Tentativas Contato"
+          },
+          "aprovada": {
+            "type": "boolean",
+            "title": "Aprovada",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "empresa_id",
+          "titulo",
+          "descricao",
+          "requisitos",
+          "competencias",
+          "meta_candidatos",
+          "prazo_dias",
+          "max_tentativas_contato"
+        ],
+        "title": "Vaga"
+      }
+    },
+    "securitySchemes": {
+      "SessaoSimulada": {
+        "type": "apiKey",
+        "description": "Sessão simulada: identifica a empresa até a autenticação real chegar.",
+        "in": "header",
+        "name": "X-Empresa-Id"
+      }
+    }
+  }
+}

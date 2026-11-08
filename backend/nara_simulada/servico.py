@@ -2,7 +2,8 @@
 
 Oferece link fictício, recebe pacotes sem duplicar e devolve resultados
 reproduzíveis por semente, com uma nota por critério do pacote, para alimentar
-o aprendizado. Tudo é marcado como simulado e separado por empresa.
+o aprendizado. Resume cada resultado em uma frase, sem nota nem identificador.
+Tudo é marcado como simulado e separado por empresa.
 """
 
 import hashlib
@@ -70,3 +71,16 @@ class NaraSimulada:
     def resultados(self, empresa_id: str, vaga_id: str) -> list[ResultadoEntrevista]:
         pacotes = [p for p in self._da_empresa(empresa_id).values() if p.vaga_id == vaga_id]
         return [self._resultado(p) for p in sorted(pacotes, key=lambda p: p.candidato_id)]
+
+    def resumo_resultado(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
+        """Frase da demo a partir do aprovado já calculado, sem nota e sem dígito."""
+        pacotes = [
+            pacote
+            for pacote in self._da_empresa(empresa_id).values()
+            if pacote.vaga_id == vaga_id and pacote.candidato_id == candidato_id
+        ]
+        if not pacotes:
+            raise ValueError("não há pacote entregue para este candidato nesta empresa e vaga")
+        if self._resultado(pacotes[0]).aprovado:
+            return "A entrevista simulada recomendou seguir."
+        return "A entrevista simulada não recomendou seguir."

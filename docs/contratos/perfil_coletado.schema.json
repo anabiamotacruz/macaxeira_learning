@@ -1,0 +1,207 @@
+{
+  "$defs": {
+    "ContatoColetado": {
+      "additionalProperties": false,
+      "description": "Contato sem publicação pela própria pessoa não serve para contato frio.",
+      "properties": {
+        "fonte": {
+          "minLength": 1,
+          "title": "Fonte",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "documento": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Documento"
+        },
+        "coletado_em": {
+          "format": "date",
+          "title": "Coletado Em",
+          "type": "string"
+        },
+        "tipo": {
+          "$ref": "#/$defs/TipoContato"
+        },
+        "valor": {
+          "minLength": 1,
+          "title": "Valor",
+          "type": "string"
+        },
+        "publicado_pela_pessoa": {
+          "title": "Publicado Pela Pessoa",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "fonte",
+        "coletado_em",
+        "tipo",
+        "valor",
+        "publicado_pela_pessoa"
+      ],
+      "title": "ContatoColetado",
+      "type": "object"
+    },
+    "FatoColetado": {
+      "additionalProperties": false,
+      "properties": {
+        "fonte": {
+          "minLength": 1,
+          "title": "Fonte",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "documento": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Documento"
+        },
+        "coletado_em": {
+          "format": "date",
+          "title": "Coletado Em",
+          "type": "string"
+        },
+        "texto": {
+          "minLength": 1,
+          "title": "Texto",
+          "type": "string"
+        },
+        "trecho": {
+          "minLength": 1,
+          "title": "Trecho",
+          "type": "string"
+        },
+        "tipo": {
+          "$ref": "#/$defs/TipoFato"
+        }
+      },
+      "required": [
+        "fonte",
+        "coletado_em",
+        "texto",
+        "trecho",
+        "tipo"
+      ],
+      "title": "FatoColetado",
+      "type": "object"
+    },
+    "TipoContato": {
+      "enum": [
+        "email",
+        "telefone",
+        "perfil",
+        "link"
+      ],
+      "title": "TipoContato",
+      "type": "string"
+    },
+    "TipoFato": {
+      "enum": [
+        "comprovado",
+        "declarado",
+        "inferido"
+      ],
+      "title": "TipoFato",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Perfil estruturado em JSON, antes de virar `Candidato`. Continua sendo dado pessoal.",
+  "properties": {
+    "empresa_id": {
+      "minLength": 1,
+      "title": "Empresa Id",
+      "type": "string"
+    },
+    "candidato_id": {
+      "minLength": 1,
+      "title": "Candidato Id",
+      "type": "string"
+    },
+    "simulado": {
+      "title": "Simulado",
+      "type": "boolean"
+    },
+    "coletado_em": {
+      "format": "date",
+      "title": "Coletado Em",
+      "type": "string"
+    },
+    "nome": {
+      "default": "",
+      "title": "Nome",
+      "type": "string"
+    },
+    "fatos": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FatoColetado"
+      },
+      "title": "Fatos",
+      "type": "array"
+    },
+    "contatos": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ContatoColetado"
+      },
+      "title": "Contatos",
+      "type": "array"
+    },
+    "alertas": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Alertas",
+      "type": "array"
+    }
+  },
+  "required": [
+    "empresa_id",
+    "candidato_id",
+    "simulado",
+    "coletado_em"
+  ],
+  "title": "PerfilColetado",
+  "type": "object"
+}
