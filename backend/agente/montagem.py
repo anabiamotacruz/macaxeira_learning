@@ -23,7 +23,12 @@ from pathlib import Path
 
 from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
 from backend.agente.configuracao import PerguntaVaga, propor_configuracao
-from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
+from backend.agente.fluxo import (
+    Priorizador,
+    ProvedorConsultas,
+    RegistrarCorte,
+    concorrencia_do_ambiente,
+)
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
@@ -65,9 +70,13 @@ from backend.nara_simulada.servico import NaraSimulada
 logger = logging.getLogger(__name__)
 
 LIMITE_ANALISES_POR_RODADA = 20
+FUNIL_POR_VAGA = 10
+TETO_DO_FUNIL = 50
 COM_MODELO = "AGENTE_COM_MODELO"
 NARA_MCP_URL = "NARA_MCP_URL"
 BUSCA_REAL = "AGENTE_BUSCA_REAL"
+CONCORRENCIA_COM_MODELO = 5
+"""Análises simultâneas com o modelo ligado. A conta aguenta 25; `CONCORRENCIA_MODELO` sobrepõe."""
 
 FonteExtra = Callable[[BancoTalentos, Repositorio], FonteCandidatos]
 """Cria uma fonte a mais com o banco e o repositório da montagem, para a supressão valer."""
@@ -120,8 +129,20 @@ def _com_competencias(consultas: list[str], vaga: Vaga) -> list[str]:
     return resultado
 
 
-def priorizador_do_funil(limite: int = LIMITE_ANALISES_POR_RODADA) -> Priorizador:
-    """Aplica `funil.priorizar` com a regra determinística de requisitos do agente."""
+def tamanho_do_funil(meta_candidatos: int) -> int:
+    """Quantas pessoas a rodada analisa: 10 por vaga a preencher, entre 20 e 50.
+
+    O agente indica as melhores notas do funil, não as primeiras analisadas. O teto segura o
+    gasto com o modelo.
+    """
+    return max(LIMITE_ANALISES_POR_RODADA, min(TETO_DO_FUNIL, FUNIL_POR_VAGA * meta_candidatos))
+
+
+def priorizador_do_funil(limite: int | None = None) -> Priorizador:
+    """Aplica `funil.priorizar` com a regra determinística de requisitos do agente.
+
+    Sem `limite`, o tamanho da rodada acompanha a meta da vaga (`tamanho_do_funil`).
+    """
 
     def priorizador(
         vaga: Vaga, candidatos: list[Candidato], hoje: date, registrar_corte: RegistrarCorte
@@ -129,7 +150,7 @@ def priorizador_do_funil(limite: int = LIMITE_ANALISES_POR_RODADA) -> Priorizado
         return priorizar(
             vaga,
             candidatos,
-            limite,
+            tamanho_do_funil(vaga.meta_candidatos) if limite is None else limite,
             hoje=hoje,
             avaliar_requisitos=avaliar_requisitos,
             registrar_corte=registrar_corte,
@@ -385,6 +406,7 @@ def _montar(
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
     propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None,
+    concorrencia: int | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
@@ -394,6 +416,7 @@ def _montar(
     fontes: list[FonteCandidatos] = [fonte]
     if fonte_extra is not None:
         fontes.append(fonte_extra(banco, repositorio))
+    extras = {} if concorrencia is None else {"concorrencia": concorrencia}
     return ServicoVagas(
         DependenciasFluxo(
             repositorio=repositorio,
@@ -411,6 +434,7 @@ def _montar(
             respondedor_duvida=respondedor_duvida,
             redator_retorno=redigir_retorno,
             propositor_vaga=propositor_vaga,
+            **extras,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),
@@ -465,8 +489,11 @@ def montar_com_modelo(
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
 
-    O gasto vem do cliente: passou do limite do mandato, a vaga pausa.
+    O gasto vem do cliente: passou do limite do mandato, a vaga pausa. A concorrência padrão é
+    `CONCORRENCIA_COM_MODELO`; `CONCORRENCIA_MODELO`, quando definida, vale no lugar dela.
     """
+    definida = (os.environ.get("CONCORRENCIA_MODELO") or "").strip()
+    concorrencia = concorrencia_do_ambiente() if definida else CONCORRENCIA_COM_MODELO
 
     def responder(vaga: Vaga, candidato: Candidato, texto: str) -> str | None:
         return responder_duvida(vaga, texto, cliente)
@@ -483,6 +510,7 @@ def montar_com_modelo(
         propositor_vaga=lambda descricao, empresa_id: propor_configuracao(
             descricao, empresa_id, cliente, campos_do_banco=campos_do_banco_demo()
         ),
+        concorrencia=concorrencia,
     )
 
 

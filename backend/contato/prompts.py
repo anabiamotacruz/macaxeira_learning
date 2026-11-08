@@ -5,6 +5,7 @@ from backend.contratos.modelos import Vaga
 MARCADOR_NOME = "{nome}"
 MARCADOR_LINK = "{link_agendamento}"
 PALAVRA_SAIDA = "SAIR"
+AVISO_SIMULACAO = "Mensagem simulada, enviada em ambiente de demonstração."
 
 SISTEMA_CONVITE = f"""\
 Você redige convites de recrutamento curtos, cordiais e naturais, em português do Brasil.

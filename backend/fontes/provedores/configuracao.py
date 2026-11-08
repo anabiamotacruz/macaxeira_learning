@@ -1,8 +1,14 @@
-"""Liga a cadeia pelo ambiente: cada provedor com chave entra, na ordem Brave, Bright Data e PDL.
+"""Liga a cadeia pelo ambiente: cada provedor com chave entra, nesta ordem.
 
-A busca é da Brave. O único outro interruptor é o da SERP da Bright Data, que usa alvo Google e só
-entra com `BRIGHTDATA_ZONA_BUSCA` e `BRIGHTDATA_BUSCA_HABILITADA=1`. A leitura de páginas continua
-na Bright Data, e o enriquecimento, na People Data Labs.
+1. Busca da People Data Labs (Person Search), a principal: devolve perfis com cargo, competências
+   e experiência. Entra com `PDL_API_KEY`; `PDL_PAIS` e `PDL_TAMANHO_PAGINA` ajustam a consulta.
+2. Brave, a busca na web, que assume quando o PDL falha ou não acha.
+3. Bright Data, que lê páginas. A SERP dela usa alvo Google e só entra com `BRIGHTDATA_ZONA_BUSCA`
+   e `BRIGHTDATA_BUSCA_HABILITADA=1`.
+4. Enriquecimento da People Data Labs (Person Enrichment), só por identidade.
+
+Sem `PDL_API_KEY`, a ordem fica Brave, Bright Data. Cada registro do PDL custa até US$ 0,28: com o
+orçamento de execução padrão, uma página não cabe, a busca do PDL fica fora e o estado avisa.
 
 `MODO_DADOS=sinteticos` manda sobre as chaves: nenhum provedor nem transporte é criado.
 """
@@ -25,6 +31,13 @@ from backend.fontes.provedores.people_data_labs import (
     MIN_LIKELIHOOD_PADRAO,
     ProvedorPeopleDataLabs,
 )
+from backend.fontes.provedores.people_data_labs_busca import (
+    PAIS_PADRAO,
+    TAMANHO_PAGINA_PADRAO,
+    ProvedorPeopleDataLabsBusca,
+    validar_pais,
+    validar_tamanho_pagina,
+)
 from backend.fontes.provedores.transporte import Transporte, TransporteHttp
 from backend.fontes.provedores.url_segura import Resolvedor, resolver_dns
 
@@ -40,6 +53,8 @@ BRIGHTDATA_ZONA_BUSCA = "BRIGHTDATA_ZONA_BUSCA"
 BRIGHTDATA_BUSCA_HABILITADA = "BRIGHTDATA_BUSCA_HABILITADA"
 PDL_API_KEY = "PDL_API_KEY"
 PDL_MIN_LIKELIHOOD = "PDL_MIN_LIKELIHOOD"
+PDL_PAIS = "PDL_PAIS"
+PDL_TAMANHO_PAGINA = "PDL_TAMANHO_PAGINA"
 ORCAMENTO_EMPRESA = "PROVEDORES_ORCAMENTO_EMPRESA_USD"
 ORCAMENTO_EXECUCAO = "PROVEDORES_ORCAMENTO_EXECUCAO_USD"
 NOMES_DE_AMBIENTE = (
@@ -51,6 +66,8 @@ NOMES_DE_AMBIENTE = (
     BRIGHTDATA_BUSCA_HABILITADA,
     PDL_API_KEY,
     PDL_MIN_LIKELIHOOD,
+    PDL_PAIS,
+    PDL_TAMANHO_PAGINA,
     ORCAMENTO_EMPRESA,
     ORCAMENTO_EXECUCAO,
 )
@@ -128,6 +145,43 @@ def _provedor_bright_data(
     )
 
 
+def _provedor_pdl_busca(
+    ambiente: Mapping[str, str],
+    transporte: Transporte,
+    relogio: Callable[[], datetime],
+    limite_execucao_usd: float,
+    avisos: list[str],
+) -> ProvedorPeopleDataLabsBusca | None:
+    """Se uma página não cabe no orçamento de execução, o provedor fica fora e o estado avisa.
+
+    Dentro da cadeia, ele só acumularia trocas por orçamento: toda resposta seguinte sairia como
+    cobertura parcial, e o resultado vazio deixaria de ir para o cache.
+    """
+    chave = _valor(ambiente, PDL_API_KEY)
+    if chave is None:
+        return None
+    try:
+        pais = validar_pais(_valor(ambiente, PDL_PAIS) or PAIS_PADRAO)
+    except ValueError as erro:
+        raise ValueError(f"{PDL_PAIS} inválido: {erro}") from None
+    try:
+        tamanho = validar_tamanho_pagina(
+            int(_valor(ambiente, PDL_TAMANHO_PAGINA) or TAMANHO_PAGINA_PADRAO)
+        )
+    except ValueError as erro:
+        raise ValueError(f"{PDL_TAMANHO_PAGINA} inválido: {erro}") from None
+    provedor = ProvedorPeopleDataLabsBusca(
+        chave, transporte, pais=pais, tamanho_pagina=tamanho, relogio=relogio
+    )
+    if provedor.custo_por_pagina > limite_execucao_usd:
+        avisos.append(
+            f"busca do PDL fora do orçamento: uma página custa até US$ "
+            f"{provedor.custo_por_pagina:.2f}, acima de {ORCAMENTO_EXECUCAO}; fica fora da cadeia"
+        )
+        return None
+    return provedor
+
+
 def _provedor_pdl(
     ambiente: Mapping[str, str], transporte: Transporte, relogio: Callable[[], datetime]
 ) -> ProvedorPeopleDataLabs | None:
@@ -155,9 +209,10 @@ def montar_fonte_externa(
     """Monta a fonte e registra o estado. A supressão é obrigatória: sem ela, não há cadeia."""
     ambiente = os.environ if ambiente is None else ambiente
     modo = _modo(ambiente)
+    limite_execucao = _limite(ambiente, ORCAMENTO_EXECUCAO, ORCAMENTO_EXECUCAO_PADRAO_USD)
     orcamento = OrcamentoProvedores(
         limite_empresa_usd=_limite(ambiente, ORCAMENTO_EMPRESA, ORCAMENTO_EMPRESA_PADRAO_USD),
-        limite_execucao_usd=_limite(ambiente, ORCAMENTO_EXECUCAO, ORCAMENTO_EXECUCAO_PADRAO_USD),
+        limite_execucao_usd=limite_execucao,
     )
     avisos: list[str] = []
     provedores: list[ProvedorDados] = []
@@ -168,6 +223,7 @@ def montar_fonte_externa(
     ):
         saida = transporte or TransporteHttp()
         for provedor in (
+            _provedor_pdl_busca(ambiente, saida, relogio, limite_execucao, avisos),
             _provedor_brave(ambiente, saida, relogio),
             _provedor_bright_data(ambiente, saida, relogio, resolver, avisos),
             _provedor_pdl(ambiente, saida, relogio),

@@ -19,8 +19,15 @@ from backend.fontes.provedores.modelos import (
     SituacaoConsulta,
 )
 from backend.fontes.provedores.people_data_labs import (
+    CUSTO_CREDITO_USD,
     URL_ENRIQUECIMENTO,
     ProvedorPeopleDataLabs,
+)
+from backend.fontes.provedores.people_data_labs_busca import (
+    URL_BUSCA as URL_BUSCA_PDL,
+)
+from backend.fontes.provedores.people_data_labs_busca import (
+    ProvedorPeopleDataLabsBusca,
 )
 from tests.fontes.provedores.apoio import (
     CHAVE_BRAVE,
@@ -40,6 +47,7 @@ AMBIENTE_BRIGHT = {
 }
 SERP_LIGADA = {"BRIGHTDATA_ZONA_BUSCA": "zona_busca", "BRIGHTDATA_BUSCA_HABILITADA": "1"}
 AMBIENTE_PDL = {"PDL_API_KEY": CHAVE_PDL}
+ORCAMENTO_PARA_PDL = {"PROVEDORES_ORCAMENTO_EXECUCAO_USD": "5"}
 AMBIENTE_BRAVE = {"BRAVE_API_KEY": CHAVE_BRAVE}
 POR_TEXTO = ConsultaProvedor(texto="python recife")
 RESPOSTA_BRAVE = {
@@ -52,6 +60,12 @@ RESPOSTA_BRAVE = {
             }
         ]
     }
+}
+RESPOSTA_PDL = {
+    "status": 200,
+    "data": [{"full_name": "pessoa ficticia", "skills": ["python"]}],
+    "scroll_token": "1117$12.176522",
+    "total": 1,
 }
 RESPOSTA_SERP = {
     "organic": [
@@ -108,10 +122,11 @@ def test_so_bright_data():
     assert fonte.estado().situacao == SituacaoFontes.ATIVA
 
 
-def test_so_pdl():
-    fonte = montar(AMBIENTE_PDL)
-    assert nomes(fonte) == ["people_data_labs"]
-    assert isinstance(fonte.cadeia.provedores[0], ProvedorPeopleDataLabs)
+def test_so_pdl_liga_a_busca_e_o_enriquecimento_nessa_ordem():
+    fonte = montar({**AMBIENTE_PDL, **ORCAMENTO_PARA_PDL})
+    assert nomes(fonte) == ["people_data_labs_busca", "people_data_labs"]
+    assert isinstance(fonte.cadeia.provedores[0], ProvedorPeopleDataLabsBusca)
+    assert isinstance(fonte.cadeia.provedores[1], ProvedorPeopleDataLabs)
 
 
 def test_so_brave():
@@ -122,12 +137,95 @@ def test_so_brave():
     assert "BRAVE_API_KEY" not in " ".join(fonte.estado().avisos)
 
 
-def test_com_as_tres_chaves_brave_vem_primeiro():
-    assert nomes(montar({**AMBIENTE_PDL, **AMBIENTE_BRIGHT, **AMBIENTE_BRAVE})) == [
+def test_com_as_tres_chaves_a_busca_do_pdl_vem_primeiro():
+    ambiente = {**AMBIENTE_PDL, **AMBIENTE_BRIGHT, **AMBIENTE_BRAVE, **ORCAMENTO_PARA_PDL}
+    assert nomes(montar(ambiente)) == [
+        "people_data_labs_busca",
         "brave",
         "bright_data",
         "people_data_labs",
     ]
+
+
+def test_sem_chave_do_pdl_a_ordem_nao_muda():
+    assert nomes(montar({**AMBIENTE_BRIGHT, **AMBIENTE_BRAVE})) == ["brave", "bright_data"]
+
+
+def test_busca_do_pdl_responde_e_a_brave_nao_e_chamada():
+    transporte = TransporteSimulado(resposta_json(RESPOSTA_PDL))
+    ambiente = {**AMBIENTE_PDL, **AMBIENTE_BRAVE, **AMBIENTE_BRIGHT, **ORCAMENTO_PARA_PDL}
+    resultado = montar(ambiente, transporte).cadeia.consultar(EMPRESA, POR_TEXTO)
+    assert resultado.provedor == "people_data_labs_busca"
+    assert [p.url for p in transporte.pedidos] == [URL_BUSCA_PDL]
+    assert resultado.custo_usd == pytest.approx(CUSTO_CREDITO_USD)
+
+
+def test_falha_da_busca_do_pdl_passa_para_a_brave():
+    transporte = TransporteSimulado(resposta_json({}, 401), resposta_json(RESPOSTA_BRAVE))
+    ambiente = {**AMBIENTE_PDL, **AMBIENTE_BRAVE, **ORCAMENTO_PARA_PDL}
+    resultado = montar(ambiente, transporte).cadeia.consultar(EMPRESA, POR_TEXTO)
+    assert [p.url for p in transporte.pedidos] == [URL_BUSCA_PDL, URL_BUSCA]
+    assert resultado.provedor == "brave"
+    assert resultado.trocas[0].de == "people_data_labs_busca"
+    assert resultado.trocas[0].motivo == MotivoTroca.AUTENTICACAO
+
+
+def test_pais_e_tamanho_da_pagina_vem_do_ambiente():
+    transporte = TransporteSimulado(resposta_json(RESPOSTA_PDL))
+    ambiente = {
+        **AMBIENTE_PDL,
+        "PDL_PAIS": "Portugal",
+        "PDL_TAMANHO_PAGINA": "3",
+        **ORCAMENTO_PARA_PDL,
+    }
+    montar(ambiente, transporte).cadeia.consultar(EMPRESA, POR_TEXTO)
+    corpo = transporte.pedidos[0].corpo_json
+    assert corpo["size"] == 3
+    assert corpo["query"]["bool"]["filter"] == [{"term": {"location_country": "portugal"}}]
+
+
+@pytest.mark.parametrize(
+    ("nome", "valor"),
+    [
+        ("PDL_TAMANHO_PAGINA", "0"),
+        ("PDL_TAMANHO_PAGINA", "101"),
+        ("PDL_TAMANHO_PAGINA", "dez"),
+        ("PDL_PAIS", "brazil; drop"),
+    ],
+)
+def test_pais_ou_tamanho_invalido_impede_a_subida(nome, valor):
+    with pytest.raises(ValueError) as erro:
+        montar({**AMBIENTE_PDL, nome: valor})
+    assert nome in str(erro.value)
+    assert CHAVE_PDL not in str(erro.value)
+
+
+def test_orcamento_padrao_deixa_a_busca_do_pdl_fora_da_cadeia_e_avisa():
+    fonte = montar({**AMBIENTE_PDL, **AMBIENTE_BRAVE, **AMBIENTE_BRIGHT})
+    assert nomes(fonte) == ["brave", "bright_data", "people_data_labs"]
+    assert "PROVEDORES_ORCAMENTO_EXECUCAO_USD" in " ".join(fonte.estado().avisos)
+
+
+def test_orcamento_padrao_a_brave_responde_sem_cobertura_parcial():
+    transporte = TransporteSimulado(resposta_json(RESPOSTA_BRAVE))
+    fonte = montar({**AMBIENTE_PDL, **AMBIENTE_BRAVE}, transporte)
+    resultado = fonte.cadeia.consultar(EMPRESA, POR_TEXTO)
+    assert [p.url for p in transporte.pedidos] == [URL_BUSCA]
+    assert resultado.provedor == "brave"
+    assert resultado.trocas == []
+    assert not resultado.cobertura_parcial
+
+
+def test_orcamento_que_cabe_uma_pagina_poe_o_pdl_primeiro_sem_aviso():
+    fonte = montar({**AMBIENTE_PDL, **AMBIENTE_BRAVE, **ORCAMENTO_PARA_PDL})
+    assert nomes(fonte) == ["people_data_labs_busca", "brave", "people_data_labs"]
+    assert "PROVEDORES_ORCAMENTO_EXECUCAO_USD" not in " ".join(fonte.estado().avisos)
+
+
+def test_orcamento_exato_de_uma_pagina_basta():
+    limite = {"PROVEDORES_ORCAMENTO_EXECUCAO_USD": str(3 * CUSTO_CREDITO_USD)}
+    fonte = montar({**AMBIENTE_PDL, "PDL_TAMANHO_PAGINA": "3", **limite})
+    assert nomes(fonte)[0] == "people_data_labs_busca"
 
 
 def test_sem_chave_da_brave_ela_fica_de_fora_e_aparece_no_estado():
@@ -148,7 +246,7 @@ def test_brave_responde_a_busca_e_a_bright_data_nao_e_chamada():
     transporte = TransporteSimulado(
         resposta_json(RESPOSTA_BRAVE),
     )
-    fonte = montar({**AMBIENTE_BRAVE, **AMBIENTE_BRIGHT, **AMBIENTE_PDL}, transporte)
+    fonte = montar({**AMBIENTE_BRAVE, **AMBIENTE_BRIGHT}, transporte)
     resultado = fonte.cadeia.consultar(EMPRESA, POR_TEXTO)
     assert resultado.provedor == "brave"
     assert [p.url for p in transporte.pedidos] == [URL_BUSCA]
@@ -206,11 +304,23 @@ def test_serp_ligada_entra_depois_da_brave_quando_ela_falha():
 
 def test_falha_da_busca_sem_serp_vira_cobertura_parcial_sem_usar_outros_provedores():
     transporte = TransporteSimulado(resposta_json({}, 401))
-    fonte = montar({**AMBIENTE_BRAVE, **AMBIENTE_BRIGHT, **AMBIENTE_PDL}, transporte)
+    fonte = montar({**AMBIENTE_BRAVE, **AMBIENTE_BRIGHT}, transporte)
     with pytest.raises(ProvedoresIndisponiveis) as erro:
         fonte.cadeia.consultar(EMPRESA, POR_TEXTO)
     assert erro.value.motivos == [("brave", MotivoTroca.AUTENTICACAO)]
     assert [p.url for p in transporte.pedidos] == [URL_BUSCA]
+
+
+def test_falha_de_todas_as_buscas_nao_chama_o_enriquecimento():
+    transporte = TransporteSimulado(resposta_json({}, 401), resposta_json({}, 401))
+    ambiente = {**AMBIENTE_PDL, **AMBIENTE_BRAVE, **AMBIENTE_BRIGHT, **ORCAMENTO_PARA_PDL}
+    with pytest.raises(ProvedoresIndisponiveis) as erro:
+        montar(ambiente, transporte).cadeia.consultar(EMPRESA, POR_TEXTO)
+    assert erro.value.motivos == [
+        ("people_data_labs_busca", MotivoTroca.AUTENTICACAO),
+        ("brave", MotivoTroca.AUTENTICACAO),
+    ]
+    assert [p.url for p in transporte.pedidos] == [URL_BUSCA_PDL, URL_BUSCA]
 
 
 def test_pessoa_e_enriquecida_so_pela_people_data_labs():
@@ -238,9 +348,7 @@ def test_modo_sintetico_nao_cria_provedor_nem_transporte_mesmo_com_chaves(monkey
     fonte = montar_fonte_externa(
         {**AMBIENTE_BRAVE, **AMBIENTE_BRIGHT, **AMBIENTE_PDL, "MODO_DADOS": "sinteticos"},
         supressao=SemSupressao(),
-        fonte_sintetica=FonteSimulada(
-            [candidato_simulado("s-1", EMPRESA, perfil_texto="python")]
-        ),
+        fonte_sintetica=FonteSimulada([candidato_simulado("s-1", EMPRESA, perfil_texto="python")]),
     )
     assert fonte.cadeia.provedores == ()
     assert fonte.cadeia.modo is ModoDados.SINTETICOS
@@ -353,5 +461,7 @@ def test_nomes_de_ambiente_estao_no_exemplo_sem_valores():
         "BRIGHTDATA_API_TOKEN",
         "BRIGHTDATA_BUSCA_HABILITADA",
         "PDL_API_KEY",
+        "PDL_PAIS",
+        "PDL_TAMANHO_PAGINA",
         "MODO_DADOS",
     } <= set(NOMES_DE_AMBIENTE)

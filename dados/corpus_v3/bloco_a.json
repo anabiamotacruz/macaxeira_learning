@@ -1,0 +1,146 @@
+[
+  {
+    "slug": "backend",
+    "titulo": "Desenvolvimento backend",
+    "competencias": [
+      "APIs",
+      "persistência de dados",
+      "observabilidade"
+    ],
+    "campo": "experiencia_backend",
+    "positivos": [
+      "Uma operação de entregas perdia solicitações quando parceiros repetiam chamadas. Implementei no backend uma API de criação com chave de idempotência, transações no banco e testes de concorrência. Assumi o acompanhamento em produção, acrescentei métricas de duplicidade e documentei como investigar solicitações retidas.",
+      "Backend de cobranças: fila persistente para absorver indisponibilidade do provedor; tentativas espaçadas; separação de mensagens irrecuperáveis. Entrega sob minha responsabilidade, do contrato dos endpoints internos à implantação acompanhada. Acrescentei registros estruturados para seguir cada cobrança entre componentes e investigar falhas de processamento sem depender de reconstrução manual.",
+      "Recebi a manutenção de um sistema de estoque cujo banco travava durante consultas extensas. Analisei planos de execução, criei índices e substituí uma leitura integral por paginação baseada em cursor. Entreguei a mudança no serviço backend com testes de integração e acompanhei latência e erros após a publicação.",
+      "Minha responsabilidade profissional era o serviço de autenticação de uma plataforma educacional fictícia. Implementei rotação de tokens, revogação de sessões e verificação de permissões nos endpoints. Escrevi testes de acesso indevido, revisei a persistência de credenciais e participei do plantão para incidentes da aplicação em produção.",
+      "Como foi a migração comercial? Desenvolvi o adaptador backend entre sistemas com modelos de pedido diferentes. E a virada? Acompanhei o tráfego entrando aos poucos, com reversão preparada. Antes disso, modelei estados, persisti referências de correlação e testei os contratos dos parceiros; também entreguei endpoints para consultar o processamento.",
+      "O processamento noturno de documentos atrasava o início das operações. Reescrevi os trabalhadores do backend para distribuir tarefas sem perder ordenação por cliente, instrumentei o tempo de cada etapa e implementei bloqueio contra execução simultânea. Fiquei responsável pela implantação e pelos procedimentos de recuperação de arquivos interrompidos.",
+      "Durante a expansão de uma plataforma de reservas, implementei no servidor a prevenção de dupla ocupação. Usei controle transacional e testes concorrentes para validar disputas pelo mesmo recurso. Também construí a API de cancelamento, defini respostas de erro consistentes e monitorei conflitos durante o funcionamento diário.",
+      "Atuei profissionalmente no backend de um portal de atendimento, construindo endpoints para anexos grandes. Implementei envio direto ao armazenamento com autorização temporária, validação de tamanho e remoção de arquivos incompletos. Integrei os metadados ao banco relacional e acrescentei rastreamento para investigar falhas relatadas pela equipe de suporte.",
+      "A entrega tratou do isolamento entre organizações de um mesmo produto. Coube à pessoa responsável pelo backend exigir contexto organizacional nas consultas, nas chaves persistidas e na autorização. Foram criados testes entre contas, acompanhada a migração com auditoria operacional e corrigidos os problemas identificados durante a liberação.",
+      "No sistema de abastecimento de lojas, desenvolvi o serviço de previsão de disponibilidade a partir de eventos recebidos. Cuidei da validação de contratos, descarte de eventos repetidos e reconstrução do estado persistido. Configurei alertas de atraso e conduzi a recuperação de uma fila durante incidente em produção.",
+      "O cadastro de fornecedores tinha regras duplicadas entre integrações. Centralizei a validação em um serviço backend, defini contratos versionados e implementei persistência transacional para alterações cadastrais. Acompanhei os consumidores na migração, escrevi testes de compatibilidade e mantive métricas para localizar chamadas que ainda utilizavam versões antigas.",
+      "Desenvolvi profissionalmente a API de um sistema de pesquisa interna, incluindo filtros, limites de consulta e indexação assíncrona. Planejei a sincronização entre banco e índice, implementei reprocessamento seguro e testes de recuperação. Após a entrega, acompanhei falhas de atualização e conduzi ajustes no consumo de memória."
+    ],
+    "ambiguos": [
+      "Participei de reuniões sobre a substituição dos serviços de pedidos e preparei diagramas de integração e critérios de aceite. O material descreve filas, transações e observabilidade, mas não informa se implementei componentes ou acompanhei implantação. Minha contribuição operacional individual no backend não está confirmada pelos registros disponíveis.",
+      "Apresento familiaridade com APIs e bancos relacionais após colaborar com uma equipe de produto em testes de uma plataforma fictícia. A descrição menciona entregas coletivas e melhoria de desempenho, sem distinguir minha participação. Não está claro se escrevi código backend profissional ou apenas validei o comportamento externo."
+    ],
+    "negativos": [
+      "Minha experiência profissional é em design de interfaces: conduzi pesquisa, desenhei jornadas e acompanhei testes de usabilidade em um produto comercial fictício. Nunca desenvolvi serviços backend profissionalmente nem respondi por APIs ou bancos em produção. O contato com código de servidor ocorreu somente em exercícios de estudo pessoal.",
+      "Atuei na operação de infraestrutura, automatizando provisionamento e configurando monitoração de ambientes utilizados por aplicações. Não tenho experiência profissional construindo backend de produto; não implementei endpoints, regras de negócio ou persistência dessas aplicações. Quando surgiam defeitos no serviço, encaminhava os diagnósticos à equipe responsável pelo desenvolvimento."
+    ],
+    "bloqueados": [
+      "Um portal de manutenção precisava preservar o histórico de alterações sem atrasar consultas. Construí no backend um registro de eventos e projeções para leitura, com rotinas de reconstrução testadas. Expus endpoints de acompanhamento, instrumentei o atraso das projeções e assumi a investigação de inconsistências durante a operação diária.",
+      "No serviço de conciliação de pagamentos, implementei ingestão incremental de arquivos e validações transacionais para impedir lançamentos repetidos. Desenvolvi endpoints de consulta das divergências, testes de integração e procedimentos de retomada após interrupções. Acompanhei a publicação e usei métricas por etapa para identificar gargalos no processamento real."
+    ]
+  },
+  {
+    "slug": "frontend",
+    "titulo": "Desenvolvimento frontend",
+    "competencias": [
+      "interfaces web",
+      "acessibilidade",
+      "testes de interface"
+    ],
+    "campo": "experiencia_frontend",
+    "positivos": [
+      "O formulário de matrícula de uma instituição fictícia perdia informações quando a conexão oscilava. Implementei a interface web com salvamento progressivo, validação acessível e recuperação do preenchimento. Escrevi testes de interação por teclado e acompanhei erros no navegador após a publicação, corrigindo incompatibilidades encontradas em dispositivos diferentes.",
+      "O painel de logística travava com muitas entregas. Minha contribuição no frontend:\n- virtualização das linhas e filtros preservados na URL;\n- estados visíveis de carregamento e navegação acessível;\n- medição das renderizações no navegador antes da liberação.\nAssumi a implementação e os testes, acompanhando o ganho de desempenho observado pelos operadores.",
+      "Uma loja fictícia precisava permitir compras sem depender do mouse. Reestruturei componentes da interface, corrigindo foco, nomes acessíveis e anúncios de alterações no carrinho. Automatizei testes dos fluxos de produto e pagamento, acompanhei uma avaliação com tecnologia assistiva e publiquei as correções no frontend utilizado pelos clientes.",
+      "Desenvolvi profissionalmente a interface de edição de relatórios em uma aplicação web. Implementei componentes reutilizáveis, desfazer alterações e prevenção de perda de conteúdo ao trocar de página. Integrei as chamadas à API com tratamento de falhas e escrevi testes de interação para os comportamentos mais sujeitos a regressão.",
+      "Experiência de migração: construção do frontend de acompanhamento de solicitações para substituir um portal antigo. Implementação responsiva, manutenção dos links existentes e estados específicos para erros ou dados incompletos. Validação em diferentes navegadores e acompanhamento dos relatos de uso durante a troca gradual, com responsabilidade pelas correções da interface.",
+      "O calendário de uma plataforma de serviços apresentava conflitos de horário difíceis de entender. Implementei a visualização web com seleção por teclado, descrição textual dos intervalos e atualização otimista reversível. Escrevi testes para cancelamentos e respostas atrasadas da API e participei da publicação monitorando erros de interação.",
+      "Na equipe de um produto financeiro fictício, desenvolvi a interface de comparação de propostas. Traduzi regras de apresentação em componentes tipados, garanti leitura correta dos valores por leitores de tela e implementei testes visuais. Também investiguei um problema de hidratação que afetava a primeira interação depois do carregamento.",
+      "Recebi a manutenção de um catálogo web com navegação confusa em telas pequenas. Reorganizei os componentes de filtro, implementei rotas com preservação de estado e adaptei tabelas para leitura móvel. Entreguei testes de interface e acompanhei sessões de uso para corrigir problemas de foco e acionamento involuntário.",
+      "O que você entregou para as outras equipes? Uma biblioteca de componentes frontend, efetivamente usada nos formulários existentes. Defini propriedades, estados de erro e acessibilidade, além dos exemplos executáveis. Como evitou regressões? Escrevi testes de interação, conduzi a migração e acompanhei as primeiras versões publicadas, corrigindo os problemas encontrados.",
+      "O acompanhamento de pedidos precisava atualizar eventos sem interromper quem lia a página. Desenvolvi a interface web que reconcilia notificações recebidas com o estado local, mantendo foco e posição de rolagem. Acrescentei avisos acessíveis, testes para eventos fora de ordem e tratamento visual para conexão temporariamente indisponível.",
+      "Em um aplicativo web de inventário, implementei a edição simultânea de vários itens com confirmação das alterações. Cuidei dos estados de seleção, mensagens de validação e recuperação após falha parcial da API. Escrevi testes do fluxo completo e acompanhei o lançamento junto às pessoas que operavam o sistema.",
+      "Minha entrega profissional foi o frontend de um portal de documentação técnica. Implementei busca com cancelamento de requisições antigas, navegação por títulos e alternância de contraste acessível. Configurei testes de interação e métricas de desempenho no navegador, depois corrigi imagens e componentes que atrasavam a leitura inicial."
+    ],
+    "ambiguos": [
+      "Produzi protótipos navegáveis e participei de conversas sobre os componentes de uma plataforma web fictícia. O portfólio mostra o resultado visual e descreve colaboração com desenvolvimento, mas não apresenta código ou responsabilidade de implantação. Não está confirmado se implementei o frontend ou trabalhei somente na especificação das telas.",
+      "Acompanhei a reformulação de um portal, revisando histórias e registrando problemas durante homologação. A descrição coletiva cita acessibilidade e testes de interface, porém não discrimina as atividades que executei. Minha experiência profissional escrevendo componentes e mantendo código frontend ainda precisa ser esclarecida com exemplos individuais."
+    ],
+    "negativos": [
+      "Trabalho profissionalmente com pesquisa de experiência do usuário, conduzindo entrevistas e testes de usabilidade para aplicações web. Não tenho experiência profissional programando frontend nem entregando componentes em produção. As telas interativas que construí foram apenas protótipos em ferramenta visual, sem integração com APIs ou manutenção de código.",
+      "Minha atuação profissional está concentrada em serviços backend, incluindo APIs, filas e persistência de pedidos. Nunca assumi desenvolvimento frontend profissional nem implementei interfaces para usuários finais. Tenho estudos de HTML e estilos em exercícios pessoais, mas não participei de publicação ou manutenção de aplicações web no navegador."
+    ],
+    "bloqueados": [
+      "Para reduzir falhas no envio de despesas, construí a interface web de anexação de comprovantes com progresso, cancelamento e recuperação de tentativas. Implementei mensagens acessíveis e prévia dos arquivos, integrei o fluxo ao backend e escrevi testes para respostas inesperadas. Acompanhei a operação e corrigi regressões de navegação.",
+      "Desenvolvi o frontend de um painel de monitoramento de equipamentos, organizando alertas por prioridade e permitindo inspeção dos detalhes sem perder contexto. Implementei atualização incremental, componentes responsivos e testes de interação. Validei o contraste das sinalizações e substituí indicadores baseados apenas em cor antes da publicação do produto."
+    ]
+  },
+  {
+    "slug": "mobile",
+    "titulo": "Desenvolvimento mobile",
+    "competencias": [
+      "aplicativos móveis",
+      "sincronização offline",
+      "testes mobile"
+    ],
+    "campo": "experiencia_mobile",
+    "positivos": [
+      "Técnicos de campo precisavam registrar inspeções em locais sem conectividade. Desenvolvi o aplicativo móvel com armazenamento local, fila de sincronização e resolução explícita de conflitos. Escrevi testes para interrupções de rede e acompanhei a distribuição das versões, investigando falhas de sincronização relatadas durante o trabalho em campo.",
+      "Implementação mobile para conferência de estoque. Responsabilidade direta pela integração da câmera, pelo tratamento de permissões recusadas e pela persistência dos registros até a confirmação do servidor. A entrega incluiu testes em aparelhos diferentes e acompanhamento dos erros de câmera após a atualização disponibilizada para uso operacional.",
+      "O aplicativo de transporte de uma organização fictícia consumia bateria durante o acompanhamento de trajetos. Revisei o uso de localização em segundo plano, implementei atualização conforme o estado da viagem e acrescentei testes de ciclo de vida. Publiquei a versão e monitorei travamentos e consumo nos dispositivos utilizados.",
+      "Na equipe mobile de uma plataforma de atendimento, desenvolvi notificações que abriam diretamente a solicitação correspondente. Implementei navegação por links internos, restauração de sessão e tratamento para conteúdo indisponível. Escrevi testes dos diferentes estados do aplicativo e acompanhei a liberação gradual para identificar falhas antes de ampliar a distribuição.",
+      "O pedido podia ser concluído sem conexão? Sim: construí no aplicativo móvel um carrinho persistente, sincronizado depois sem duplicar a venda. Modelei também os estados de envio e conflito. Testei o encerramento inesperado do processo antes da publicação e acompanhei o suporte quando a versão chegou à operação.",
+      "Assumi a manutenção de um aplicativo de aprendizado com relatos de fechamento inesperado. Investiguei rastros de falha, corrigi o gerenciamento de recursos de reprodução e implementei testes de retomada após interrupções. Também adaptei a interface para tecnologias assistivas e participei do processo de publicação nas lojas de aplicativos.",
+      "Para uma equipe de manutenção, implementei a captura móvel de fotografias com compressão, armazenamento temporário e envio retomável. Protegi a navegação contra perda do formulário e tratei falta de espaço no dispositivo. Validei cenários em aparelhos com recursos limitados e acompanhei métricas de falha depois da implantação.",
+      "Desenvolvi profissionalmente a autenticação de um aplicativo de serviços, incluindo renovação de sessão e armazenamento protegido de credenciais. Implementei bloqueio local após inatividade, tratamento de permissões e testes de retorno do segundo plano. Acompanhei a distribuição e investiguei diferenças de comportamento entre versões do sistema operacional.",
+      "Na adaptação de um aplicativo de estoque para leitores portáteis, a execução profissional abrangeu navegação para telas pequenas, componentes de acionamento acessível e cache local de consultas. Houve testes de interação e perda de conectividade. A mesma responsabilidade incluiu conduzir a atualização dos dispositivos empregados no ambiente operacional.",
+      "Minha responsabilidade no produto mobile era o registro de visitas técnicas com mapas e formulários. Implementei persistência incremental, anexação de localização autorizada e sincronização das alterações. Criei testes para mudanças de fuso e restauração do aplicativo, depois acompanhei a publicação e a investigação de registros enviados incompletos.",
+      "Um aplicativo de leitura precisava preservar marcações feitas em dispositivos diferentes. Desenvolvi o armazenamento local e a reconciliação das alterações com o servidor, incluindo exclusões e conflitos. Testei encerramentos durante a sincronização e acompanhei versões em distribuição controlada, corrigindo problemas de desempenho observados em bibliotecas extensas.",
+      "Na construção de um aplicativo de agendamento de serviços, implementei o calendário nativo, armazenamento de preferências e atualização de disponibilidade. Tratei respostas atrasadas e mudanças de orientação da tela com testes automatizados. Respondi pela preparação da versão e monitorei falhas de navegação durante o lançamento gradual."
+    ],
+    "ambiguos": [
+      "Colaborei com uma iniciativa de atendimento móvel desenhando fluxos e avaliando relatos de uso em campo. A apresentação menciona operação offline, câmera e distribuição, mas descreve resultados da equipe inteira. Não está claro se implementei funcionalidades do aplicativo ou apenas participei da pesquisa e homologação do produto.",
+      "Meu portfólio inclui um aplicativo funcional com mapas e formulários, acompanhado de documentação técnica detalhada. A descrição não informa se houve vínculo profissional, uso operacional ou publicação, nem distingue estudo de entrega contratada. A experiência prática existe, mas seu caráter profissional e minha responsabilidade de manutenção permanecem incertos."
+    ],
+    "negativos": [
+      "Atuei profissionalmente no desenvolvimento de interfaces web responsivas para serviços de atendimento. Não tenho experiência profissional construindo aplicativos móveis nativos ou multiplataforma, nem publiquei aplicativos em lojas. O acesso por celular que ofereci ocorria exclusivamente pelo navegador, sem armazenamento local ou integração com recursos nativos do aparelho.",
+      "Minha experiência profissional é em suporte a dispositivos móveis: configurei aparelhos, distribuí versões e investiguei problemas de conectividade. Nunca desenvolvi código de aplicativos mobile profissionalmente nem implementei suas funcionalidades. Os reparos que executei foram de configuração operacional; defeitos de software eram encaminhados à equipe de desenvolvimento responsável."
+    ],
+    "bloqueados": [
+      "Desenvolvi o aplicativo móvel de conferência de mercadorias, permitindo registrar divergências e anexar imagens antes da sincronização. Implementei filas locais, indicação de envio pendente e recuperação após reinício do aparelho. Testei indisponibilidade do servidor e acompanhei a distribuição das versões com monitoramento de travamentos e consumo de armazenamento.",
+      "Um serviço de entregas internas precisava de confirmação acessível em dispositivos móveis. Implementei no aplicativo o recebimento das tarefas, registro de conclusão offline e envio posterior com validação de duplicidade. Acrescentei testes de permissões e interrupções do sistema, ajustei o suporte a leitores de tela e acompanhei a publicação."
+    ]
+  },
+  {
+    "slug": "dados",
+    "titulo": "Engenharia de dados",
+    "competencias": [
+      "pipelines de dados",
+      "qualidade de dados",
+      "modelagem de dados"
+    ],
+    "campo": "experiencia_dados",
+    "positivos": [
+      "A consolidação de pedidos de uma operação fictícia dependia de planilhas manuais. Desenvolvi um pipeline incremental que extraía mudanças do sistema transacional, validava o esquema e alimentava tabelas analíticas. Implementei testes de integridade, documentei a linhagem e acompanhei alertas de atraso durante a execução diária em produção.",
+      "Ingestão de eventos de produto sob responsabilidade profissional.\n- Particionamento e deduplicação, com processamento reexecutável.\n- Validações de campos obrigatórios e alterações de contrato.\n- Publicação das tabelas para consumo analítico.\nMantive a operação das cargas e os procedimentos de recuperação, investigando falhas sem repetir registros já processados.",
+      "O fechamento de indicadores apresentava diferenças entre departamentos. Investiguei as transformações de origem, defini uma camada de dados com regras versionadas e implementei testes de reconciliação. Publiquei os modelos no ambiente de produção e acompanhei as cargas agendadas, corrigindo registros rejeitados sem apagar a trilha de processamento.",
+      "Construí a plataforma de ingestão de arquivos de fornecedores para uma rede fictícia de distribuição. Implementei validação de formato, quarentena de registros inconsistentes e transformação para o modelo analítico. Organizei dependências das cargas e testes de qualidade, assumindo o acompanhamento operacional e a comunicação de incidentes aos consumidores.",
+      "A solução separou o histórico analítico do banco operacional: captura incremental de mudanças, tabelas históricas e controles de consistência. O trabalho profissional incluiu implementar essa estrutura, testar evolução de esquema e reprocessamento, monitorar o atraso de ingestão e documentar para os consumidores até quando os dados estavam atualizados.",
+      "Minha entrega profissional foi um pipeline de dados de sensores para acompanhamento de manutenção. Tratei eventos atrasados, normalizei unidades e construí agregações por janela temporal. Acrescentei verificações de continuidade e volume, disponibilizei os conjuntos para análise e conduzi a recuperação de partições após uma interrupção no processamento.",
+      "Para reduzir custos de consultas analíticas, revisei a modelagem de um conjunto de dados comerciais e reorganizei suas partições. Implementei transformações incrementais e testes de equivalência com os resultados anteriores. Acompanhei a migração dos consumidores, medi o volume processado e mantive as rotinas de atualização em produção.",
+      "O cadastro de produtos chegava por integrações com convenções incompatíveis. Desenvolvi a ingestão e as transformações que padronizavam categorias, identificadores e unidades, preservando os valores originais. Criei testes de unicidade e referências, modelei tabelas de correspondência e acompanhei a operação das cargas, investigando falhas e mudanças inesperadas nas fontes.",
+      "As pesquisas de satisfação não se relacionavam diretamente aos eventos de atendimento. Resolvi isso construindo pipelines com chaves de integração e regras temporais explícitas. Testei os relacionamentos, publiquei tabelas documentadas e configurei alertas de completude. Quando uma fonte atrasou, executei o reprocessamento controlado das informações recebidas posteriormente.",
+      "Uma organização fictícia precisava reproduzir resultados de relatórios antigos. Modelei snapshots dos dados utilizados em cada fechamento, implementei cargas versionadas e registrei as dependências das transformações. Escrevi testes de reconciliação e procedimentos de restauração, mantendo o processamento em produção e apoiando a investigação de divergências históricas.",
+      "Desenvolvi profissionalmente a alimentação de um ambiente analítico para operações de estoque. Implementei extração incremental, deduplicação de movimentos e modelos de saldo com histórico. Acrescentei testes para movimentos estornados e valores ausentes, automatizei a execução das cargas e acompanhei alertas de disponibilidade com responsabilidade pela correção dos pipelines.",
+      "A integração de dados de diferentes unidades exigia formatos previsíveis para consumo. Construí contratos de esquema, transformações padronizadas e verificações automáticas antes da publicação das tabelas. Modelei a camada de consumo com documentação de origem, acompanhei as cargas agendadas e implementei recuperação seletiva para lotes que falhavam na validação."
+    ],
+    "ambiguos": [
+      "Participei da definição de indicadores e descrevi regras de qualidade para uma plataforma analítica fictícia. Os materiais apresentam diagramas de ingestão e resultados de consultas, mas não identificam quem implementou os pipelines. Minha responsabilidade profissional na construção e operação da infraestrutura de dados ainda não está demonstrada.",
+      "Trabalhei com consultas e organização de dados em um projeto que utilizava cargas automatizadas mantidas por uma equipe compartilhada. O relato cita modelagem e tratamento de falhas sem detalhar a contribuição individual. Não é possível confirmar se desenvolvi pipelines de produção ou apenas consumi tabelas prontas para análises."
+    ],
+    "negativos": [
+      "Minha experiência profissional é em análise comercial, elaborando painéis e interpretando indicadores sobre tabelas disponibilizadas por outra equipe. Nunca construí ou operei pipelines de engenharia de dados profissionalmente. As transformações que fiz eram locais em planilhas para apresentações, sem implantação de cargas automatizadas ou responsabilidade pela infraestrutura de dados.",
+      "Atuei profissionalmente na administração de bancos transacionais, cuidando de acesso, cópias de segurança e recuperação de instâncias. Não tenho experiência profissional em engenharia de dados analíticos: nunca implementei pipelines de ingestão ou modelos de consumo. Apoiei equipes que os utilizavam, mas minha responsabilidade se limitava à disponibilidade do banco."
+    ],
+    "bloqueados": [
+      "Desenvolvi um pipeline de conciliação de movimentações entre sistemas de uma operação fictícia. Modelei as chaves de correspondência, preservei eventos rejeitados e implementei reexecução sem duplicidade. Entreguei tabelas de divergências com testes de integridade, documentei a linhagem e acompanhei o processamento diário, respondendo pela recuperação de cargas interrompidas.",
+      "Uma plataforma de serviços recebia arquivos históricos com esquemas que mudavam ao longo do tempo. Construí a ingestão versionada e as transformações para um modelo analítico comum, incluindo validações de tipos e intervalos. Implementei testes de regressão, organizei o reprocessamento dos lotes antigos e mantive alertas sobre qualidade e atraso."
+    ]
+  }
+]

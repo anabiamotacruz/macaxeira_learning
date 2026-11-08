@@ -203,6 +203,16 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 - [x] Testar `test_gera_duas_empresas_separadas`.
 - [x] Implementar e verificar.
 
+**Revisão de avaliação v3 solicitada:** `dados/avaliacao_v3/` e
+`dados/corpus_v3/`, preservando o conjunto legado de regressão.
+
+- [x] Redigir 216 narrativas profissionais distintas em 12 funções, sem unicidade artificial.
+- [x] Separar 120 famílias positivas de prova de ajuste e variantes de viés.
+- [x] Incluir 24 casos ambíguos, 24 negativos e 24 bloqueios de autorização.
+- [x] Marcar 12 pares com `par_vies`, sem contá-los como novas pessoas independentes.
+- [x] Auditar referências, evidências, semelhança lexical, partições e ausência de rótulos nos IDs.
+- [ ] Validar os rótulos com RH e medir o modelo na prova congelada (não feito nesta entrega).
+
 ### T2.6 [P] (onda 1): banco de talentos
 
 **Arquivo:** `backend/fontes/banco_talentos.py`. **Teste:** `tests/fontes/test_banco_talentos.py`.
@@ -221,10 +231,10 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** implementação de `FonteCandidatos`, `remover_duplicatas(candidatos) -> list[Candidato]` e controles para injetar falha e limite.
 
-- [ ] Testar paginação, filtros e `test_identifica_fonte_como_simulada`.
-- [ ] Testar `test_remove_duplicata_entre_paginas_e_fontes`.
-- [ ] Testar `test_injeta_falha_com_fonte_indisponivel`.
-- [ ] Implementar e verificar.
+- [x] Testar paginação, filtros e `test_identifica_fonte_como_simulada`.
+- [x] Testar `test_remove_duplicata_entre_paginas_e_fontes`.
+- [x] Testar `test_injeta_falha_com_fonte_indisponivel`.
+- [x] Implementar e verificar.
 
 ### T2.7 [P] (onda 1): geração de consultas
 
@@ -277,11 +287,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** `ler_documento(nome: str, conteudo: bytes) -> str`, para texto e PDF, e `extrair_perfil(texto: str, cliente_modelo) -> dict[str, str]`.
 
-- [ ] Testar `test_recusa_tipo_nao_permitido_e_arquivo_grande`, com limite de 5 MB.
-- [ ] Testar `test_pdf_sem_texto_gera_pedido_de_novo_envio`.
-- [ ] Testar `test_instrucao_no_documento_vira_alerta`.
-- [ ] Testar `test_extracao_nao_inventa_experiencia`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_recusa_tipo_nao_permitido_e_arquivo_grande`, com limite de 5 MB.
+- [x] Testar `test_pdf_sem_texto_gera_pedido_de_novo_envio`.
+- [x] Testar `test_instrucao_no_documento_vira_alerta`.
+- [x] Testar `test_extracao_nao_inventa_experiencia`.
+- [x] Implementar e verificar.
 
 ### T2.5 (onda 3, corte): GitHub com contas de teste
 

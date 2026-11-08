@@ -24,7 +24,14 @@ from backend.fontes.provedores.modelos import (
     id_externo,
     id_externo_de_email,
 )
-from tests.fontes.provedores.apoio import MOMENTO
+from backend.fontes.provedores.people_data_labs_busca import ProvedorPeopleDataLabsBusca
+from tests.fontes.provedores.apoio import (
+    CHAVE_PDL,
+    MOMENTO,
+    TransporteSimulado,
+    relogio_fixo,
+    resposta_json,
+)
 
 EMPRESA = "empresa-a"
 EMAIL = "pessoa@exemplo-ficticio.com.br"
@@ -149,6 +156,45 @@ def test_buscar_le_as_primeiras_paginas_e_mantem_o_trecho_das_demais():
         busca[0].url,
         busca[1].url,
     ]
+
+
+def test_perfil_da_busca_do_pdl_nao_e_trocado_pela_leitura_da_pagina():
+    github = "https://github.com/pessoa-ficticia"
+    registro = {
+        "full_name": "pessoa ficticia",
+        "skills": ["python"],
+        "github_url": "github.com/pessoa-ficticia",
+        "experience": [
+            {
+                "company": {"name": "empresa ficticia"},
+                "title": {"name": "dev"},
+                "start_date": "2020",
+            }
+        ],
+    }
+    pdl = ProvedorPeopleDataLabsBusca(
+        CHAVE_PDL,
+        TransporteSimulado(resposta_json({"status": 200, "data": [registro], "total": 1})),
+        relogio=relogio_fixo,
+    )
+    leitor = Provedor(paginas={github: item(github, texto="Página do GitHub.")})
+    supressao = SemSupressao()
+    fonte = FonteProvedores(
+        CadeiaProvedores(
+            [pdl, leitor],
+            supressao=supressao,
+            orcamento=OrcamentoProvedores(limite_empresa_usd=10, limite_execucao_usd=10),
+            dormir=lambda _: None,
+        ),
+        supressao=supressao,
+    )
+    [candidato] = fonte.buscar(EMPRESA, "python")
+    assert leitor.consultas == []
+    assert candidato.atributos["competencias"] == "python"
+    assert [e.empresa for e in candidato.historico] == ["empresa ficticia"]
+    assert candidato.autorizou_contato is False
+    assert candidato.autorizacao_valida_ate is None
+    assert candidato.estado == EstadoBanco.PENDENTE
 
 
 def test_falha_ao_ler_uma_pagina_nao_perde_o_trecho():
@@ -284,9 +330,7 @@ def test_guardar_nao_traz_de_volta_quem_saiu_por_email_com_outro_id(banco):
 def test_guardar_respeita_bloqueio_do_repositorio(banco, repositorio):
     candidato = guardavel()
     repositorio.registrar_bloqueios(EMPRESA, resumos_da_pessoa(EMPRESA, candidato.id, EMAIL))
-    fonte = fonte_com(
-        Provedor(), SupressaoPorBanco(banco, bloqueios=[repositorio]), banco=banco
-    )
+    fonte = fonte_com(Provedor(), SupressaoPorBanco(banco, bloqueios=[repositorio]), banco=banco)
     assert fonte.guardar(EMPRESA, [candidato]) == []
     assert banco.obter(EMPRESA, candidato.id) is None
 

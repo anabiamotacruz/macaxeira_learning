@@ -1,0 +1,794 @@
+[
+  {
+    "id": "empresa-v3-1-backend",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Desenvolvimento backend",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_backend",
+        "descricao": "Atuação profissional demonstrada em Desenvolvimento backend",
+        "campo": "experiencia_backend",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "APIs",
+        "peso": 1.0
+      },
+      {
+        "nome": "persistência de dados",
+        "peso": 1.0
+      },
+      {
+        "nome": "observabilidade",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-backend",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Desenvolvimento backend",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_backend",
+        "descricao": "Atuação profissional demonstrada em Desenvolvimento backend",
+        "campo": "experiencia_backend",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "APIs",
+        "peso": 1.0
+      },
+      {
+        "nome": "persistência de dados",
+        "peso": 1.0
+      },
+      {
+        "nome": "observabilidade",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-frontend",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Desenvolvimento frontend",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_frontend",
+        "descricao": "Atuação profissional demonstrada em Desenvolvimento frontend",
+        "campo": "experiencia_frontend",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "interfaces web",
+        "peso": 1.0
+      },
+      {
+        "nome": "acessibilidade",
+        "peso": 1.0
+      },
+      {
+        "nome": "testes de interface",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-frontend",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Desenvolvimento frontend",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_frontend",
+        "descricao": "Atuação profissional demonstrada em Desenvolvimento frontend",
+        "campo": "experiencia_frontend",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "interfaces web",
+        "peso": 1.0
+      },
+      {
+        "nome": "acessibilidade",
+        "peso": 1.0
+      },
+      {
+        "nome": "testes de interface",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-mobile",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Desenvolvimento mobile",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_mobile",
+        "descricao": "Atuação profissional demonstrada em Desenvolvimento mobile",
+        "campo": "experiencia_mobile",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "aplicativos móveis",
+        "peso": 1.0
+      },
+      {
+        "nome": "sincronização offline",
+        "peso": 1.0
+      },
+      {
+        "nome": "testes mobile",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-mobile",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Desenvolvimento mobile",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_mobile",
+        "descricao": "Atuação profissional demonstrada em Desenvolvimento mobile",
+        "campo": "experiencia_mobile",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "aplicativos móveis",
+        "peso": 1.0
+      },
+      {
+        "nome": "sincronização offline",
+        "peso": 1.0
+      },
+      {
+        "nome": "testes mobile",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-dados",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Engenharia de dados",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_dados",
+        "descricao": "Atuação profissional demonstrada em Engenharia de dados",
+        "campo": "experiencia_dados",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "pipelines de dados",
+        "peso": 1.0
+      },
+      {
+        "nome": "qualidade de dados",
+        "peso": 1.0
+      },
+      {
+        "nome": "modelagem de dados",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-dados",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Engenharia de dados",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_dados",
+        "descricao": "Atuação profissional demonstrada em Engenharia de dados",
+        "campo": "experiencia_dados",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "pipelines de dados",
+        "peso": 1.0
+      },
+      {
+        "nome": "qualidade de dados",
+        "peso": 1.0
+      },
+      {
+        "nome": "modelagem de dados",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-qa",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Qualidade de software",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_qa",
+        "descricao": "Atuação profissional demonstrada em Qualidade de software",
+        "campo": "experiencia_qa",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Testes automatizados",
+        "peso": 1.0
+      },
+      {
+        "nome": "Testes de API",
+        "peso": 1.0
+      },
+      {
+        "nome": "Análise de defeitos",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-qa",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Qualidade de software",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_qa",
+        "descricao": "Atuação profissional demonstrada em Qualidade de software",
+        "campo": "experiencia_qa",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Testes automatizados",
+        "peso": 1.0
+      },
+      {
+        "nome": "Testes de API",
+        "peso": 1.0
+      },
+      {
+        "nome": "Análise de defeitos",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-sre",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Engenharia de confiabilidade",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_sre",
+        "descricao": "Atuação profissional demonstrada em Engenharia de confiabilidade",
+        "campo": "experiencia_sre",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Observabilidade",
+        "peso": 1.0
+      },
+      {
+        "nome": "Gestão de incidentes",
+        "peso": 1.0
+      },
+      {
+        "nome": "Automação operacional",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-sre",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Engenharia de confiabilidade",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_sre",
+        "descricao": "Atuação profissional demonstrada em Engenharia de confiabilidade",
+        "campo": "experiencia_sre",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Observabilidade",
+        "peso": 1.0
+      },
+      {
+        "nome": "Gestão de incidentes",
+        "peso": 1.0
+      },
+      {
+        "nome": "Automação operacional",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-seguranca",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Segurança da informação",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_seguranca",
+        "descricao": "Atuação profissional demonstrada em Segurança da informação",
+        "campo": "experiencia_seguranca",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Modelagem de ameaças",
+        "peso": 1.0
+      },
+      {
+        "nome": "Gestão de vulnerabilidades",
+        "peso": 1.0
+      },
+      {
+        "nome": "Resposta a incidentes",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-seguranca",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Segurança da informação",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_seguranca",
+        "descricao": "Atuação profissional demonstrada em Segurança da informação",
+        "campo": "experiencia_seguranca",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Modelagem de ameaças",
+        "peso": 1.0
+      },
+      {
+        "nome": "Gestão de vulnerabilidades",
+        "peso": 1.0
+      },
+      {
+        "nome": "Resposta a incidentes",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-ml",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Engenharia de aprendizado de máquina",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_ml",
+        "descricao": "Atuação profissional demonstrada em Engenharia de aprendizado de máquina",
+        "campo": "experiencia_ml",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Treinamento de modelos",
+        "peso": 1.0
+      },
+      {
+        "nome": "Avaliação de modelos",
+        "peso": 1.0
+      },
+      {
+        "nome": "Implantação de modelos",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-ml",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Engenharia de aprendizado de máquina",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_ml",
+        "descricao": "Atuação profissional demonstrada em Engenharia de aprendizado de máquina",
+        "campo": "experiencia_ml",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "Treinamento de modelos",
+        "peso": 1.0
+      },
+      {
+        "nome": "Avaliação de modelos",
+        "peso": 1.0
+      },
+      {
+        "nome": "Implantação de modelos",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-produto",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Gestão de produto",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_produto",
+        "descricao": "Atuação profissional demonstrada em Gestão de produto",
+        "campo": "experiencia_produto",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "descoberta",
+        "peso": 1.0
+      },
+      {
+        "nome": "priorização",
+        "peso": 1.0
+      },
+      {
+        "nome": "métricas",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-produto",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Gestão de produto",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_produto",
+        "descricao": "Atuação profissional demonstrada em Gestão de produto",
+        "campo": "experiencia_produto",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "descoberta",
+        "peso": 1.0
+      },
+      {
+        "nome": "priorização",
+        "peso": 1.0
+      },
+      {
+        "nome": "métricas",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-ux",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Design de experiência do usuário",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_ux",
+        "descricao": "Atuação profissional demonstrada em Design de experiência do usuário",
+        "campo": "experiencia_ux",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "pesquisa",
+        "peso": 1.0
+      },
+      {
+        "nome": "prototipação",
+        "peso": 1.0
+      },
+      {
+        "nome": "usabilidade",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-ux",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Design de experiência do usuário",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_ux",
+        "descricao": "Atuação profissional demonstrada em Design de experiência do usuário",
+        "campo": "experiencia_ux",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "pesquisa",
+        "peso": 1.0
+      },
+      {
+        "nome": "prototipação",
+        "peso": 1.0
+      },
+      {
+        "nome": "usabilidade",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-plataforma",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Engenharia de plataforma",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_plataforma",
+        "descricao": "Atuação profissional demonstrada em Engenharia de plataforma",
+        "campo": "experiencia_plataforma",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "infraestrutura como código",
+        "peso": 1.0
+      },
+      {
+        "nome": "observabilidade",
+        "peso": 1.0
+      },
+      {
+        "nome": "confiabilidade",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-plataforma",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Engenharia de plataforma",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_plataforma",
+        "descricao": "Atuação profissional demonstrada em Engenharia de plataforma",
+        "campo": "experiencia_plataforma",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "infraestrutura como código",
+        "peso": 1.0
+      },
+      {
+        "nome": "observabilidade",
+        "peso": 1.0
+      },
+      {
+        "nome": "confiabilidade",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-1-integracoes",
+    "empresa_id": "empresa-v3-1",
+    "titulo": "Engenharia de integrações",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_integracoes",
+        "descricao": "Atuação profissional demonstrada em Engenharia de integrações",
+        "campo": "experiencia_integracoes",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "APIs",
+        "peso": 1.0
+      },
+      {
+        "nome": "mensageria",
+        "peso": 1.0
+      },
+      {
+        "nome": "idempotência",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  },
+  {
+    "id": "empresa-v3-2-integracoes",
+    "empresa_id": "empresa-v3-2",
+    "titulo": "Engenharia de integrações",
+    "descricao": "Vaga integralmente sintética para avaliar evidência de atuação profissional. Não representa anúncio real. Não requer idade, gênero ou empresa anterior específica.",
+    "requisitos": [
+      {
+        "id": "experiencia_integracoes",
+        "descricao": "Atuação profissional demonstrada em Engenharia de integrações",
+        "campo": "experiencia_integracoes",
+        "valor_esperado": "sim",
+        "desenvolvivel": false
+      }
+    ],
+    "competencias": [
+      {
+        "nome": "APIs",
+        "peso": 1.0
+      },
+      {
+        "nome": "mensageria",
+        "peso": 1.0
+      },
+      {
+        "nome": "idempotência",
+        "peso": 1.0
+      }
+    ],
+    "meta_candidatos": 5,
+    "prazo_dias": 7,
+    "max_tentativas_contato": 2,
+    "aprovada": false
+  }
+]

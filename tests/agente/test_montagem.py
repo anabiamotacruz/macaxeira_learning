@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from backend.agente import fluxo as modulo_fluxo
-from backend.agente.montagem import consultas_por_modelo, priorizador_do_funil
+from backend.agente.montagem import consultas_por_modelo, priorizador_do_funil, tamanho_do_funil
 from backend.agente.regras import CORTES_QUE_DESCARTAM, CORTES_SEM_DECISAO, decisao_de_corte
 from backend.contratos.erros import LimiteGastoAtingido
 from backend.contratos.modelos import Competencia, Requisito, TipoDecisao
@@ -130,6 +130,19 @@ def test_priorizador_respeita_o_limite():
 
     assert [c.id for c in selecionados] == ["c1"]
     assert [c.regra for c in cortes] == [RegraCorte.FORA_DO_LIMITE]
+
+
+@pytest.mark.parametrize(("meta", "esperado"), [(1, 20), (2, 20), (3, 30), (5, 50), (10, 50)])
+def test_funil_cresce_com_a_meta_ate_o_teto(meta, esperado):
+    """Topo do funil de 10 pessoas por vaga a preencher, entre 20 e 50 análises por rodada."""
+    candidatos = [candidato_exemplo(f"c{i:03d}") for i in range(80)]
+
+    selecionados = priorizador_do_funil()(
+        vaga_exemplo(meta_candidatos=meta), candidatos, HOJE, lambda corte: None
+    )
+
+    assert len(selecionados) == esperado
+    assert tamanho_do_funil(meta) == esperado
 
 
 def test_toda_regra_do_funil_tem_tipo_de_decisao_conhecido():

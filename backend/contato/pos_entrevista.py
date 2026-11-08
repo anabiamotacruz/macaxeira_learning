@@ -5,10 +5,8 @@ pessoa. Nunca mostra nota, ranking nem dado de outra pessoa. A decisão vem do
 resultado da entrevista: esta função só a comunica.
 """
 
-from backend.contato.prompts import MARCADOR_NOME, PALAVRA_SAIDA
+from backend.contato.prompts import AVISO_SIMULACAO, MARCADOR_NOME, PALAVRA_SAIDA
 from backend.contratos.modelos import ResultadoEntrevista, Vaga
-
-AVISO_SIMULACAO = "Mensagem simulada, enviada em ambiente de demonstração."
 
 
 def mensagem_pos_entrevista(vaga: Vaga, resultado: ResultadoEntrevista) -> str:

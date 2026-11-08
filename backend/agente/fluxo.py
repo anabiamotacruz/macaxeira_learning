@@ -202,7 +202,9 @@ CONCORRENCIA_PADRAO = 1
 def concorrencia_do_ambiente() -> int:
     """Quantas análises ou revisões seguem juntas. `CONCORRENCIA_MODELO` ajusta sem mudar o código.
 
-    O provedor limita chamadas simultâneas conforme o plano, por isso o padrão é uma de cada vez.
+    Sem a variável, o padrão é uma de cada vez (demonstração sem modelo, determinística). Com o
+    modelo ligado, `montar_com_modelo` usa 5 por padrão; o limite medido da conta é 25. A variável
+    definida vale sempre, inclusive para valores menores.
     """
     texto = (os.environ.get("CONCORRENCIA_MODELO") or "").strip()
     if not texto:
