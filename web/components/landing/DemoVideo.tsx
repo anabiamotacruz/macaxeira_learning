@@ -1,152 +1,151 @@
-"use client";
+import Image from "next/image";
 
-import { useState } from "react";
-import Link from "next/link";
+type Scene = {
+  time: string;
+  title: string;
+  details: ReadonlyArray<readonly [string, string]>;
+  accent?: boolean;
+};
 
-const columns = [
+const scenes: readonly Scene[] = [
   {
-    title: "Analisando",
-    count: "62",
-    color: "#3a6f6c",
-    candidates: [
-      ["Camila Nunes", "Python, AWS · 6 anos", ""],
-      ["Rafael Lima", "Go, gRPC · 5 anos", ""],
+    time: "0:00 – 0:12",
+    title: "1 · Abertura",
+    details: [
+      ["Tela", "fundo claro, uma frase digitada letra a letra."],
+      ["Na tela", "“Encontrar a pessoa certa leva semanas. E se levasse uma tarde?”"],
+      ["Corte", "o catálogo de vagas da CORA, com a recrutadora logada."],
     ],
   },
   {
-    title: "Autorização",
-    count: "9",
-    color: "#c98a12",
-    candidates: [
-      ["Tiago Moura", "Só recebeu o pedido", "87"],
-      ["Júlia Prado", "Autorização a renovar", "83"],
+    time: "0:12 – 0:35",
+    title: "2 · Criar vaga",
+    details: [
+      ["Ação", "clica em “Criar vaga”, descreve a vaga em uma frase e aprova os critérios que a CORA propôs."],
+      ["Destaque", "adiciona 3 empresas com contrato de fidelidade à blacklist."],
+      ["Legenda", "“Clientes com contrato nunca são abordados.”"],
     ],
   },
   {
-    title: "Em conversa",
-    count: "4",
-    color: "#fb3c0d",
-    candidates: [
-      ["Larissa Rocha", "“Topo conversar”", "92"],
-      ["André Sales", "E-mail aberto", "85"],
+    time: "0:35 – 0:55",
+    title: "3 · Hunting",
+    details: [
+      ["Tela", "painel da vaga com a CORA trabalhando: banco, LinkedIn, blacklist, eliminatórios."],
+      ["Zoom", "“41 perfis ignorados pela blacklist”."],
+      ["Legenda", "“Primeiro no seu banco. Depois no mercado.”"],
     ],
   },
   {
-    title: "Entregue à Nara",
-    count: "2",
-    color: "#377b5d",
-    candidates: [
-      ["Marina Costa", "Dossiê enviado", "90"],
-      ["Pedro Alves", "Dossiê enviado", "88"],
+    time: "0:55 – 1:20",
+    title: "4 · Perfis e nota",
+    details: [
+      ["Tela", "lista com e-mail, nota e situação: autorizada, aguardando, descartada."],
+      ["Ação", "abre a Larissa e mostra a nota por critério e a evidência."],
+      ["Legenda", "“Cada nota tem um porquê.”"],
     ],
   },
-] as const;
+  {
+    time: "1:20 – 1:38",
+    title: "5 · Aprovação e e-mail",
+    details: [
+      ["Ação", "clica em “Aprovar 5 convites”. Corte para a caixa de entrada da Larissa."],
+      ["Tela", "o e-mail chega com o porquê da escolha e o botão para o WhatsApp."],
+      ["Legenda", "“Você aprova. A CORA escreve.”"],
+    ],
+  },
+  {
+    time: "1:38 – 2:05",
+    title: "6 · Conversa",
+    details: [
+      ["Tela", "WhatsApp no celular. A Larissa pergunta, a CORA responde e anota o que importa."],
+      ["Virada", "ela topa, recebe o link da Nara e o horário aparece marcado."],
+      ["Legenda", "“Conversa como gente, não como robô.”"],
+    ],
+  },
+  {
+    time: "2:05 – 2:22",
+    title: "7 · Dossiê",
+    details: [
+      ["Tela", "o dossiê que a Nara recebe para a entrevista de people."],
+      ["Zoom", "“O que ela contou” e “Para aprofundar”."],
+      ["Legenda", "“A entrevista começa sabendo o que importa.”"],
+    ],
+  },
+  {
+    time: "2:22 – 2:30",
+    title: "8 · Encerramento",
+    accent: true,
+    details: [
+      ["Tela", "fundo branco, o logo do coral cresce, nome e frase."],
+      ["Na tela", "“Diga a vaga. A CORA traz as pessoas.”"],
+      ["Rodapé", "Desafio Tako · cora-rh.vercel.app"],
+    ],
+  },
+];
 
 export function DemoVideo() {
-  const [isPlaying, setIsPlaying] = useState(false);
-
   return (
-    <section className="bg-[#173b40] px-6 py-16 text-white sm:py-20 lg:px-10 lg:py-28" id="demo">
+    <section className="bg-[#f7f8f5] px-6 py-20 text-[#0b3038] lg:px-10 lg:py-28" id="conversa">
       <div className="mx-auto max-w-[1240px]">
-        <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[.24em] text-[#ff9b80]">
-              Demonstração
+        <div className="flex flex-col gap-7">
+          <div className="flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-end">
+            <div className="flex items-center gap-4">
+              <Image alt="" className="h-12 w-12 object-contain sm:h-14 sm:w-14" height={58} src="/coral.png" width={56} />
+              <h2 className="max-w-3xl text-4xl font-semibold leading-[1.02] tracking-[-.05em] sm:text-5xl lg:text-[52px]">
+                Da vaga à entrevista marcada, sem a recrutadora sair da cadeira.
+              </h2>
+            </div>
+            <p className="max-w-[620px] text-base leading-7 text-[#526c68] lg:text-right">
+              Vídeo de 2:30. Uma pessoa usa a CORA como recrutadora de verdade:
+              cada cena é um clique dela e a CORA respondendo.
             </p>
-            <h2 className="mt-3 max-w-2xl text-4xl font-semibold tracking-[-.05em] sm:text-5xl">
-              Do briefing ao contexto entregue para a Nara.
-            </h2>
           </div>
-          <p className="max-w-sm text-sm leading-6 text-[#b8ceca]">
-            Uma prévia visual do fluxo da CORA, com evidências, regras e
-            decisões visíveis para o time.
-          </p>
-        </div>
 
-        <div className="relative overflow-hidden rounded-[26px] border border-white/15 bg-[#244d51] shadow-[0_30px_90px_-45px_rgba(0,0,0,.8)]">
-          <div className="aspect-video min-h-[360px] bg-[radial-gradient(circle_at_65%_35%,rgba(255,154,124,.32),transparent_30%),linear-gradient(135deg,#295b5b,#173b40)] p-4 sm:p-8 lg:p-10">
-            <div className="flex h-full flex-col rounded-xl border border-white/15 bg-[#f7f8f5] text-[#0b3038] shadow-2xl">
-              <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#e4e9e5] bg-white px-3">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#fb3c0d]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#e1b34b]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#6ca77e]" />
-                <span className="ml-2 text-xs font-semibold text-[#526c68]">CORA · Vaga 014</span>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] text-[#5e7672]">Vagas / Backend Sênior</p>
-                    <h3 className="mt-1 text-sm font-semibold sm:text-lg">
-                      Pessoa Desenvolvedora Backend Sênior
-                    </h3>
-                  </div>
-                  <span className="rounded-full bg-[#fff1cc] px-2 py-1 text-[10px] font-semibold text-[#855a0e]">
-                    ● Buscando
-                  </span>
-                </div>
-                <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-hidden sm:grid-cols-4">
-                  {columns.map((column) => (
-                    <div className="min-w-0" key={column.title}>
-                      <p className="mb-2 flex items-center gap-1 text-[10px] font-medium text-[#526c68]">
-                        <i className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: column.color }} />
-                        <span className="truncate">{column.title}</span>
-                        <small>{column.count}</small>
-                      </p>
-                      <div className="space-y-2">
-                        {column.candidates.map(([name, description, score]) => (
-                          <div className="rounded-lg border border-[#e4e9e5] bg-white p-2" key={name}>
-                            <p className="flex justify-between gap-1 text-[10px] font-semibold">
-                              <span className="truncate">{name}</span>
-                              {score ? <b className="text-[#dc3209]">{score}</b> : null}
-                            </p>
-                            <p className="mt-1 truncate text-[9px] text-[#5e7672]">{description}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+          <div aria-hidden="true" className="flex h-2 gap-1 overflow-hidden rounded-full">
+            {scenes.map((scene, index) => (
+              <span
+                className="h-full"
+                key={scene.title}
+                style={{
+                  backgroundColor: index === 0 || index === scenes.length - 1
+                    ? "#0b3038"
+                    : index < 4
+                      ? "#fb3c0d"
+                      : "#3a6f6c",
+                  flex: index === 0 ? 12 : index === 1 ? 23 : index === 2 ? 20 : index === 3 ? 25 : index === 4 ? 18 : index === 5 ? 27 : index === 6 ? 17 : 8,
+                }}
+              />
+            ))}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            {scenes.map((scene) => (
+              <article
+                className={`flex min-h-[310px] flex-col gap-3 rounded-[14px] border p-5 ${
+                  scene.accent
+                    ? "border-[#f0b5aa] bg-[#fff1ee]"
+                    : "border-[#dfe6e1] bg-white"
+                }`}
+                key={scene.title}
+              >
+                <span className={`font-mono text-xs ${scene.accent ? "text-[#a43826]" : "text-[#5e7672]"}`}>
+                  {scene.time}
+                </span>
+                <h3 className="text-xl font-bold tracking-[-.03em]">{scene.title}</h3>
+                <div className="flex flex-col gap-3 text-sm leading-6 text-[#2c4f55]">
+                  {scene.details.map(([label, text]) => (
+                    <p key={label}>
+                      <b>{label}:</b> {text}
+                    </p>
                   ))}
                 </div>
-                <p className="truncate rounded-lg border border-[#e4e9e5] bg-white px-3 py-2 font-mono text-[9px] text-[#2c4f55] sm:text-[10px]">
-                  <b className="text-[#2f6e52]">feito</b> · evidência registrada · autorização validada · rastro a91f
-                </p>
-              </div>
-            </div>
+              </article>
+            ))}
           </div>
 
-          <button
-            aria-label={isPlaying ? "Pausar prévia da demonstração" : "Reproduzir prévia da demonstração"}
-            className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#fb3c0d] text-2xl text-white shadow-[0_0_0_12px_rgba(251,60,13,.18)] transition hover:scale-105"
-            onClick={() => setIsPlaying((playing) => !playing)}
-            type="button"
-          >
-            <span aria-hidden="true">{isPlaying ? "Ⅱ" : "▶"}</span>
-          </button>
-          {isPlaying ? (
-            <span className="absolute bottom-4 left-4 rounded-full bg-[#0b3038]/85 px-3 py-1 text-xs text-white">
-              Prévia em simulação
-            </span>
-          ) : null}
-        </div>
-
-        <div className="mt-8 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <ol className="grid gap-3 text-sm text-[#d0e0dc] sm:grid-cols-4">
-            {[
-              "Defina o contexto",
-              "Encontre evidências",
-              "Revise a recomendação",
-              "Entregue para a Nara",
-            ].map((step, index) => (
-              <li className="flex items-center gap-2" key={step}>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-[#ffad95]">
-                  {index + 1}
-                </span>
-                {step}
-              </li>
-            ))}
-          </ol>
-          <Link className="text-sm font-bold text-[#ffad95] transition hover:text-white" href="/">
-            Abrir o painel →
-          </Link>
+          <p className="text-xs text-[#5e7672]">
+            Prévia visual · Dados sintéticos · Simulação identificada
+          </p>
         </div>
       </div>
     </section>

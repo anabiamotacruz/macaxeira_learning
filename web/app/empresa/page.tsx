@@ -39,7 +39,7 @@ export default function EmpresaPage() {
   return (
     <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
       <Sidebar active="empresa" />
-      <div className="mx-auto max-w-[1050px] px-5 py-8 sm:px-6 lg:px-6">
+      <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-[22px] px-5 py-8 sm:px-6 lg:px-6">
           <header className="mb-8"><p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4c8885]">Contexto da empresa</p><h1 className="text-4xl font-semibold tracking-[-0.04em] text-[#0b3038]">Perfil da empresa</h1><p className="mt-2 text-sm text-[#718784]">Esse contexto orienta a busca sem substituir decisões humanas.</p></header>
           {salvo && <p className="mb-5 rounded-lg border border-[#b9dfc5] bg-[#eef9f0] px-4 py-3 text-sm text-[#377b5d]" role="status">Perfil salvo neste navegador.</p>}
           <section className="mb-5 rounded-xl border border-[#dfe7e2] bg-white p-6">

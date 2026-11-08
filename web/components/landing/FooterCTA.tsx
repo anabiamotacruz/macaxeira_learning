@@ -4,7 +4,7 @@ import Link from "next/link";
 export function FooterCTA() {
   return (
     <>
-      <section className="bg-[#dc3209] px-6 py-24 text-white sm:py-28" id="regras">
+      <section className="bg-[#dc3209] px-6 py-24 text-white sm:py-28" id="acesso">
         <div className="mx-auto flex max-w-[1100px] flex-col items-center gap-6 text-center">
           <p className="text-xs font-bold uppercase tracking-[.24em] text-[#ffd0c3]">
             Próximo passo

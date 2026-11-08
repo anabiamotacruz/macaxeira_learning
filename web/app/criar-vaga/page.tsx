@@ -61,7 +61,7 @@ export default function CriarVagaPage() {
   return (
     <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
       <Sidebar active="criar" />
-      <div className="mx-auto max-w-[1050px] px-5 py-8 sm:px-6 lg:px-6">
+      <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-5 py-8 sm:px-6 lg:px-6">
           <header className="mb-8">
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4c8885]">Nova oportunidade</p>
             <h1 className="text-4xl font-semibold tracking-[-0.04em] text-[#0b3038]">Criar vaga</h1>

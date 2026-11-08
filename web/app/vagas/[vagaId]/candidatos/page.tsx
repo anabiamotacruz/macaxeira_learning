@@ -2,14 +2,16 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { VagaCandidatos } from "../../../../components/VagaCandidatos";
+import { Sidebar } from "../../../../components/Sidebar";
 
 export const instant = false;
 
 export default async function VagaCandidatosPage({ params }: { params: Promise<{ vagaId: string }> }) {
   const { vagaId } = await params;
   return (
-    <main className="min-h-screen bg-[#f7f8f5] px-5 py-10 text-[#0e3038] sm:px-10">
-      <div className="mx-auto max-w-4xl">
+    <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
+      <Sidebar active="catalogo" />
+      <div className="mx-auto w-full max-w-[1240px] px-5 py-8 sm:px-6">
         <Link className="text-sm text-[#4c8885]" href="/">← Voltar ao catálogo</Link>
         <h1 className="mt-5 text-4xl font-semibold">Candidatos da vaga</h1>
         <p className="mt-2 text-sm text-[#718784]">Vaga: {vagaId}</p>
