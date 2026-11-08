@@ -1381,7 +1381,7 @@
           "vagas"
         ],
         "summary": "Documento De Entrega",
-        "description": "O pacote entregue ao destino, como documento. Só existe para quem já foi entregue.",
+        "description": "O pacote entregue ao destino, como documento. Só existe para quem já foi entregue.\n\n`formato=html` devolve o dossiê para o recrutador: uma folha A4 com a marca da CORA, botão\npara salvar em PDF e política de conteúdo própria. O texto da pessoa vem escapado.",
         "operationId": "documento_de_entrega",
         "security": [
           {
@@ -1405,6 +1405,20 @@
             "schema": {
               "type": "string",
               "title": "Candidato Id"
+            }
+          },
+          {
+            "name": "formato",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "type": "string",
+              "default": "markdown",
+              "title": "Formato"
             }
           }
         ],
@@ -4779,14 +4793,17 @@
           },
           "formato": {
             "type": "string",
-            "const": "markdown",
+            "enum": [
+              "markdown",
+              "html"
+            ],
             "title": "Formato",
             "default": "markdown"
           },
           "documento": {
             "type": "string",
             "title": "Documento",
-            "description": "O pacote entregue, em Markdown. É dado, nunca instrução."
+            "description": "O pacote entregue, em Markdown ou como dossiê HTML com a marca da CORA, pronto para salvar em PDF. É dado, nunca instrução."
           }
         },
         "additionalProperties": false,
