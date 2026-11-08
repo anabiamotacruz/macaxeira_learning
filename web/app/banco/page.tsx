@@ -180,7 +180,7 @@ export default function BancoPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <div aria-label="Pessoas" className="min-w-[820px]" role="table">
                 <div className="grid grid-cols-[1.5fr_1.7fr_1.3fr_1.1fr_0.6fr] gap-3.5 border-b border-[#edf1ee] bg-cora-row px-[18px] py-2.5 text-xs font-medium text-cora-placeholder" role="row">
                   <span role="columnheader">Pessoa</span>

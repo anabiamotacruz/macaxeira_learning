@@ -302,7 +302,7 @@ export function CriarVaga({ descricaoInicial = "" }: { descricaoInicial?: string
                 <p className="m-0 text-[13px] text-cora-muted">A busca para quando a meta é atingida ou o prazo acaba. Limites de contato também ficam em código.</p>
               </div>
               <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-                <label className={ROTULO}>Pessoas entregues à Nara<input className={CAMPO} min={1} onChange={(e) => setMeta(e.target.value)} type="number" value={meta} /></label>
+                <label className={ROTULO}>Pessoas entregues ao recrutador<input className={CAMPO} min={1} onChange={(e) => setMeta(e.target.value)} type="number" value={meta} /></label>
                 <label className={ROTULO}>Prazo em dias<input className={CAMPO} min={1} onChange={(e) => setPrazo(e.target.value)} type="number" value={prazo} /></label>
                 <label className={ROTULO}>Tentativas de contato por pessoa<input className={CAMPO} max={3} min={1} onChange={(e) => setTentativas(e.target.value)} type="number" value={tentativas} /></label>
               </div>
@@ -351,7 +351,7 @@ export function CriarVaga({ descricaoInicial = "" }: { descricaoInicial?: string
               <h2 className="m-0 text-base font-semibold tracking-[-0.02em]" id="sec-custo">Custo e rastro</h2>
               <dl className="m-0 grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 text-[13px]">
                 <dt className="text-cora-muted">Limite de gasto</dt><dd className="num m-0 font-semibold">definido no mandato</dd>
-                <dt className="text-cora-muted">Modelo</dt><dd className="m-0 font-mono text-xs">GLM-5.2</dd>
+                <dt className="text-cora-muted">Modelo</dt><dd className="m-0 text-xs">o configurado na API</dd>
               </dl>
               <p className="m-0 text-xs text-cora-placeholder">Toda chamada de modelo e ferramenta fica no rastro da vaga. Se o gasto passar do limite, a busca pausa.</p>
             </section>

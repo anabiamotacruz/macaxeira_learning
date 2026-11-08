@@ -596,7 +596,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
   const cartaoDe = (item: Item): Cartao => {
     const decisao = decisoes[item.candidato.id];
     const convite = convitePorPessoa[item.candidato.id];
-    if (naNara.has(item.candidato.id)) return { item, decisao, etiqueta: "Aceitou", estilo: etiquetaOk, detalhe: "Contexto entregue à Nara", nara: true };
+    if (naNara.has(item.candidato.id)) return { item, decisao, etiqueta: "Aceitou", estilo: etiquetaOk, detalhe: "Contexto entregue ao recrutador", nara: true };
     if (item.decisao === "pedir_humano")
       return { item, decisao, etiqueta: "Para o RH decidir", estilo: etiquetaEspera, detalhe: traduzir(decisao?.regra === "fora_da_faixa_verde" ? decisao.motivo : decisao?.regra ?? ""), revisao: true };
     if (convite) {
@@ -612,7 +612,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
     { titulo: "Analisando", cards: ativos.filter((c) => c.etiqueta === "Em análise") },
     { titulo: "Para o RH decidir", cards: ativos.filter((c) => c.revisao) },
     { titulo: "Indicadas e em conversa", cards: ativos.filter((c) => !c.revisao && !c.nara && c.etiqueta !== "Em análise") },
-    { titulo: "Entregue à Nara", cards: ativos.filter((c) => c.nara) },
+    { titulo: "Entregue ao recrutador", cards: ativos.filter((c) => c.nara) },
   ];
   const lista: Cartao[] = [
     ...ativos,
@@ -721,7 +721,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
             <Numero detalhe="com nota e evidência" rotulo="Analisadas" valor={resumo.analisados} />
             <Numero detalhe="cada uma com a regra registrada" rotulo="Descartadas por regra" valor={resumo.descartados} />
             <Numero detalhe={resumo.na_fila_humana ? "aguardam você" : "nada pendente"} rotulo="Para o RH decidir" valor={resumo.na_fila_humana} />
-            <Numero rotulo="Meta" valor={<>{pacotes.length} <span className="text-[15px] font-medium text-cora-muted">de {meta} na Nara</span></>}>
+            <Numero detalhe="ao recrutador" rotulo="Meta" valor={<>{pacotes.length} <span className="text-[15px] font-medium text-cora-muted">de {meta} entregues</span></>}>
               <span className="mt-0.5 h-1.5 overflow-hidden rounded-[3px] bg-[#EDF1EE]">
                 <span className="block h-full rounded-[3px] bg-cora-accent" style={{ width: `${Math.min(100, (pacotes.length / Math.max(1, meta)) * 100)}%` }} />
               </span>
@@ -771,7 +771,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
 
             {aba === "quadro" && (
               <div className="flex flex-col gap-4">
-                <div className="overflow-x-auto pb-1">
+                <div className="relative overflow-x-auto pb-1">
                   <div className="grid min-w-[950px] grid-cols-4 items-start gap-3">
                     {colunas.map((coluna) => (
                       <div className="flex flex-col gap-2 rounded-xl bg-cora-muted-bg p-2.5" key={coluna.titulo}>
@@ -824,7 +824,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
 
             {aba === "lista" && (
               <div className={`${cartao} overflow-hidden`}>
-                <div className="overflow-x-auto">
+                <div className="relative overflow-x-auto">
                   <div aria-label="Pessoas da vaga" className="min-w-[900px]" role="table">
                     <div className="grid grid-cols-[1.6fr_0.5fr_1.3fr_1.2fr_1.9fr] gap-3.5 border-b border-[#EDF1EE] bg-cora-row px-[18px] py-2.5 text-xs font-medium text-cora-placeholder" role="row">
                       <span role="columnheader">Pessoa</span><span role="columnheader">Nota</span><span role="columnheader">Situação</span><span role="columnheader">Origem</span><span role="columnheader">Detalhe</span>
@@ -934,7 +934,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                     <span className="text-xs text-cora-placeholder">Cada etapa do agente, com a regra aplicada e o custo. Mostra os 100 eventos mais recentes.</span>
                   </span>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="relative overflow-x-auto">
                   <div aria-label="Eventos do rastro" className="min-w-[820px] text-[13px]" role="table">
                     <div className="grid grid-cols-[80px_130px_1fr_180px_100px] gap-3.5 border-b border-[#EDF1EE] bg-cora-row px-[18px] py-2.5 text-xs font-medium text-cora-placeholder" role="row">
                       <span role="columnheader">Hora</span><span role="columnheader">Etapa</span><span role="columnheader">O que aconteceu</span><span role="columnheader">Pessoa</span><span className="text-right" role="columnheader">Custo</span>

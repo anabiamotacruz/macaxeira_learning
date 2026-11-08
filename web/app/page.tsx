@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader, AppMain } from "../components/AppHeader";
 import { SimuladoBadge } from "../components/SimuladoBadge";
-import { ApiError, listarVagas, modoReservaAtivo, obterResumo, type ResumoVaga } from "../lib/api";
+import { ApiError, listarPacotesEntregues, listarVagas, modoReservaAtivo, obterResumo, type ResumoVaga } from "../lib/api";
 import { vagasIniciais } from "../lib/dados";
 import type { EstadoVaga, Vaga } from "../lib/tipos";
 
@@ -14,7 +14,7 @@ const REVISOR = "Ana Ribeiro";
 type Grupo = "buscando" | "concluida" | "rascunho";
 type Filtro = "todas" | Grupo;
 
-type Linha = { vaga: Vaga; estado: EstadoVaga; resumo: ResumoVaga | null };
+type Linha = { vaga: Vaga; estado: EstadoVaga; resumo: ResumoVaga | null; entregues: number | null };
 
 const FILTROS: Array<[Filtro, string]> = [
   ["todas", "Todas"],
@@ -46,13 +46,13 @@ function estiloDoEstado(estado: EstadoVaga): string {
   return "border-cora-line-2 bg-cora-muted-bg text-cora-ink-2";
 }
 
-function progresso({ vaga, estado, resumo }: Linha): { pct: number; texto: string } {
+function progresso({ vaga, estado, resumo, entregues }: Linha): { pct: number; texto: string } {
   if (estado === "rascunho") return { pct: 0, texto: "Critérios aguardam sua aprovação" };
   if (estado === "aguardando_mandato") return { pct: 0, texto: "Mandato aguarda assinatura" };
-  if (!resumo) return { pct: 0, texto: "Resumo indisponível" };
+  if (!resumo || entregues === null) return { pct: 0, texto: "Resumo indisponível" };
   const meta = Math.max(vaga.meta_candidatos, 1);
-  const pct = Math.min(100, Math.round((resumo.indicados / meta) * 100));
-  return { pct, texto: `${resumo.indicados} de ${vaga.meta_candidatos} entregues à Nara` };
+  const pct = Math.min(100, Math.round((entregues / meta) * 100));
+  return { pct, texto: `${entregues} de ${vaga.meta_candidatos} entregues · ${resumo.indicados} indicadas` };
 }
 
 function IconeMaleta() {
@@ -79,7 +79,7 @@ export default function Home() {
         if (modoReservaAtivo()) {
           if (ativo) {
             setLinhas(
-              vagasIniciais.map((vaga) => ({ vaga, estado: vaga.aprovada ? "buscando" : "rascunho", resumo: null })),
+              vagasIniciais.map((vaga) => ({ vaga, estado: vaga.aprovada ? "buscando" : "rascunho", resumo: null, entregues: null })),
             );
           }
           return;
@@ -88,12 +88,15 @@ export default function Home() {
         const comResumo = await Promise.all(
           respostas.map(async (r) => {
             let resumo: ResumoVaga | null = null;
+            let entregues: number | null = null;
             try {
               resumo = await obterResumo(r.vaga.id);
+              // Entregue é quem aceitou e teve o pacote passado ao recrutador, não só quem foi indicado.
+              entregues = (await listarPacotesEntregues(r.vaga.id)).length;
             } catch {
               // Sem resumo, a linha mostra a vaga e o estado; os números ficam como indisponíveis.
             }
-            return { vaga: r.vaga, estado: resumo?.estado ?? r.estado, resumo };
+            return { vaga: r.vaga, estado: resumo?.estado ?? r.estado, resumo, entregues };
           }),
         );
         if (ativo) setLinhas(comResumo);
@@ -116,7 +119,7 @@ export default function Home() {
       rascunhos: linhas.filter((l) => grupoDoEstado(l.estado) === "rascunho").length,
       perfis: buscando.reduce((s, l) => s + (l.resumo?.analisados ?? 0), 0),
       fila: linhas.reduce((s, l) => s + (l.resumo?.na_fila_humana ?? 0), 0),
-      entregues: buscando.reduce((s, l) => s + (l.resumo?.indicados ?? 0), 0),
+      entregues: buscando.reduce((s, l) => s + (l.entregues ?? 0), 0),
       metas: buscando.reduce((s, l) => s + l.vaga.meta_candidatos, 0),
       porGrupo: {
         todas: linhas.length,
@@ -172,7 +175,7 @@ export default function Home() {
           <Metrica
             complemento={`de ${totais.metas}`}
             legenda="soma das metas das vagas buscando"
-            rotulo="Entregues à Nara"
+            rotulo="Entregues ao recrutador"
             valor={String(totais.entregues)}
           />
         </section>
@@ -225,7 +228,7 @@ export default function Home() {
             </div>
           )}
 
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <div aria-label="Lista de vagas" className="min-w-[980px]" role="table">
               <div className={`grid ${GRADE} gap-4 border-b border-[#EDF1EE] bg-cora-row px-4 py-2.5 text-xs font-medium text-cora-placeholder`} role="row">
                 <span role="columnheader">Vaga</span>

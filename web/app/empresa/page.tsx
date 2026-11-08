@@ -129,7 +129,7 @@ export default function EmpresaPage() {
             </div>
             <span className="cora-chip cora-chip-neutral num font-semibold">{blacklist.length} {blacklist.length === 1 ? "ativa" : "ativas"}</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <div aria-label="Empresas na blacklist" className="min-w-[640px]" role="table">
               <div className="grid grid-cols-[1.4fr_1fr_1.1fr_80px] gap-3.5 border-y border-[#edf1ee] bg-cora-row px-6 py-2.5 text-xs font-medium text-cora-placeholder" role="row">
                 <span role="columnheader">Empresa</span>
