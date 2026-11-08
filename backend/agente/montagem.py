@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from backend.agente.conector_mcp import ConectorMCP, DestinoMCP, DestinoPorEmpresa
+from backend.agente.configuracao import PerguntaVaga, propor_configuracao
 from backend.agente.fluxo import Priorizador, ProvedorConsultas, RegistrarCorte
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
@@ -290,6 +291,24 @@ def redigir_retorno(vaga: Vaga, candidato: Candidato, resultado: ResultadoEntrev
     return mensagem_pos_entrevista(vaga, resultado).replace("{nome}", candidato.nome)
 
 
+CAMPOS_FORA_DA_PROPOSTA = frozenset({"email", "cargo"})
+"""Contato e texto livre não servem de requisito: o primeiro é dado pessoal, o segundo não casa."""
+
+
+def campos_do_banco_demo() -> dict[str, list[str]]:
+    """Os atributos que os perfis da demonstração registram, com os valores que aparecem."""
+    valores: dict[str, set[str]] = {}
+    perfis = perfis_sinteticos(EMPRESA_BASE_SINTETICA)
+    atributos = [p.atributos for p in perfis] + [
+        {"linguagem": linguagem} for _, _, linguagem, _ in PERFIS_DEMO
+    ]
+    for registro in atributos:
+        for campo, valor in registro.items():
+            if campo not in CAMPOS_FORA_DA_PROPOSTA and str(valor).strip():
+                valores.setdefault(campo, set()).add(str(valor).strip())
+    return {campo: sorted(lista) for campo, lista in sorted(valores.items())}
+
+
 class DadosDemo:
     """Coloca as pessoas fictícias na fonte da demonstração, por empresa."""
 
@@ -351,6 +370,7 @@ def _montar(
     respondedor_duvida: Callable[[Vaga, Candidato, str], str | None],
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
+    propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
@@ -376,6 +396,7 @@ def _montar(
             redator_convite=redigir_convite,
             respondedor_duvida=respondedor_duvida,
             redator_retorno=redigir_retorno,
+            propositor_vaga=propositor_vaga,
         ),
         recarregar=fonte.dados.recarregar,
         modelos_de_vaga=modelos_de_vaga(),
@@ -445,6 +466,9 @@ def montar_com_modelo(
         respondedor_duvida=responder,
         destino=destino,
         fonte_extra=fonte_extra,
+        propositor_vaga=lambda descricao, empresa_id: propor_configuracao(
+            descricao, empresa_id, cliente, campos_do_banco=campos_do_banco_demo()
+        ),
     )
 
 

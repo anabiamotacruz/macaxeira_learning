@@ -14,7 +14,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from backend.agente.aprendizado import propor_ajuste
 from backend.agente.auditoria import Auditoria, decisoes_vigentes
+from backend.agente.configuracao import PerguntaVaga
+from backend.agente.documento import documento_de_ingestao
 from backend.agente.fluxo import (
     REGRA_REVERSAO,
     FluxoVaga,
@@ -50,6 +53,7 @@ from backend.contratos.modelos import (
     EstadoVaga,
     EventoFluxo,
     Mandato,
+    PropostaAjuste,
     RespostaCandidato,
     ResumoExecucao,
     SaidaPersonalizada,
@@ -62,6 +66,10 @@ from backend.contratos.modelos import (
 from backend.modelos.resiliencia import Resiliencia
 
 logger = logging.getLogger(__name__)
+
+
+class PropostaSemModelo(ErroContrato):
+    """A proposta de critérios precisa do modelo, e esta montagem não tem um."""
 
 
 class VagaInexistente(ErroContrato):
@@ -121,6 +129,8 @@ class DependenciasFluxo:
     redator_convite: RedatorConvite | None = None
     respondedor_duvida: RespondedorDuvida | None = None
     redator_retorno: RedatorRetorno | None = None
+    propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None
+    """Recebe a descrição e a empresa. Sem ele, a proposta de critérios fica indisponível."""
 
 
 def _novo_id_de_vaga() -> str:
@@ -313,6 +323,39 @@ class ServicoVagas:
             simulado=True,
             momento=self._dependencias.relogio(),
         )
+
+    def propor_vaga(self, empresa_id: str, descricao: str) -> Vaga | PerguntaVaga:
+        """Critérios propostos a partir da descrição. Não cria vaga: a pessoa revisa e cria."""
+        propositor = self._dependencias.propositor_vaga
+        if propositor is None:
+            raise PropostaSemModelo("a proposta de critérios precisa do modelo")
+        return propositor(descricao, empresa_id)
+
+    def sugestao_de_ajuste(self, empresa_id: str, vaga_id: str) -> PropostaAjuste | None:
+        """Lê os resultados do destino e sugere ajuste. Só alerta: nada muda na vaga."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        try:
+            resultados = self._dependencias.destino.resultados(empresa_id, vaga_id)
+        except (ErroContrato, OSError) as erro:
+            logger.warning("sem resultados do destino para sugerir ajuste: %s", type(erro).__name__)
+            return None
+        return propor_ajuste(fluxo.vaga, resultados)
+
+    def documento(self, empresa_id: str, vaga_id: str, candidato_id: str) -> str:
+        """O documento de ingestão de quem já foi entregue ao destino, com a conversa."""
+        fluxo = self._fluxo(empresa_id, vaga_id)
+        pacote = next(
+            (p for p in fluxo.pacotes_entregues() if p.candidato_id == candidato_id), None
+        )
+        if pacote is None:
+            raise CandidatoInexistente("não há entrega para esta pessoa nesta vaga")
+        duvidas = [
+            duvida
+            for registro in fluxo.convites()
+            if registro.convite.candidato_id == candidato_id
+            for duvida in registro.duvidas
+        ]
+        return documento_de_ingestao(pacote, fluxo.vaga, duvidas)
 
     def resumo(self, empresa_id: str, vaga_id: str) -> ResumoExecucao:
         fluxo = self._fluxo(empresa_id, vaga_id)

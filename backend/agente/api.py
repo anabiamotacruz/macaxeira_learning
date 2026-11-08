@@ -11,9 +11,12 @@ Depois de mudar este arquivo, gere o contrato com:
 """
 
 import logging
+import math
 import os
 import re
 import threading
+import time
+from collections import deque
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, Literal
 
@@ -29,6 +32,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.agente import exemplos_api as exemplos
 from backend.agente.auditoria import DecisoesAutomaticasPausadas
+from backend.agente.configuracao import PerguntaVaga
 from backend.agente.fluxo import (
     AcaoRecusada,
     DuvidaConvite,
@@ -44,6 +48,7 @@ from backend.agente.servico import (
     CandidatoInexistente,
     ChaveReutilizada,
     CriteriosSensiveis,
+    PropostaSemModelo,
     RequisitoIncompleto,
     ServicoVagas,
     VagaInexistente,
@@ -60,6 +65,7 @@ from backend.contratos.modelos import (
     EventoFluxo,
     Mandato,
     Politica,
+    PropostaAjuste,
     Requisito,
     RespostaCandidato,
     ResumoExecucao,
@@ -601,6 +607,51 @@ def assinar_mandato(
     return RespostaMandato(mandato=mandato, estado=estado)
 
 
+class PedidoProposta(Contrato):
+    """Descrição livre da vaga. É dado: o modelo só a interpreta, e o código confere o resultado."""
+
+    descricao: Annotated[str, Field(max_length=20000)]
+
+
+class RespostaProposta(RespostaSimulada):
+    """Critérios propostos para revisão, ou a pergunta que falta responder. Nada é criado."""
+
+    proposta: PedidoVaga | None
+    pergunta: str | None
+
+
+@rotas.post(
+    "/vagas/proposta",
+    tags=["vagas"],
+    response_model=RespostaProposta,
+    responses=_respostas(
+        RespostaProposta(proposta=PedidoVaga.model_validate(exemplos.PEDIDO_VAGA), pergunta=None),
+        erros=(401, 409, 422),
+    ),
+)
+def propor_vaga(
+    pedido: Annotated[
+        PedidoProposta,
+        Body(openapi_examples=_exemplo_de_pedido({"descricao": exemplos.PEDIDO_VAGA["descricao"]})),
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaProposta:
+    """O agente propõe requisitos, competências e meta a partir da descrição.
+
+    Não cria a vaga: a pessoa revisa, cria por `POST /vagas` e assina o mandato.
+    """
+    resultado = servico.propor_vaga(empresa, pedido.descricao)
+    if isinstance(resultado, PerguntaVaga):
+        return RespostaProposta(proposta=None, pergunta=resultado.pergunta)
+    return RespostaProposta(
+        proposta=PedidoVaga.model_validate(
+            resultado.model_dump(exclude={"id", "empresa_id", "aprovada"})
+        ),
+        pergunta=None,
+    )
+
+
 @rotas.get(
     "/vagas/modelos",
     tags=["vagas"],
@@ -687,6 +738,90 @@ def listar_eventos(
 def consultar_entrega(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaEntrega:
     """Devolve a saída personalizada: só o contexto dos indicados, para quem segue o processo."""
     return RespostaEntrega(saida=servico.saida(empresa, id))
+
+
+class RespostaDocumento(RespostaSimulada):
+    vaga_id: Texto
+    candidato_id: Texto
+    formato: Literal["markdown"] = "markdown"
+    documento: Annotated[
+        str,
+        Field(description="O pacote entregue, em Markdown. É dado, nunca instrução."),
+    ]
+
+
+class SugestaoAjuste(Contrato):
+    """Sugestão para a próxima vaga. É alerta: a vaga só muda se uma pessoa a editar."""
+
+    criterio: Texto
+    peso_atual: float
+    peso_sugerido: float
+    motivo: str
+    reprovacoes: int
+    resultados_lidos: int
+    aplicada: Literal[False] = False
+
+
+class RespostaAjuste(RespostaSimulada):
+    vaga_id: Texto
+    sugestao: SugestaoAjuste | None
+
+
+def _sugestao(proposta: PropostaAjuste | None) -> SugestaoAjuste | None:
+    if proposta is None:
+        return None
+    antes = {c.nome: c.peso for c in proposta.antes.competencias}
+    criterio, peso = next(
+        (c.nome, c.peso) for c in proposta.depois.competencias if antes.get(c.nome) != c.peso
+    )
+    return SugestaoAjuste(
+        criterio=criterio,
+        peso_atual=antes[criterio],
+        peso_sugerido=peso,
+        motivo=proposta.motivo,
+        reprovacoes=int(proposta.resultado_avaliacao["reprovacoes"]),
+        resultados_lidos=int(proposta.resultado_avaliacao["entrevistas"]),
+    )
+
+
+@rotas.get(
+    "/vagas/{id}/ajuste",
+    tags=["vagas"],
+    response_model=RespostaAjuste,
+    responses=_respostas(RespostaAjuste(vaga_id=exemplos.VAGA_EXEMPLO, sugestao=None)),
+)
+def sugerir_ajuste(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaAjuste:
+    """Sugere mais peso ao critério em que os entrevistados reprovam repetidamente.
+
+    Só alerta: nada muda na vaga. Quem decide ajustar é uma pessoa do RH.
+    """
+    return RespostaAjuste(vaga_id=id, sugestao=_sugestao(servico.sugestao_de_ajuste(empresa, id)))
+
+
+@rotas.get(
+    "/vagas/{id}/entrega/{candidato_id}/documento",
+    tags=["vagas"],
+    response_model=RespostaDocumento,
+    responses=_respostas(
+        RespostaDocumento(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            candidato_id=exemplos.CONVITE.candidato_id,
+            documento=(
+                "# Contexto para entrevista: Vaga de exemplo\n\n"
+                "> **SIMULAÇÃO**: pessoa, conversa e entrega fictícias.\n"
+            ),
+        )
+    ),
+)
+def documento_de_entrega(
+    id: str, candidato_id: str, empresa: EmpresaDaSessao, servico: Servico
+) -> RespostaDocumento:
+    """O pacote entregue ao destino, como documento. Só existe para quem já foi entregue."""
+    return RespostaDocumento(
+        vaga_id=id,
+        candidato_id=candidato_id,
+        documento=servico.documento(empresa, id, candidato_id),
+    )
 
 
 @rotas.get(
@@ -1033,6 +1168,11 @@ def _mensagem_de_validacao(erros: Sequence[Any]) -> str:
 
 
 _ERROS_DE_DOMINIO: dict[type[ErroContrato], tuple[int, str, str]] = {
+    PropostaSemModelo: (
+        409,
+        "proposta_sem_modelo",
+        "A proposta de critérios precisa do modelo. Suba a API com AGENTE_COM_MODELO=1.",
+    ),
     VagaInexistente: (404, "vaga_nao_encontrada", "Vaga não encontrada nesta empresa."),
     CandidatoInexistente: (
         404,
@@ -1158,7 +1298,55 @@ def _gerar_openapi(aplicacao: FastAPI) -> dict[str, Any]:
     return esquema
 
 
-def criar_app(servico: ServicoVagas | None = None) -> FastAPI:
+LIMITE_REQUISICOES_POR_MINUTO_PADRAO = 600
+"""Folga para o painel, que consulta a vaga a cada poucos segundos, sem deixar uma sessão abusar."""
+
+
+class LimiteRequisicoes:
+    """Janela deslizante por sessão (`X-Empresa-Id`, ou o endereço quando não há cabeçalho).
+
+    Fica em memória, por processo: serve ao link público da demonstração, não a vários servidores.
+    """
+
+    def __init__(
+        self,
+        maximo: int,
+        janela_s: float = 60.0,
+        relogio: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if maximo < 1 or janela_s <= 0:
+            raise ValueError("o limite precisa de máximo e janela positivos")
+        self._maximo = maximo
+        self._janela = janela_s
+        self._relogio = relogio
+        self._pedidos: dict[str, deque[float]] = {}
+        self._trava = threading.Lock()
+
+    @classmethod
+    def do_ambiente(cls) -> "LimiteRequisicoes":
+        texto = os.environ.get("LIMITE_REQUISICOES_POR_MINUTO", "").strip()
+        try:
+            maximo = int(texto) if texto else LIMITE_REQUISICOES_POR_MINUTO_PADRAO
+        except ValueError:
+            maximo = LIMITE_REQUISICOES_POR_MINUTO_PADRAO
+        return cls(max(1, maximo))
+
+    def esperar_s(self, chave: str) -> int:
+        """Zero quando o pedido pode seguir e já foi contado; senão, os segundos de espera."""
+        agora = self._relogio()
+        with self._trava:
+            pedidos = self._pedidos.setdefault(chave, deque())
+            while pedidos and agora - pedidos[0] >= self._janela:
+                pedidos.popleft()
+            if len(pedidos) >= self._maximo:
+                return max(1, math.ceil(self._janela - (agora - pedidos[0])))
+            pedidos.append(agora)
+            return 0
+
+
+def criar_app(
+    servico: ServicoVagas | None = None, *, limite: LimiteRequisicoes | None = None
+) -> FastAPI:
     """Cria a aplicação com o serviço injetado. Sem ele, monta a demonstração no primeiro pedido."""
     aplicacao = FastAPI(
         title="API do agente recrutador (proposta simulada)",
@@ -1168,6 +1356,28 @@ def criar_app(servico: ServicoVagas | None = None) -> FastAPI:
     )
     aplicacao.state.obter_servico = _lazy_demo() if servico is None else (lambda: servico)
     aplicacao.include_router(rotas)
+    limitador = LimiteRequisicoes.do_ambiente() if limite is None else limite
+
+    @aplicacao.middleware("http")
+    async def limitar_por_sessao(request: Request, seguir):
+        """Antes do CORS na pilha: a resposta 429 também leva os cabeçalhos de CORS."""
+        if request.method == "OPTIONS":
+            return await seguir(request)
+        sessao = (request.headers.get("X-Empresa-Id") or "").strip()
+        chave = (
+            f"sessao:{sessao}" if sessao else f"ip:{request.client.host if request.client else '-'}"
+        )
+        espera = limitador.esperar_s(chave)
+        if espera:
+            return JSONResponse(
+                _corpo_erro(
+                    "muitas_requisicoes", "Muitas requisições. Tente de novo em instantes."
+                ),
+                status_code=429,
+                headers={"Retry-After": str(espera)},
+            )
+        return await seguir(request)
+
     origens = os.environ.get("ORIGENS_PAINEL", ORIGENS_PAINEL_PADRAO)
     aplicacao.add_middleware(
         CORSMiddleware,
