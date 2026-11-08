@@ -4,6 +4,8 @@ Referências: docs.peopledatalabs.com/docs/reference-person-enrichment-api,
 /docs/input-parameters-person-enrichment-api, /docs/examples-person-enrichment-api,
 /docs/authentication e /docs/errors.
 
+A conferência de status e a montagem do item servem também à busca, em `people_data_labs_busca`.
+
 Cobrança: por pessoa encontrada. 200 consome um crédito; 404 significa sem resultado e não cobra.
 Os dados de identidade vão no corpo do POST, nunca na URL, que aparece em logs do cliente HTTP.
 Só é permitido pedir enriquecimento por identificadores que não sejam do LinkedIn.
@@ -62,6 +64,7 @@ CAMPOS_PEDIDOS = (
 """Só o necessário para o perfil profissional. Sexo, nascimento, LinkedIn e telefones ficam fora."""
 HOSTS_DE_PERFIL = ("github.com",)
 TEMPORARIOS = frozenset({429})
+CREDENCIAL_RECUSADA = frozenset({401, 403})
 _EMAIL = re.compile(r"[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+")
 
 
@@ -146,6 +149,67 @@ def _perfil_de_url(url: str) -> str | None:
         return None
     host = url.split("://", 1)[-1].split("/", 1)[0].casefold().removeprefix("www.")
     return url if host in HOSTS_DE_PERFIL else None
+
+
+def conferir_status(resposta: RespostaHttp, nome: str) -> bool:
+    """`False` quando não achou (404, sem cobrança). Erro sobe com o motivo; 200 devolve `True`.
+
+    A documentação (/docs/errors) não cita o 403: tratado como credencial recusada, por precaução.
+    """
+    status = resposta.status
+    if status == 404:
+        return False
+    if status in CREDENCIAL_RECUSADA:
+        raise ErroProvedor(MotivoTroca.AUTENTICACAO)
+    if status == 402:
+        raise ErroProvedor(MotivoTroca.SEM_CREDITOS)
+    if status in TEMPORARIOS or status >= 500:
+        raise FonteIndisponivel(f"{nome}: status {status}")
+    if status != 200:
+        raise ErroProvedor(MotivoTroca.RECUSADO_PELO_PROVEDOR)
+    return True
+
+
+def item_de_registro(
+    dados: dict[str, Any],
+    *,
+    provedor: str,
+    fonte: str,
+    coletado_em: datetime,
+    atributos: dict[str, str] | None = None,
+) -> ItemColetado:
+    """Um registro de pessoa do PDL. Lê só os campos pedidos: o que vier a mais fica de fora."""
+    historico, sem_data = _experiencias(dados)
+    atributos = dict(atributos or {})
+    for campo, atributo in (
+        ("job_title", "cargo"),
+        ("job_company_name", "empresa_atual"),
+        ("location_name", "local"),
+    ):
+        if _texto(dados.get(campo)):
+            atributos[atributo] = dados[campo]
+    competencias = dados.get("skills")
+    if isinstance(competencias, list):
+        nomes = [c for c in competencias if isinstance(c, str)]
+        if nomes:
+            atributos["competencias"] = ", ".join(nomes)
+    email = _texto(dados.get("work_email")).strip()
+    return ItemColetado(
+        provedor=provedor,
+        fonte=fonte,
+        coletado_em=coletado_em,
+        url=_url_publica(dados.get("github_url")),
+        confianca=ConfiancaDado.INFERIDO,
+        nome=_texto(dados.get("full_name")),
+        texto=". ".join(
+            parte
+            for parte in (_texto(dados.get("summary")), *sem_data, *_formacoes(dados))
+            if parte
+        ),
+        atributos=atributos,
+        historico=historico,
+        contatos=[ContatoColetado(tipo="email", valor=email)] if _EMAIL.fullmatch(email) else [],
+    )
 
 
 class ProvedorPeopleDataLabs:
@@ -233,17 +297,8 @@ class ProvedorPeopleDataLabs:
         return self._interpretar(resposta)
 
     def _interpretar(self, resposta: RespostaHttp) -> RespostaProvedor:
-        status = resposta.status
-        if status == 404:
+        if not conferir_status(resposta, NOME):
             return RespostaProvedor()
-        if status == 401:
-            raise ErroProvedor(MotivoTroca.AUTENTICACAO)
-        if status == 402:
-            raise ErroProvedor(MotivoTroca.SEM_CREDITOS)
-        if status in TEMPORARIOS or status >= 500:
-            raise FonteIndisponivel(f"{NOME}: status {status}")
-        if status != 200:
-            raise ErroProvedor(MotivoTroca.RECUSADO_PELO_PROVEDOR)
         return self._encontrado(resposta)
 
     def _encontrado(self, resposta: RespostaHttp) -> RespostaProvedor:
@@ -263,37 +318,10 @@ class ProvedorPeopleDataLabs:
         return RespostaProvedor(itens=[self._item(dados, likelihood)], custo_usd=self._custo)
 
     def _item(self, dados: dict[str, Any], likelihood: int) -> ItemColetado:
-        """Lê só os campos pedidos: o que vier a mais fica de fora."""
-        historico, sem_data = _experiencias(dados)
-        atributos = {"likelihood": str(likelihood)}
-        for campo, atributo in (
-            ("job_title", "cargo"),
-            ("job_company_name", "empresa_atual"),
-            ("location_name", "local"),
-        ):
-            if _texto(dados.get(campo)):
-                atributos[atributo] = dados[campo]
-        competencias = dados.get("skills")
-        if isinstance(competencias, list):
-            nomes = [c for c in competencias if isinstance(c, str)]
-            if nomes:
-                atributos["competencias"] = ", ".join(nomes)
-        email = _texto(dados.get("work_email")).strip()
-        return ItemColetado(
+        return item_de_registro(
+            dados,
             provedor=NOME,
             fonte=f"{NOME}:person_enrich",
             coletado_em=self._relogio(),
-            url=_url_publica(dados.get("github_url")),
-            confianca=ConfiancaDado.INFERIDO,
-            nome=_texto(dados.get("full_name")),
-            texto=". ".join(
-                parte
-                for parte in (_texto(dados.get("summary")), *sem_data, *_formacoes(dados))
-                if parte
-            ),
-            atributos=atributos,
-            historico=historico,
-            contatos=(
-                [ContatoColetado(tipo="email", valor=email)] if _EMAIL.fullmatch(email) else []
-            ),
+            atributos={"likelihood": str(likelihood)},
         )
