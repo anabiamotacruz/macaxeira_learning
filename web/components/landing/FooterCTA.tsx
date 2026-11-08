@@ -25,7 +25,7 @@ export function FooterCTA() {
             </Link>
             <Link
               className="rounded-lg border border-white/70 px-5 py-3 font-medium transition hover:bg-white/10"
-              href="/"
+              href="/vagas"
             >
               Acessar o painel
             </Link>

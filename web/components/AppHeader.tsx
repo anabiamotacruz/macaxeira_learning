@@ -8,7 +8,7 @@ import { SimuladoBadge } from "./SimuladoBadge";
 export type SecaoApp = "vagas" | "banco" | "empresa";
 
 const LINKS: Array<{ secao: SecaoApp; href: string; rotulo: string }> = [
-  { secao: "vagas", href: "/", rotulo: "Vagas" },
+  { secao: "vagas", href: "/vagas", rotulo: "Vagas" },
   { secao: "banco", href: "/banco", rotulo: "Banco de talentos" },
   { secao: "empresa", href: "/empresa", rotulo: "Empresa" },
 ];
@@ -19,7 +19,7 @@ export function AppHeader({ ativo, aoBuscar }: { ativo?: SecaoApp; aoBuscar?: (t
   return (
     <header className="sticky top-0 z-10 h-[60px] border-b border-cora-line bg-cora-surface">
       <div className="mx-auto flex h-full max-w-[1240px] items-center gap-3 px-4 sm:gap-5 sm:px-6">
-        <Link className="flex shrink-0 items-center gap-2 text-cora-ink no-underline" href="/">
+        <Link className="flex shrink-0 items-center gap-2 text-cora-ink no-underline" href="/vagas">
           <img alt="" className="h-[29px] w-7 object-contain" height={29} src="/coral.png" width={28} />
           <span className="text-lg font-semibold tracking-[-0.03em]">CORA</span>
         </Link>

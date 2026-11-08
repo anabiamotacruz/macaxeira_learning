@@ -633,7 +633,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
     <div className="flex flex-col gap-[22px]">
       <div className="flex flex-col gap-2.5">
         <nav aria-label="Caminho" className="flex items-center gap-1.5 text-[13px] text-cora-placeholder">
-          <Link className="text-cora-placeholder no-underline hover:text-cora-primary" href="/">Vagas</Link>
+          <Link className="text-cora-placeholder no-underline hover:text-cora-primary" href="/vagas">Vagas</Link>
           <span aria-hidden="true">/</span>
           <span aria-current="page" className="text-cora-ink">{vaga.titulo}</span>
         </nav>

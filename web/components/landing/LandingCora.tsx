@@ -55,7 +55,7 @@ function Cabecalho() {
         </div>
         <div className="flex items-center gap-2">
           <Button asChild className={cn("h-10 max-sm:hidden", BTN_CONTORNO)} variant="outline">
-            <Link href="/">Entrar</Link>
+            <Link href="/vagas">Entrar</Link>
           </Button>
           <Button asChild className={cn("h-10 shadow-[0_3px_7px_rgba(251,60,13,0.22)]", BTN_PRIMARIO)}>
             <Link href="/criar-vaga">
@@ -446,7 +446,7 @@ function Acesso() {
             className="h-11 border-white/70 bg-transparent px-[18px] text-base text-white shadow-none hover:bg-white/10 hover:text-white dark:bg-transparent"
             variant="outline"
           >
-            <Link href="/">Ver a demo</Link>
+            <Link href="/vagas">Ver a demo</Link>
           </Button>
         </div>
       </div>
