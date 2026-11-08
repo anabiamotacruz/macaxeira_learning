@@ -4,6 +4,9 @@ Cada motivo liga um critério a um trecho registrado. Motivo sensível, contesta
 critério não atendido vão para a pessoa responsável. Quando a decisão veio da entrevista, só sai o
 que o agente de destino informou. Nota, faixa, ranking e outros candidatos não têm campo nem
 aparecem no texto. Toda geração é registrada antes de sair: sem auditoria, nada é entregue.
+
+Do registro de decisões vem a decisão final guardada nela. Registro sem ela não tem lacuna para
+citar: o pedido vai para a pessoa responsável.
 """
 
 import hashlib
@@ -12,12 +15,14 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from backend.agente.auditoria import PREFIXO_HUMANO, rastreado
+from backend.agente.decisao_final import decisao_final_do_registro
 from backend.agente.neutralizacao import MARCADOR, neutralizar_genero
 from backend.agente.regras import FONTE_REGRA
 from backend.contratos.criterios import sem_acento, termos_proibidos_em_conversa
 from backend.contratos.erros import ErroContrato
 from backend.contratos.modelos import (
     REGRA_RECUSA_AUTORIZACAO,
+    Decisao,
     DecisaoFinal,
     DestinoDecisao,
     EventoFluxo,
@@ -40,6 +45,7 @@ ENCAMINHADO_SEM_TRECHO = "motivo_sem_trecho_registrado"
 ENCAMINHADO_SEM_CRITERIO = "sem_criterio_nao_atendido"
 ENCAMINHADO_DESTINO_SEM_MOTIVO = "destino_nao_informou"
 ENCAMINHADO_DESTINO_FORA = "destino_fora_dos_criterios"
+ENCAMINHADO_SEM_DECISAO_FINAL = "decisao_sem_lacunas_registradas"
 TEXTO_ENCAMINHADO = "Seu pedido foi encaminhado à pessoa responsável, que vai responder a você."
 DADO_RETIRADO = "(dado retirado)"
 PREFIXO_ASSINANTE = ":assinante:"
@@ -91,7 +97,7 @@ def _para_a_pessoa(trecho: str) -> str:
     return MARCADOR.sub(DADO_RETIRADO, neutralizar_genero(trecho))
 
 
-def _responsavel(decisao: DecisaoFinal | None) -> str | None:
+def _responsavel(decisao: DecisaoFinal | Decisao | None) -> str | None:
     if decisao is None:
         return None
     responsavel = decisao.responsavel
@@ -194,11 +200,12 @@ def _exigir_mesma_pessoa(
     vaga: Vaga,
     decisao: DecisaoFinal | None,
     retorno: RetornoDestino | None,
+    registro: Decisao | None,
 ) -> None:
-    if decisao is None and retorno is None:
+    if decisao is None and retorno is None and registro is None:
         raise FeedbackNegado("não há decisão registrada para este pedido")
     alvo = (pedido.empresa_id, pedido.vaga_id, pedido.candidato_id)
-    registros = [r for r in (decisao, retorno) if r is not None]
+    registros = [r for r in (decisao, retorno, registro) if r is not None]
     if (vaga.empresa_id, vaga.id) != alvo[:2] or any(
         (r.empresa_id, r.vaga_id, r.candidato_id) != alvo for r in registros
     ):
@@ -209,7 +216,7 @@ def _registrar(
     registrar: RegistrarEvento,
     pedido: PedidoFeedback,
     feedback: FeedbackCandidato,
-    decisao: DecisaoFinal | None,
+    decisao: DecisaoFinal | Decisao | None,
     retorno: RetornoDestino | None,
     agora: datetime,
 ) -> None:
@@ -247,18 +254,24 @@ def responder_pedido_de_feedback(
     agora: datetime,
     decisao: DecisaoFinal | None = None,
     retorno: RetornoDestino | None = None,
+    registro: Decisao | None = None,
 ) -> FeedbackCandidato:
     """Responde ao pedido da pessoa, ou o encaminha. Com `retorno`, a decisão veio da entrevista.
 
+    `registro` é a decisão vigente no registro de decisões, quando não há `decisao` à mão.
     O texto do pedido é dado: só serve para reconhecer contestação e não entra em lugar nenhum.
     """
-    _exigir_mesma_pessoa(pedido, vaga, decisao, retorno)
+    _exigir_mesma_pessoa(pedido, vaga, decisao, retorno, registro)
+    if decisao is None and registro is not None:
+        decisao = decisao_final_do_registro(registro)
     saudacao = f"Olá, {nome_tratamento}."
     motivos: list[MotivoFeedback] = []
     if pedido.contestacao or _CONTESTACAO.search(_normalizado(pedido.texto)):
         encaminhado = ENCAMINHADO_CONTESTACAO
     elif retorno is not None:
         motivos, encaminhado = _motivos_do_destino(retorno, vaga)
+    elif decisao is None:
+        encaminhado = ENCAMINHADO_SEM_DECISAO_FINAL
     else:
         motivos, encaminhado = _motivos_da_decisao(decisao)
     if encaminhado is not None:
@@ -267,7 +280,7 @@ def responder_pedido_de_feedback(
             saudacao=saudacao,
             texto=TEXTO_ENCAMINHADO,
             encaminhado_por=encaminhado,
-            responsavel=_responsavel(decisao),
+            responsavel=_responsavel(decisao or registro),
         )
     else:
         feedback = FeedbackCandidato(
@@ -276,5 +289,5 @@ def responder_pedido_de_feedback(
             texto=_texto(vaga, motivos),
             motivos=motivos,
         )
-    _registrar(registrar, pedido, feedback, decisao, retorno, agora)
+    _registrar(registrar, pedido, feedback, decisao or registro, retorno, agora)
     return feedback

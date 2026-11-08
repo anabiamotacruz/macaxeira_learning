@@ -1,0 +1,92 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&amp;display=swap">
+<style>body{margin:0}</style>
+</head><body>
+<template id="tpl">
+
+<div style="width: 1280px; height: 720px; box-sizing: border-box; padding: 40px 0 0; background: #E8EEEA; color: #0B3038; font-family: Geist, sans-serif; display: flex; justify-content: center; position: relative; overflow: hidden;">
+<article style="width: 820px; height: 720px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #DFE6E1; border-radius: 6px 6px 0 0; padding: 44px 56px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 30px 60px -30px rgba(11,48,56,0.45);">
+<div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #5E7672;"><span style="display: flex; align-items: center; gap: 6px;"><img src="coral.png" alt="" width="20" height="21" style="width: 20px; height: 21px; object-fit: contain;">Dossiê para a entrevista · Vaga 014</span><span>Entrevista qui, 14h · Nara simulada</span></div>
+<h1 style="margin: 0; font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: 40px; letter-spacing: -0.02em; line-height: 1.1;">Larissa Rocha, Backend Sênior</h1>
+<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+<span style="font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 6px; border: 1px solid #CDE6D5; background: #E3F3E8; color: #2F6E52;">Autorizada até 05/2027</span>
+<span style="font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 6px; border: 1px solid #F0B5AA; background: #FFF1EE; color: #DC3209;">Nota 92</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-weight: 600; font-size: 15px; color: #DC3209;">Por que ela</span><span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 19px; line-height: 1.5; color: #2C4F55;">Go em produção há cinco anos, com evidência em dois projetos públicos. Liderou a migração para Kafka numa fintech.</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px; background: #FFF1EE; margin: 0 -16px; padding: 12px 16px; border-radius: 8px;"><span style="font-weight: 600; font-size: 15px; color: #DC3209;">O que ela contou na conversa</span><span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 19px; line-height: 1.5; color: #2C4F55;">Quer remoto, liderança técnica sem gestão de pessoas e pode começar em 30 dias.</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px; background: #FFF1EE; margin: 0 -16px; padding: 12px 16px; border-radius: 8px;"><span style="font-weight: 600; font-size: 15px; color: #DC3209;">Para aprofundar</span><span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 19px; line-height: 1.5; color: #2C4F55;">Pausa de oito meses em 2023: pergunte, não penalize. Pouca experiência com observabilidade.</span></div>
+</article>
+<div style="position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); padding: 12px 24px; border-radius: 999px; background: #0B3038; color: #FFFFFF; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap;">A entrevista começa sabendo o que importa.</div>
+</div>
+</template><div id="root"></div>
+<script>
+class DCLogic { constructor(p){ this.props = p || {}; this.state = {}; }
+  setState(p){ Object.assign(this.state, typeof p === 'function' ? p(this.state) : p); window.__render(); }
+  forceUpdate(){ window.__render(); } }
+</script>
+<script>
+
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+
+</script>
+<script>
+(function(){
+  const tpl = document.getElementById('tpl').content;
+  const root = document.getElementById('root');
+  const comp = new Component({});
+  const HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
+  const WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
+  function look(scope, path){
+    if (path === 'true') return true; if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    let v = scope; for (const k of path.split('.')) { if (v == null) return undefined; v = v[k]; } return v;
+  }
+  function interp(s, scope){ return s.replace(HOLE, (m, p) => { const v = look(scope, p); return v == null ? '' : String(v); }); }
+  function build(parent, node, scope){
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) { parent.appendChild(document.createTextNode(interp(ch.nodeValue, scope))); continue; }
+      if (ch.nodeType !== 1) continue;
+      const tag = ch.tagName.toLowerCase();
+      if (tag === 'sc-for') {
+        const m = (ch.getAttribute('list') || '').match(WHOLE); const list = m ? look(scope, m[1]) : [];
+        const as = ch.getAttribute('as') || 'item';
+        (list || []).forEach((it, i) => { const s = Object.create(scope); s[as] = it; s.$index = i; build(parent, ch, s); });
+        continue;
+      }
+      if (tag === 'sc-if') {
+        const m = (ch.getAttribute('value') || '').match(WHOLE);
+        if (m && look(scope, m[1])) build(parent, ch, scope);
+        continue;
+      }
+      const el = ch.namespaceURI === 'http://www.w3.org/1999/xhtml' ? document.createElement(ch.localName) : document.createElementNS(ch.namespaceURI, ch.localName);
+      for (const a of ch.attributes) {
+        const m = a.value.match(WHOLE);
+        if (/^on[A-Z]/.test(a.name) || /^on[a-z]+$/.test(a.name) && m) {
+          const fn = m ? look(scope, m[1]) : null; if (typeof fn !== 'function') continue;
+          let ev = a.name.slice(2).toLowerCase(); if (ev === 'change' && (tag === 'textarea' || tag === 'input')) ev = 'input';
+          el.addEventListener(ev, fn); continue;
+        }
+        if (a.name === 'value' && (tag === 'textarea' || tag === 'input')) { el.value = interp(a.value, scope); continue; }
+        if (a.name.startsWith('hint-')) continue;
+        el.setAttribute(a.name, interp(a.value, scope));
+      }
+      if (tag === 'textarea') { if (!el.value) el.value = ch.value || ch.textContent; }
+      else build(el, ch, scope);
+      parent.appendChild(el);
+    }
+  }
+  window.__render = function(){
+    const active = document.activeElement && document.activeElement.id;
+    const frag = document.createDocumentFragment();
+    build(frag, tpl, comp.renderVals());
+    root.replaceChildren(frag);
+    if (active) { const e = document.getElementById(active); if (e) { e.focus(); if (e.setSelectionRange && e.value) e.setSelectionRange(e.value.length, e.value.length); } }
+  };
+  window.__render();
+  if (comp.componentDidMount) comp.componentDidMount();
+})();
+</script>
+</body></html>

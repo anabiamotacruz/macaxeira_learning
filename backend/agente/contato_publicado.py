@@ -3,7 +3,7 @@
 Constituição VII: o contato direto usa só um contato que a pessoa publicou, diz de onde ele veio
 e por quê, e traz a forma de não ser mais contatada, que vale para sempre. Contato inferido ou
 vindo de provedor (`contato_origem` marcado como não publicado) nunca serve. Nada aqui usa modelo:
-a abertura é a de `backend/contato/email_inicial.py`, e o resto é texto fixo.
+o texto e o HTML saem de `backend/contato/convite_html.py`, com o mesmo conteúdo.
 """
 
 import re
@@ -12,21 +12,19 @@ from datetime import UTC, datetime, time
 from typing import Protocol
 
 from backend.contato.canal import MotivoSemCanal
+from backend.contato.convite_html import ConteudoConvite, destaques, texto_convite
 from backend.contato.email_inicial import (
     CANAL_EMAIL,
     TENTATIVA_LEMBRETE,
     ContatoPublicado,
     paragrafo_lembrete,
-    paragrafo_padrao,
 )
-from backend.contato.prompts import AVISO_SIMULACAO, MARCADOR_NOME, PALAVRA_SAIDA
+from backend.contato.prompts import MARCADOR_NOME
 from backend.contratos.modelos import Analise, Candidato, Vaga
 from backend.fontes.provedores.envoapi import email_valido, url_perfil_linkedin, usuario_de
 
 ORIGEM_AUTORIZACAO_PELO_ACEITE = "aceite do convite enviado ao contato publicado"
 """De onde vem a autorização de quem aceitou o convite: fica no evento da vaga."""
-BOTAO_SAIDA = "Não quero mais contato"
-"""O mesmo rótulo do botão da caixa simulada, que registra o opt-out da pessoa."""
 CONFIANCA_INFERIDA = "inferido"
 _EMAIL = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
 _URL = re.compile(r"https?://[^\s<>\"']+")
@@ -149,6 +147,36 @@ def motivo_sem_contato(candidato: Candidato) -> MotivoSemCanal:
     return MotivoSemCanal.SEM_CONTATO_PUBLICADO
 
 
+def conteudo_pelo_contato_publicado(
+    vaga: Vaga,
+    candidato: Candidato,
+    analise: Analise | None,
+    contato: ContatoPublicado,
+    link: str | None,
+    tentativa: int,
+    *,
+    simulado: bool = True,
+) -> ConteudoConvite:
+    """O que o convite diz, para o texto e o HTML. Sem modelo e sem dado do perfil além do nome e
+    das competências com nota de pelo menos 0,6 na análise."""
+    empresa = vaga.empresa_id
+    lembrete = None
+    if tentativa >= TENTATIVA_LEMBRETE:
+        lembrete = paragrafo_lembrete(vaga, empresa).replace(MARCADOR_NOME, candidato.nome)
+    return ConteudoConvite(
+        empresa=empresa,
+        titulo_vaga=vaga.titulo,
+        nome=candidato.nome,
+        destaques=destaques(analise),
+        link=link,
+        descricao_origem=contato.descricao_origem,
+        url_origem=contato.url_origem,
+        data_coleta=contato.coletado_em.strftime("%d/%m/%Y"),
+        simulado=simulado,
+        lembrete=lembrete,
+    )
+
+
 def mensagem_pelo_contato_publicado(
     vaga: Vaga,
     candidato: Candidato,
@@ -156,31 +184,14 @@ def mensagem_pelo_contato_publicado(
     contato: ContatoPublicado,
     link: str | None,
     tentativa: int,
+    *,
+    simulado: bool = True,
 ) -> str:
-    """E-mail com o motivo, a origem do contato e a saída. Sem modelo e sem dado do perfil além do
-    nome e dos critérios atendidos que a análise conferiu."""
-    empresa = vaga.empresa_id
-    if tentativa >= TENTATIVA_LEMBRETE:
-        abertura = paragrafo_lembrete(vaga, empresa)
-    elif analise is None:
-        abertura = f"Olá, {MARCADOR_NOME}! A {empresa} tem uma vaga de {vaga.titulo}."
-    else:
-        abertura = paragrafo_padrao(vaga, analise, empresa)
-    if link:
-        proximo = f"Se tiver interesse, agende uma conversa por aqui: {link}"
-    else:
-        proximo = "Se tiver interesse, responda este e-mail e a equipe combina a conversa."
-    data = contato.coletado_em.strftime("%d/%m/%Y")
-    return "\n\n".join(
-        [
-            abertura.replace(MARCADOR_NOME, candidato.nome),
-            proximo,
-            f"Por que você recebeu este e-mail: a {empresa} encontrou este endereço em "
-            f"{contato.descricao_origem} ({contato.url_origem}), em {data}, publicado por você. "
-            "Escrevemos porque o seu perfil profissional público combina com esta vaga, e "
-            "guardamos só dados profissionais públicos para falar sobre ela.",
-            f'Para não receber mais contatos, use o botão "{BOTAO_SAIDA}" ou responda '
-            f"{PALAVRA_SAIDA}. O pedido vale para sempre, em todas as vagas da {empresa}.",
-            AVISO_SIMULACAO,
-        ]
+    """E-mail com o motivo, a origem do contato e a saída. O aviso de simulação vai só no simulado.
+
+    O texto sai do mesmo conteúdo do HTML (`conteudo_pelo_contato_publicado`).
+    """
+    conteudo = conteudo_pelo_contato_publicado(
+        vaga, candidato, analise, contato, link, tentativa, simulado=simulado
     )
+    return texto_convite(conteudo)

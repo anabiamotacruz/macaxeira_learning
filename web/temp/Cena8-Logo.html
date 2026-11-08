@@ -1,0 +1,90 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</head><body>
+<template id="tpl">
+
+<div style="width: 1280px; height: 720px; box-sizing: border-box; padding: 60px; background: #FFFFFF; color: #0B3038; font-family: Geist, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; text-align: center; position: relative; overflow: hidden;">
+<div style="display: flex; align-items: center; gap: 18px;">
+<img src="coral.png" alt="" width="120" height="124" style="width: 120px; height: 124px; object-fit: contain;">
+<span style="display: flex; flex-direction: column; align-items: flex-start;">
+<span style="font-size: 104px; font-weight: 700; line-height: 0.9; letter-spacing: -0.05em;">CORA</span>
+<span style="font-size: 18px; color: #526C68; margin-top: 8px;">Conexão de Oportunidade de Recrutamento Ativo</span>
+</span>
+</div>
+<span style="font-size: 44px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.05;">Diga a vaga. <span style="color: #FB3C0D;">A CORA traz as pessoas.</span></span>
+<span style="font-size: 18px; color: #526C68;">Desafio Tako · cora-rh.vercel.app</span>
+<span style="position: absolute; left: 0; right: 0; bottom: 0; height: 12px; background: #FB3C0D;"></span>
+</div>
+</template><div id="root"></div>
+<script>
+class DCLogic { constructor(p){ this.props = p || {}; this.state = {}; }
+  setState(p){ Object.assign(this.state, typeof p === 'function' ? p(this.state) : p); window.__render(); }
+  forceUpdate(){ window.__render(); } }
+</script>
+<script>
+
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+
+</script>
+<script>
+(function(){
+  const tpl = document.getElementById('tpl').content;
+  const root = document.getElementById('root');
+  const comp = new Component({});
+  const HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
+  const WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
+  function look(scope, path){
+    if (path === 'true') return true; if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    let v = scope; for (const k of path.split('.')) { if (v == null) return undefined; v = v[k]; } return v;
+  }
+  function interp(s, scope){ return s.replace(HOLE, (m, p) => { const v = look(scope, p); return v == null ? '' : String(v); }); }
+  function build(parent, node, scope){
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) { parent.appendChild(document.createTextNode(interp(ch.nodeValue, scope))); continue; }
+      if (ch.nodeType !== 1) continue;
+      const tag = ch.tagName.toLowerCase();
+      if (tag === 'sc-for') {
+        const m = (ch.getAttribute('list') || '').match(WHOLE); const list = m ? look(scope, m[1]) : [];
+        const as = ch.getAttribute('as') || 'item';
+        (list || []).forEach((it, i) => { const s = Object.create(scope); s[as] = it; s.$index = i; build(parent, ch, s); });
+        continue;
+      }
+      if (tag === 'sc-if') {
+        const m = (ch.getAttribute('value') || '').match(WHOLE);
+        if (m && look(scope, m[1])) build(parent, ch, scope);
+        continue;
+      }
+      const el = ch.namespaceURI === 'http://www.w3.org/1999/xhtml' ? document.createElement(ch.localName) : document.createElementNS(ch.namespaceURI, ch.localName);
+      for (const a of ch.attributes) {
+        const m = a.value.match(WHOLE);
+        if (/^on[A-Z]/.test(a.name) || /^on[a-z]+$/.test(a.name) && m) {
+          const fn = m ? look(scope, m[1]) : null; if (typeof fn !== 'function') continue;
+          let ev = a.name.slice(2).toLowerCase(); if (ev === 'change' && (tag === 'textarea' || tag === 'input')) ev = 'input';
+          el.addEventListener(ev, fn); continue;
+        }
+        if (a.name === 'value' && (tag === 'textarea' || tag === 'input')) { el.value = interp(a.value, scope); continue; }
+        if (a.name.startsWith('hint-')) continue;
+        el.setAttribute(a.name, interp(a.value, scope));
+      }
+      if (tag === 'textarea') { if (!el.value) el.value = ch.value || ch.textContent; }
+      else build(el, ch, scope);
+      parent.appendChild(el);
+    }
+  }
+  window.__render = function(){
+    const active = document.activeElement && document.activeElement.id;
+    const frag = document.createDocumentFragment();
+    build(frag, tpl, comp.renderVals());
+    root.replaceChildren(frag);
+    if (active) { const e = document.getElementById(active); if (e) { e.focus(); if (e.setSelectionRange && e.value) e.setSelectionRange(e.value.length, e.value.length); } }
+  };
+  window.__render();
+  if (comp.componentDidMount) comp.componentDidMount();
+})();
+</script>
+</body></html>

@@ -1,0 +1,82 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</head><body>
+<template id="tpl">
+
+<div style="width: 1280px; height: 720px; box-sizing: border-box; padding: 0 120px; background: #F7F8F5; color: #0B3038; font-family: Geist, sans-serif; display: flex; flex-direction: column; justify-content: center; gap: 18px;">
+<span style="font-size: 80px; font-weight: 600; line-height: 1; letter-spacing: -0.04em; color: #9AA7A4;">Encontrar a pessoa certa leva semanas.</span>
+<span style="font-size: 80px; font-weight: 600; line-height: 1; letter-spacing: -0.04em;">E se levasse <span style="color: #FB3C0D;">uma tarde</span>?<span style="display: inline-block; width: 6px; height: 68px; margin-left: 10px; background: #FB3C0D; vertical-align: -8px;"></span></span>
+</div>
+</template><div id="root"></div>
+<script>
+class DCLogic { constructor(p){ this.props = p || {}; this.state = {}; }
+  setState(p){ Object.assign(this.state, typeof p === 'function' ? p(this.state) : p); window.__render(); }
+  forceUpdate(){ window.__render(); } }
+</script>
+<script>
+
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+
+</script>
+<script>
+(function(){
+  const tpl = document.getElementById('tpl').content;
+  const root = document.getElementById('root');
+  const comp = new Component({});
+  const HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
+  const WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
+  function look(scope, path){
+    if (path === 'true') return true; if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    let v = scope; for (const k of path.split('.')) { if (v == null) return undefined; v = v[k]; } return v;
+  }
+  function interp(s, scope){ return s.replace(HOLE, (m, p) => { const v = look(scope, p); return v == null ? '' : String(v); }); }
+  function build(parent, node, scope){
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) { parent.appendChild(document.createTextNode(interp(ch.nodeValue, scope))); continue; }
+      if (ch.nodeType !== 1) continue;
+      const tag = ch.tagName.toLowerCase();
+      if (tag === 'sc-for') {
+        const m = (ch.getAttribute('list') || '').match(WHOLE); const list = m ? look(scope, m[1]) : [];
+        const as = ch.getAttribute('as') || 'item';
+        (list || []).forEach((it, i) => { const s = Object.create(scope); s[as] = it; s.$index = i; build(parent, ch, s); });
+        continue;
+      }
+      if (tag === 'sc-if') {
+        const m = (ch.getAttribute('value') || '').match(WHOLE);
+        if (m && look(scope, m[1])) build(parent, ch, scope);
+        continue;
+      }
+      const el = ch.namespaceURI === 'http://www.w3.org/1999/xhtml' ? document.createElement(ch.localName) : document.createElementNS(ch.namespaceURI, ch.localName);
+      for (const a of ch.attributes) {
+        const m = a.value.match(WHOLE);
+        if (/^on[A-Z]/.test(a.name) || /^on[a-z]+$/.test(a.name) && m) {
+          const fn = m ? look(scope, m[1]) : null; if (typeof fn !== 'function') continue;
+          let ev = a.name.slice(2).toLowerCase(); if (ev === 'change' && (tag === 'textarea' || tag === 'input')) ev = 'input';
+          el.addEventListener(ev, fn); continue;
+        }
+        if (a.name === 'value' && (tag === 'textarea' || tag === 'input')) { el.value = interp(a.value, scope); continue; }
+        if (a.name.startsWith('hint-')) continue;
+        el.setAttribute(a.name, interp(a.value, scope));
+      }
+      if (tag === 'textarea') { if (!el.value) el.value = ch.value || ch.textContent; }
+      else build(el, ch, scope);
+      parent.appendChild(el);
+    }
+  }
+  window.__render = function(){
+    const active = document.activeElement && document.activeElement.id;
+    const frag = document.createDocumentFragment();
+    build(frag, tpl, comp.renderVals());
+    root.replaceChildren(frag);
+    if (active) { const e = document.getElementById(active); if (e) { e.focus(); if (e.setSelectionRange && e.value) e.setSelectionRange(e.value.length, e.value.length); } }
+  };
+  window.__render();
+  if (comp.componentDidMount) comp.componentDidMount();
+})();
+</script>
+</body></html>

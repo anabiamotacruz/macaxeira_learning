@@ -8,6 +8,12 @@ o resultado da entrevista passam pelo servidor MCP da Nara simulada, um conector
 Com `AGENTE_BUSCA_REAL=1`, a busca também usa as fontes externas da Frente 2 (Brave, Bright Data e
 PDL, cada uma só com a sua chave); quem vem delas chega sem autorização, é analisado como os
 demais e só recebe convite pelo e-mail que a própria pessoa publicou (`agente/contato_publicado`).
+Esse convite só sai de verdade, pelo Resend, com `AGENTE_ENVIO_REAL=1`, `RESEND_API_KEY` e
+`EMAIL_FROM`; sem os três, ele fica no mensageiro simulado. Pessoa sintética nunca recebe e-mail.
+O botão do e-mail real leva só `CONVITE_LINK` (https), nunca o link da Nara simulada; sem ele, o
+e-mail vai sem botão. Limite conhecido: o SAIR respondido por e-mail é registrado à mão e não
+sobrevive a reinício, por isso o envio real manda uma única mensagem por pessoa e vaga, sem
+lembrete.
 Os perfis e as vagas de exemplo são os dados sintéticos da Frente 2; o convite e a Nara
 simulada são da Frente 3.
 """
@@ -34,9 +40,11 @@ from backend.agente.fluxo import (
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import avaliar_requisitos, validar_criterios
 from backend.agente.servico import DependenciasFluxo, ServicoVagas
+from backend.agente.whatsapp import linha_do_convite
 from backend.contato.conversa import contem_instrucao, material_da_vaga, responder_duvida
 from backend.contato.mensageiro import MensageiroSimulado, PreferenciasContato, criar_convite
 from backend.contato.pos_entrevista import mensagem_pos_entrevista
+from backend.contato.resend import MensageiroResend
 from backend.contratos.erros import ModeloIndisponivel
 from backend.contratos.interfaces import (
     AgenteRecrutador,
@@ -44,6 +52,7 @@ from backend.contratos.interfaces import (
     BancoTalentos,
     ClienteModelo,
     FonteCandidatos,
+    Mensageiro,
     Revisor,
 )
 from backend.contratos.modelos import Analise, Candidato, Evidencia, ResultadoEntrevista, Vaga
@@ -77,6 +86,10 @@ LIMITE_ANALISES_POR_RODADA = 20
 FUNIL_POR_VAGA = 10
 TETO_DO_FUNIL = 50
 COM_MODELO = "AGENTE_COM_MODELO"
+ENVIO_REAL = "AGENTE_ENVIO_REAL"
+RESEND_API_KEY = "RESEND_API_KEY"
+EMAIL_FROM = "EMAIL_FROM"
+CONVITE_LINK = "CONVITE_LINK"
 NARA_MCP_URL = "NARA_MCP_URL"
 BUSCA_REAL = "AGENTE_BUSCA_REAL"
 ENVO_API_KEY = "ENVO_API_KEY"
@@ -323,7 +336,7 @@ def redigir_convite(vaga: Vaga, candidato: Candidato, analise: Analise, link: st
         ClienteModeloSimulado(),
         preferencias=PreferenciasContato(personalizar=False),
     )
-    return convite.mensagem
+    return convite.mensagem + linha_do_convite(vaga.empresa_id, vaga.id, candidato.id)
 
 
 def redigir_retorno(vaga: Vaga, candidato: Candidato, resultado: ResultadoEntrevista) -> str:
@@ -413,6 +426,7 @@ def _montar(
     propositor_vaga: Callable[[str, str], Vaga | PerguntaVaga] | None = None,
     concorrencia: int | None = None,
     buscador_contato: ContatoPorEmpresa | None = None,
+    mensageiro: Mensageiro | None = None,
 ) -> ServicoVagas:
     if caminho is None:
         caminho = Path(tempfile.mkdtemp(prefix="macaxeira-demo-")) / "agente.db"
@@ -430,7 +444,7 @@ def _montar(
             fontes=fontes,
             analisador=analisador,
             revisor=revisor,
-            mensageiro=MensageiroSimulado(),
+            mensageiro=MensageiroSimulado() if mensageiro is None else mensageiro,
             destino=NaraSimulada() if destino is None else destino,
             relogio=_agora,
             medidor_gasto=medidor_gasto,
@@ -473,16 +487,40 @@ def contato_envo(ambiente: Mapping[str, str]) -> ContatoPorEmpresa | None:
     return ContatoPorEmpresa(BuscadorContatoEnvo(chave, TransporteHttp()))
 
 
+def mensageiro_do_ambiente(ambiente: Mapping[str, str]) -> Mensageiro | None:
+    """O Resend, só com `AGENTE_ENVIO_REAL=1`, a chave e o remetente. A chave não sai daqui."""
+    if ambiente.get(ENVIO_REAL, "").strip() != "1":
+        return None
+    chave = ambiente.get(RESEND_API_KEY, "").strip()
+    remetente = ambiente.get(EMAIL_FROM, "").strip()
+    if not chave or not remetente:
+        logger.warning("%s=1, mas falta a chave ou o remetente: o envio segue simulado", ENVIO_REAL)
+        return None
+    link = ambiente.get(CONVITE_LINK, "").strip() or None
+    if link is not None and not link.startswith("https://"):
+        logger.warning("%s precisa ser https: o e-mail real vai sem botão", CONVITE_LINK)
+        link = None
+    try:
+        return MensageiroResend(chave, remetente, link_convite=link)
+    except ValueError:
+        logger.warning(
+            "%s=1, mas o remetente ou o link é inválido: o envio segue simulado", ENVIO_REAL
+        )
+        return None
+
+
 def montar_demo(
     caminho: str | Path | None = None,
     *,
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
     buscador_contato: ContatoPorEmpresa | None = None,
+    mensageiro: Mensageiro | None = None,
 ) -> ServicoVagas:
     """Serviço da demonstração. Sem `caminho`, o banco fica numa pasta temporária.
 
-    Sem busca real, `buscador_contato` fica vazio: a demo sintética nunca chama a EnvoAPI.
+    Sem busca real, `buscador_contato` fica vazio: a demo sintética nunca chama a EnvoAPI. Sem
+    `mensageiro`, o envio é simulado; com o Resend, só o convite real sai, e o sintético não.
     """
     return _montar(
         caminho,
@@ -496,6 +534,7 @@ def montar_demo(
         destino=destino,
         fonte_extra=fonte_extra,
         buscador_contato=buscador_contato,
+        mensageiro=mensageiro,
     )
 
 
@@ -507,6 +546,7 @@ def montar_com_modelo(
     destino: AgenteRecrutador | None = None,
     fonte_extra: FonteExtra | None = None,
     buscador_contato: ContatoPorEmpresa | None = None,
+    mensageiro: Mensageiro | None = None,
 ) -> ServicoVagas:
     """A demonstração com o modelo raciocinando. Pessoas, contato e Nara seguem simulados.
 
@@ -533,6 +573,7 @@ def montar_com_modelo(
         ),
         concorrencia=concorrencia,
         buscador_contato=buscador_contato,
+        mensageiro=mensageiro,
     )
 
 
@@ -549,13 +590,15 @@ def montar_servico(
     destino = nara_por_mcp(url_nara) if url_nara else None
     extra = criar_busca(ambiente) if ambiente.get(BUSCA_REAL, "").strip() == "1" else None
     contato = None if extra is None else contato_envo(ambiente)
+    envio = mensageiro_do_ambiente(ambiente)
+    demo = {"destino": destino, "fonte_extra": extra, "buscador_contato": contato}
     if ambiente.get(COM_MODELO, "").strip() != "1":
-        return montar_demo(caminho, destino=destino, fonte_extra=extra, buscador_contato=contato)
+        return montar_demo(caminho, mensageiro=envio, **demo)
     try:
         cliente = criar_cliente()
     except ModeloIndisponivel as erro:
         logger.warning("%s=1, mas segue a demonstração sem modelo: %s", COM_MODELO, erro)
-        return montar_demo(caminho, destino=destino, fonte_extra=extra, buscador_contato=contato)
+        return montar_demo(caminho, mensageiro=envio, **demo)
 
     def gasto() -> float:
         return float(getattr(cliente, "custo_total_usd", 0.0))
@@ -567,4 +610,5 @@ def montar_servico(
         destino=destino,
         fonte_extra=extra,
         buscador_contato=contato,
+        mensageiro=envio,
     )
