@@ -35,6 +35,9 @@ O endereço do perfil é do LinkedIn: a política de URL o recusa em `ItemColeta
 perde os links. O `username` fica em `atributos["usuario_linkedin"]`. Contato não entra: a
 documentação não diz se a própria pessoa publicou (só o endpoint de contato, não usado, promete
 isso), e na dúvida nada entra. Pessoa vinda daqui chega sem autorização, como as da Brave.
+
+Cada instância também serve de extrator de reserva do provedor `linkedin_brave`
+(`perfil(usuario)`), depois da EnvoAPI, com a mesma rotação de chaves.
 """
 
 import json
@@ -63,6 +66,7 @@ logger = logging.getLogger(__name__)
 
 NOME = "linkdapi"
 ETAPA_LINKDAPI = "provedor_linkdapi"
+ETAPA_LINKDAPI_PERFIL = "provedor_linkdapi_perfil"
 URL_BASE = "https://linkdapi.com"
 URL_BUSCA = f"{URL_BASE}/api/v1/search/people"
 URL_PERFIL = f"{URL_BASE}/api/v1/profile/full"
@@ -202,6 +206,9 @@ def _tem_perfil(dados: dict[str, Any]) -> bool:
 class ProvedorLinkdApi:
     """Implementa `ProvedorDados` para uma chave. Só consultas de texto."""
 
+    origem = NOME
+    """Nome lógico do extrator, para a origem dos itens do `linkedin_brave`."""
+
     def __init__(
         self,
         chave: str,
@@ -224,6 +231,31 @@ class ProvedorLinkdApi:
 
     def __repr__(self) -> str:
         return f"ProvedorLinkdApi(chave=#{self._indice})"
+
+    @property
+    def custo_por_perfil_usd(self) -> float:
+        return self._custo
+
+    @rastreado(ETAPA_LINKDAPI_PERFIL)
+    def perfil(self, usuario: str) -> tuple[dict[str, Any] | None, float]:
+        """Perfil completo pelo usuário, como extrator do `linkedin_brave`, e o custo.
+
+        `None` quando o perfil não existe ou veio fora do formato. Falta de crédito, chave
+        recusada e indisponibilidade sobem como erro, para a chave seguinte assumir.
+        """
+        if not _IDENTIFICADOR.fullmatch(usuario):
+            return None, 0.0
+        resposta = self._transporte.enviar(self._pedido(URL_PERFIL, {"username": usuario}))
+        if resposta.status == 404:
+            return None, 0.0
+        try:
+            corpo = self._conferir(resposta)
+        except ErroProvedor as erro:
+            if erro.motivo is MotivoTroca.RESPOSTA_INVALIDA:
+                return None, erro.custo_usd
+            raise
+        dados = corpo.get("data")
+        return (registro_de_perfil(dados) if isinstance(dados, dict) else None), self._custo
 
     def aceita(self, consulta: ConsultaProvedor) -> bool:
         return consulta.texto is not None
