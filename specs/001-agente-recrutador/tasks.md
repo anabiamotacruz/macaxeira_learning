@@ -140,10 +140,10 @@ Contratos e estrutura estão em `plan.md`. Ondas: **1** até sábado às 13h, **
 
 **Consome:** `BancoTalentos`, regras. **Produz:** `selecionar_para_contato(empresa_id: str, hoje: date) -> list[Candidato]` e `processar_vencidos(empresa_id: str, hoje: date) -> list[Decisao]`.
 
-- [ ] Testar `test_seleciona_perfis_desatualizados_dentro_do_limite`.
-- [ ] Testar `test_nao_contata_quem_saiu_ou_foi_removido`.
-- [ ] Testar `test_autorizacao_vencida_sai_da_busca`, com decisão registrada.
-- [ ] Implementar e verificar.
+- [x] Testar `test_seleciona_perfis_desatualizados_dentro_do_limite`.
+- [x] Testar `test_nao_contata_quem_saiu_ou_foi_removido`.
+- [x] Testar `test_autorizacao_vencida_sai_da_busca`, com decisão registrada.
+- [x] Implementar e verificar.
 
 ### T1.6 (onda 3, corte): adaptador MCP
 
