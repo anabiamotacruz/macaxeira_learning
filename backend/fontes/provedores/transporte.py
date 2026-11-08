@@ -15,6 +15,8 @@ import httpx2
 from backend.fontes.provedores.erros import ErroProvedor, MotivoTroca
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx2").setLevel(logging.WARNING)
+"""O cliente registra a URL em INFO, e a LinkdAPI só aceita GET: a consulta vai na URL."""
 
 TEMPO_LIMITE_PADRAO_S = 60.0
 """Abaixo do `TEMPO_LIMITE_INTEGRACAO_S` de `com_tentativas`, como ele exige."""
@@ -24,6 +26,7 @@ HOSTS_OFICIAIS = frozenset(
         "api.brightdata.com",
         "api.peopledatalabs.com",
         "api.search.brave.com",
+        "linkdapi.com",
         "sandbox.api.peopledatalabs.com",
     }
 )
