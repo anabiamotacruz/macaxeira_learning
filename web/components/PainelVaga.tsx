@@ -196,6 +196,7 @@ function CartaoCandidato({ item, decisao, children, cor }: {
           ))}
         </ul>
       )}
+      {decisao && <p className="mt-3 font-mono text-[11px] text-[#9aa7a4]">Rastro: {decisao.rastro_id}</p>}
       {children}
     </article>
   );
@@ -441,7 +442,16 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
         {semMandato ? (
           <FormMandato aoAssinar={() => void atualizar()} vaga={vaga} />
         ) : (
-          <p className="text-sm text-[#526c68]">Mandato assinado. Gasto do agente até aqui: US$ {resumo.gasto_usd.toFixed(2)}{resumo.limite_gasto_usd ? ` de US$ ${resumo.limite_gasto_usd.toFixed(2)}` : ""}.</p>
+          <div className="grid gap-1 text-sm text-[#526c68]">
+            <p>Mandato assinado. Gasto do agente até aqui: US$ {resumo.gasto_usd.toFixed(2)}{resumo.limite_gasto_usd ? ` de US$ ${resumo.limite_gasto_usd.toFixed(2)}` : ""}.</p>
+            {resumo.analisados > 0 && (
+              <p>
+                Custo por pessoa analisada: US$ {(resumo.gasto_usd / resumo.analisados).toFixed(3)}
+                {resumo.indicados > 0 ? ` · por indicado: US$ ${(resumo.gasto_usd / resumo.indicados).toFixed(3)}` : ""}
+                {resumo.gasto_usd === 0 ? " (demonstração sem modelo: não há gasto)" : ""}
+              </p>
+            )}
+          </div>
         )}
       </Secao>
 
