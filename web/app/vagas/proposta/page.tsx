@@ -52,12 +52,12 @@ export default function PropostaDeVagaPage() {
           <Link className="text-sm font-medium text-[#4c8885] hover:text-[#fb3c0d]" href="/criar-vaga">← Criar do zero</Link>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-[#0b3038]">O agente propõe a vaga</h1>
           <p className="mt-2 max-w-2xl text-sm text-[#718784]">
-            Descreva a vaga como falaria a um recrutador. O agente propõe requisitos eliminatórios, competências e meta; você revisa antes de criar. Critério sensível não entra, e, na dúvida, o agente pergunta em vez de inventar.
+            Descreva a vaga como falaria a um recrutador, dizendo o que é obrigatório e o que é diferencial. O agente propõe requisitos eliminatórios, competências e meta; você revisa antes de criar. Critério sensível não entra, e, na dúvida, o agente pergunta em vez de inventar.
           </p>
           <textarea
             className="mt-6 h-40 w-full rounded-xl border border-[#cbd8d2] bg-white p-4 text-sm"
             onChange={(e) => setDescricao(e.target.value)}
-            placeholder="Ex.: Procuramos pessoa engenheira de software, presencial em São Paulo, com experiência em produção, sistemas distribuídos e cloud. Queremos 5 pessoas em 14 dias."
+            placeholder="Ex.: Vaga de engenharia de software backend. Obrigatório: trabalhar presencialmente em São Paulo e ter experiência com software em produção. Valorizamos Python, sistemas distribuídos e cloud AWS. Queremos 5 pessoas em 14 dias."
             value={descricao}
           />
           <button className="mt-3 rounded-lg bg-[#fb3c0d] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" disabled={ocupado || !descricao.trim()} onClick={pedir} type="button">
