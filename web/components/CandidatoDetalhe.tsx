@@ -317,7 +317,7 @@ export function CandidatoDetalhe({ candidato, vagaId, destinoInicial = null }: P
       <AppHeader ativo="vagas" />
       <AppMain>
         <nav aria-label="Caminho" className="-mb-1 flex flex-wrap items-center gap-1.5 text-[13px] text-cora-placeholder">
-          <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href="/">Vagas</Link>
+          <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href="/vagas">Vagas</Link>
           <span aria-hidden="true">/</span>
           {vagaId ? (
             <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href={`/vagas/${encodeURIComponent(vagaId)}`}>{vaga?.titulo ?? vagaId}</Link>

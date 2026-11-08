@@ -13,7 +13,7 @@ export default async function VagaCandidatosPage({ params }: { params: Promise<{
       <AppHeader ativo="vagas" />
       <AppMain>
         <nav aria-label="Caminho" className="flex flex-wrap items-center gap-1.5 text-[13px] text-cora-placeholder">
-          <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href="/">Vagas</Link>
+          <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href="/vagas">Vagas</Link>
           <span aria-hidden="true">/</span>
           <Link className="text-cora-placeholder no-underline hover:text-cora-ink" href={`/vagas/${encodeURIComponent(vagaId)}`}>{vagaId}</Link>
           <span aria-hidden="true">/</span>

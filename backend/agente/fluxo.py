@@ -362,6 +362,16 @@ class RegistroConvite(Contrato):
 _USUARIO_LINKEDIN_VALIDO = re.compile(r"[A-Za-z0-9_%-]{1,100}")
 
 
+class AndamentoBusca(Contrato):
+    """Quanto da busca da rodada atual já andou. Só contagens: nada de perfil nem de contato."""
+
+    consultas_feitas: int = 0
+    consultas_total: int = 0
+    coletados: int = 0
+    ultima_fonte: str | None = None
+    atualizado_em: AwareDatetime | None = None
+
+
 class ProgressoFluxo(Contrato):
     """O trabalho feito até aqui. Modelo local: não cruza frentes."""
 
@@ -387,6 +397,8 @@ class ProgressoFluxo(Contrato):
     destinos: dict[str, DestinoPessoa] = {}
     contatos_envo: dict[str, str] = {}
     """E-mail publicado achado pela EnvoAPI por pessoa; vazio quando a consulta não trouxe nada."""
+    andamento_busca: AndamentoBusca = AndamentoBusca()
+    """Contagens da busca em curso, gravadas a cada consulta para o painel acompanhar."""
 
     def candidato(self, candidato_id: str) -> Candidato:
         for candidato in (*self.candidatos, *self.cortados):
@@ -438,6 +450,19 @@ def _ordem_de_decisao(decisao: Decisao) -> tuple[float, str]:
     if decisao.tipo == TipoDecisao.INDICAR:
         return (-float(decisao.entrada["nota"]), decisao.candidato_id)
     return (1.0, decisao.candidato_id)
+
+
+def _nome_da_fonte(fonte: object) -> str:
+    """Nome para o painel: o do provedor principal, quando a fonte o expõe; senão, a classe."""
+    nome = getattr(fonte, "nome", None)
+    if isinstance(nome, str) and nome:
+        return nome
+    provedores = getattr(getattr(fonte, "cadeia", None), "provedores", None) or ()
+    for provedor in provedores:
+        nome = getattr(provedor, "nome", None)
+        if isinstance(nome, str) and nome:
+            return nome
+    return type(fonte).__name__
 
 
 @rastreado("consultas")
@@ -566,6 +591,18 @@ class FluxoVaga:
     @property
     def eventos(self) -> list[EventoFluxo]:
         return self._repo.listar_eventos(self.vaga.empresa_id, self.vaga.id)
+
+    def andamento_da_busca(self) -> AndamentoBusca:
+        """As contagens da última busca. Sem busca ainda, tudo zerado, com a hora de agora."""
+        dados = self._repo.carregar_progresso(self.vaga.empresa_id, self.vaga.id)
+        andamento = (
+            AndamentoBusca()
+            if dados is None
+            else ProgressoFluxo.model_validate_json(dados).andamento_busca
+        )
+        if andamento.atualizado_em is None:
+            andamento = andamento.model_copy(update={"atualizado_em": self._relogio()})
+        return andamento
 
     @property
     def mandato(self) -> Mandato | None:
@@ -1483,10 +1520,14 @@ class FluxoVaga:
             achados.extend(do_banco)
             progresso.do_banco.extend(c.id for c in do_banco if c.id not in progresso.do_banco)
         consultas = self._consultas_da_rodada(progresso) if self._fontes else []
+        total_consultas = len(consultas) * len(self._fontes)
+        coletados = {c.id for c in achados}
+        self._anotar_andamento(0, total_consultas, len(coletados), None)
         for indice, fonte in enumerate(self._fontes, start=1):
             nome = f"{indice}:{type(fonte).__name__}"
+            rotulo = _nome_da_fonte(fonte)
             try:
-                for consulta in consultas:
+                for numero, consulta in enumerate(consultas, start=1):
                     chave = f"{nome}|{consulta}"
                     pagina = progresso.paginas_por_fonte.get(chave, 0) + 1
                     resultado = self._resiliencia.chamar(
@@ -1495,10 +1536,24 @@ class FluxoVaga:
                         etapa="busca_fonte",
                     )
                     progresso.paginas_por_fonte[chave] = pagina
-                    achados.extend(self._filtrar_achados(resultado, vistos))
+                    novos = self._filtrar_achados(resultado, vistos)
+                    achados.extend(novos)
+                    antes = len(coletados)
+                    coletados.update(c.id for c in novos)
+                    feitas = (indice - 1) * len(consultas) + numero
+                    self._anotar_andamento(feitas, total_consultas, len(coletados), rotulo)
+                    self._evento(
+                        "busca",
+                        f'consulta {feitas} de {total_consultas} ("{consulta}") em {rotulo}: '
+                        f"{len(coletados) - antes} pessoas novas · "
+                        f"{len(coletados)} coletadas até agora",
+                    )
             except ERROS_TEMPORARIOS as erro:
                 fora.append(type(fonte).__name__)
                 self._evento("fonte", f"{type(fonte).__name__}: {type(erro).__name__}")
+                self._anotar_andamento(
+                    indice * len(consultas), total_consultas, len(coletados), rotulo
+                )
         progresso.fontes_fora = fora
         total = 1 + len(self._fontes)
         if len(fora) == total:
@@ -1510,6 +1565,25 @@ class FluxoVaga:
                 f"fora do ar: {', '.join(fora)}",
             )
         return self._passar_pelo_funil(progresso, achados)
+
+    def _anotar_andamento(self, feitas: int, total: int, coletados: int, fonte: str | None) -> None:
+        """Grava só as contagens, numa transação: não toca em quem foi achado nem nas páginas.
+
+        Quem foi achado continua entrando de uma vez em `_gravar_busca`, depois do funil: uma
+        queda no meio refaz a busca e não deixa ninguém pela metade.
+        """
+        andamento = AndamentoBusca(
+            consultas_feitas=feitas,
+            consultas_total=total,
+            coletados=coletados,
+            ultima_fonte=fonte,
+            atualizado_em=self._relogio(),
+        )
+
+        def anotar(atual: ProgressoFluxo) -> None:
+            atual.andamento_busca = andamento
+
+        self._mudar(anotar)
 
     def _ler_banco(self) -> list[Candidato]:
         """Todas as páginas do banco. Para quando uma página nada acrescenta: nunca fica presa."""

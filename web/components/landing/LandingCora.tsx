@@ -55,7 +55,7 @@ function Cabecalho() {
         </div>
         <div className="flex items-center gap-2">
           <Button asChild className={cn("h-10 max-sm:hidden", BTN_CONTORNO)} variant="outline">
-            <Link href="/">Entrar</Link>
+            <Link href="/vagas">Entrar</Link>
           </Button>
           <Button asChild className={cn("h-10 shadow-[0_3px_7px_rgba(251,60,13,0.22)]", BTN_PRIMARIO)}>
             <Link href="/criar-vaga">
@@ -436,7 +436,6 @@ function Acesso() {
         <h2 className="m-0 max-w-[900px] text-[clamp(40px,5.6vw,76px)] font-semibold leading-[0.98] tracking-[-0.04em] text-balance">
           Abra sua primeira vaga hoje.
         </h2>
-        <p className="m-0 text-lg">Você paga por candidato entregue à entrevista: R$ 290.</p>
         <div className="flex flex-wrap items-center justify-center gap-2.5">
           <Button asChild className="h-11 bg-white px-[18px] text-base font-semibold text-cora-ink hover:bg-cora-muted-bg">
             <Link href="/criar-vaga">Criar vaga</Link>
@@ -446,7 +445,7 @@ function Acesso() {
             className="h-11 border-white/70 bg-transparent px-[18px] text-base text-white shadow-none hover:bg-white/10 hover:text-white dark:bg-transparent"
             variant="outline"
           >
-            <Link href="/">Ver a demo</Link>
+            <Link href="/vagas">Ver a demo</Link>
           </Button>
         </div>
       </div>

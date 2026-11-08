@@ -237,6 +237,30 @@ export async function criarVaga(
   return resposta;
 }
 
+export type ProgressoBusca = {
+  vaga_id: string;
+  estado: string;
+  consultas_feitas: number;
+  consultas_total: number;
+  coletados: number;
+  funil: number;
+  ultima_fonte: string | null;
+  atualizado_em: string;
+};
+
+export type ApiProgressoResponse = ApiEnvelope & { progresso: ProgressoBusca };
+
+// Retorna null quando a rota não existe (API mais antiga) para o painel seguir funcionando.
+export async function obterProgresso(vagaId: string): Promise<ProgressoBusca | null> {
+  try {
+    const resposta = await request<ApiProgressoResponse>(`/vagas/${encodeURIComponent(vagaId)}/progresso`);
+    return resposta.progresso;
+  } catch (erro) {
+    if (erro instanceof ApiError && erro.status === 404) return null;
+    throw erro;
+  }
+}
+
 export async function listarCandidatos(
   vagaId: string,
   pagina = 1,

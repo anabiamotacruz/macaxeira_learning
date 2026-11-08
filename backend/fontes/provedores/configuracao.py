@@ -1,5 +1,8 @@
 """Liga a cadeia pelo ambiente: cada provedor com chave entra, nesta ordem.
 
+000. Busca de pessoas da EnvoAPI (`envoapi_busca`), a principal quando há `ENVO_API_KEY` (decisão
+     do usuário em 8/11/2026): 1 crédito por chamada traz até 10 perfis completos. `ENVO_PAIS`
+     (padrão `BR`; em branco desliga) filtra os perfis pelo país. Sem a chave, nada muda.
 00. LinkedIn pela Brave (`linkedin_brave`), o primeiro quando há `BRAVE_API_KEY` e pelo menos uma
     de `ENVO_API_KEY` ou `LINK_API_KEY` (decisão do usuário em 8/11/2026). A Brave acha os links
     dos perfis, e a EnvoAPI extrai o perfil completo; se ela falhar, as chaves da LinkdAPI, na
@@ -39,6 +42,15 @@ from backend.fontes.provedores.bright_data import ProvedorBrightData
 from backend.fontes.provedores.cadeia import CadeiaProvedores, ModoDados, VerificadorSupressao
 from backend.fontes.provedores.controles import OrcamentoProvedores
 from backend.fontes.provedores.envoapi import ExtratorPerfilEnvo
+from backend.fontes.provedores.envoapi_busca import (
+    PAIS_PADRAO as PAIS_PADRAO_ENVO,
+)
+from backend.fontes.provedores.envoapi_busca import (
+    ProvedorEnvoBusca,
+)
+from backend.fontes.provedores.envoapi_busca import (
+    validar_pais as validar_pais_envo,
+)
 from backend.fontes.provedores.fonte import FonteProvedores, SituacaoFontes
 from backend.fontes.provedores.linkdapi import (
     LOCAL_PADRAO,
@@ -83,6 +95,7 @@ LINK_API_KEY_2 = "LINK_API_KEY_2"
 LINKDAPI_LOCAL = "LINKDAPI_LOCAL"
 LINKDAPI_PERFIS_POR_PAGINA = "LINKDAPI_PERFIS_POR_PAGINA"
 ENVO_API_KEY = "ENVO_API_KEY"
+ENVO_PAIS = "ENVO_PAIS"
 LINKEDIN_PERFIS_POR_PAGINA = "LINKEDIN_PERFIS_POR_PAGINA"
 MAXIMO_CHAVES_LINKDAPI = 20
 PDL_MIN_LIKELIHOOD = "PDL_MIN_LIKELIHOOD"
@@ -97,6 +110,7 @@ NOMES_DE_AMBIENTE = (
     LINKDAPI_LOCAL,
     LINKDAPI_PERFIS_POR_PAGINA,
     ENVO_API_KEY,
+    ENVO_PAIS,
     LINKEDIN_PERFIS_POR_PAGINA,
     BRAVE_API_KEY,
     BRIGHTDATA_API_TOKEN,
@@ -192,6 +206,21 @@ def _provedores_linkdapi(
         )
         for numero, chave in chaves
     ]
+
+
+def _provedor_envo_busca(
+    ambiente: Mapping[str, str], transporte: Transporte, relogio: Callable[[], datetime]
+) -> ProvedorEnvoBusca | None:
+    """`ENVO_PAIS` ausente vale `BR`; presente e em branco, desliga o filtro de país."""
+    chave = _valor(ambiente, ENVO_API_KEY)
+    if chave is None:
+        return None
+    pais = _valor(ambiente, ENVO_PAIS) if ENVO_PAIS in ambiente else PAIS_PADRAO_ENVO
+    try:
+        pais = None if pais is None else validar_pais_envo(pais)
+    except ValueError as erro:
+        raise ValueError(f"{ENVO_PAIS} inválido: {erro}") from None
+    return ProvedorEnvoBusca(chave, transporte, pais=pais, relogio=relogio)
 
 
 def _provedor_linkedin_brave(
@@ -358,10 +387,14 @@ def montar_fonte_externa(
     if modo is ModoDados.REAIS and (
         tem_linkdapi
         or any(
-            _valor(ambiente, nome) for nome in (BRAVE_API_KEY, BRIGHTDATA_API_TOKEN, PDL_API_KEY)
+            _valor(ambiente, nome)
+            for nome in (ENVO_API_KEY, BRAVE_API_KEY, BRIGHTDATA_API_TOKEN, PDL_API_KEY)
         )
     ):
         saida = transporte or TransporteHttp()
+        envo_busca = _provedor_envo_busca(ambiente, saida, relogio)
+        if envo_busca is not None:
+            provedores.append(envo_busca)
         linkdapi = _provedores_linkdapi(ambiente, saida, relogio)
         brave = _provedor_brave(ambiente, saida, relogio)
         linkedin_brave = _provedor_linkedin_brave(

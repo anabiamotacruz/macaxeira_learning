@@ -1225,6 +1225,126 @@
         }
       }
     },
+    "/vagas/{id}/progresso": {
+      "get": {
+        "tags": [
+          "vagas"
+        ],
+        "summary": "Consultar Progresso",
+        "description": "Devolve o andamento da busca, para o painel mostrar a coleta enquanto ela anda.",
+        "operationId": "consultar_progresso",
+        "security": [
+          {
+            "SessaoSimulada": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaProgresso"
+                },
+                "example": {
+                  "simulado": true,
+                  "exemplo_fixo": false,
+                  "progresso": {
+                    "vaga_id": "vaga-exemplo-1",
+                    "estado": "buscando",
+                    "consultas_feitas": 3,
+                    "consultas_total": 14,
+                    "coletados": 24,
+                    "funil": 20,
+                    "ultima_fonte": "envoapi_busca",
+                    "atualizado_em": "2026-11-07T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessão ausente ou inválida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "sessao_ausente",
+                    "mensagem": "Sessão ausente ou inválida."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não existe nesta empresa",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "nao_encontrado",
+                    "mensagem": "Recurso não encontrado nesta empresa."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados inválidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "dados_invalidos",
+                    "mensagem": "Dados inválidos: body.limite_gasto_usd (greater_than)."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno, sem detalhes",
+            "content": {
+              "application/json": {
+                "example": {
+                  "erro": {
+                    "codigo": "erro_interno",
+                    "mensagem": "Erro interno."
+                  },
+                  "simulado": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaErro"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/vagas/{id}/entrega": {
       "get": {
         "tags": [
@@ -4933,6 +5053,70 @@
         "title": "PontoExplorar",
         "description": "O que o recrutador e a entrevista podem aprofundar, sempre com trecho e fonte."
       },
+      "ProgressoBusca": {
+        "properties": {
+          "vaga_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vaga Id"
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoVaga"
+          },
+          "consultas_feitas": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Consultas Feitas"
+          },
+          "consultas_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Consultas Total"
+          },
+          "coletados": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Coletados",
+            "description": "Pessoas novas encontradas até agora na rodada."
+          },
+          "funil": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Funil",
+            "description": "Quantas pessoas a rodada analisa no máximo."
+          },
+          "ultima_fonte": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultima Fonte"
+          },
+          "atualizado_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Atualizado Em"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vaga_id",
+          "estado",
+          "consultas_feitas",
+          "consultas_total",
+          "coletados",
+          "funil",
+          "ultima_fonte",
+          "atualizado_em"
+        ],
+        "title": "ProgressoBusca",
+        "description": "Quanto a busca da rodada atual andou. Só contagens: nenhum dado de pessoa."
+      },
       "Requisito": {
         "properties": {
           "id": {
@@ -5507,6 +5691,32 @@
         ],
         "title": "RespostaModelosVaga",
         "description": "Vagas de exemplo, sintéticas, para preencher o formulário de `POST /vagas`."
+      },
+      "RespostaProgresso": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulado",
+            "default": true
+          },
+          "exemplo_fixo": {
+            "type": "boolean",
+            "title": "Exemplo Fixo",
+            "default": false
+          },
+          "progresso": {
+            "$ref": "#/components/schemas/ProgressoBusca"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "simulado",
+          "exemplo_fixo",
+          "progresso"
+        ],
+        "title": "RespostaProgresso"
       },
       "RespostaProposta": {
         "properties": {

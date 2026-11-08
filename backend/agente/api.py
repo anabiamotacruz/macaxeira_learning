@@ -43,7 +43,7 @@ from backend.agente.fluxo import (
     TransicaoInvalida,
 )
 from backend.agente.mandato import MandatoInvalido
-from backend.agente.montagem import campos_do_banco_demo, montar_servico
+from backend.agente.montagem import campos_do_banco_demo, montar_servico, tamanho_do_funil
 from backend.agente.palavras_chave import MAX_CARACTERES_PALAVRA, MAX_PALAVRAS_CHAVE
 from backend.agente.servico import (
     AditivoNecessario,
@@ -392,6 +392,25 @@ class RespostaCandidatos(RespostaPaginada):
 
 class RespostaEventos(RespostaPaginada):
     itens: list[EventoFluxo]
+
+
+class ProgressoBusca(Contrato):
+    """Quanto a busca da rodada atual andou. Só contagens: nenhum dado de pessoa."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    vaga_id: Texto
+    estado: EstadoVaga
+    consultas_feitas: int = Field(ge=0)
+    consultas_total: int = Field(ge=0)
+    coletados: int = Field(ge=0, description="Pessoas novas encontradas até agora na rodada.")
+    funil: int = Field(ge=0, description="Quantas pessoas a rodada analisa no máximo.")
+    ultima_fonte: str | None = None
+    atualizado_em: AwareDatetime
+
+
+class RespostaProgresso(RespostaSimulada):
+    progresso: ProgressoBusca
 
 
 class RespostaEntrega(RespostaSimulada):
@@ -834,6 +853,45 @@ def listar_eventos(
         limite=limite,
         total=len(eventos),
         itens=_pagina_de(eventos, pagina, limite),
+    )
+
+
+def _resposta_progresso() -> RespostaProgresso:
+    return RespostaProgresso(
+        progresso=ProgressoBusca(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            estado=EstadoVaga.BUSCANDO,
+            consultas_feitas=3,
+            consultas_total=14,
+            coletados=24,
+            funil=tamanho_do_funil(1),
+            ultima_fonte="envoapi_busca",
+            atualizado_em=exemplos.MOMENTO,
+        )
+    )
+
+
+@rotas.get(
+    "/vagas/{id}/progresso",
+    tags=["vagas"],
+    response_model=RespostaProgresso,
+    responses=_respostas(_resposta_progresso()),
+)
+def consultar_progresso(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaProgresso:
+    """Devolve o andamento da busca, para o painel mostrar a coleta enquanto ela anda."""
+    fluxo = servico.consultar(empresa, id)
+    andamento = fluxo.andamento_da_busca()
+    return RespostaProgresso(
+        progresso=ProgressoBusca(
+            vaga_id=fluxo.vaga.id,
+            estado=fluxo.estado,
+            consultas_feitas=andamento.consultas_feitas,
+            consultas_total=andamento.consultas_total,
+            coletados=andamento.coletados,
+            funil=tamanho_do_funil(fluxo.vaga.meta_candidatos),
+            ultima_fonte=andamento.ultima_fonte,
+            atualizado_em=andamento.atualizado_em,
+        )
     )
 
 
