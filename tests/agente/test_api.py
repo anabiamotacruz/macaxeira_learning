@@ -130,6 +130,7 @@ def test_expoe_exatamente_as_rotas_combinadas():
         ("get", "/vagas/{id}/candidatos"),
         ("get", "/vagas/{id}/eventos"),
         ("get", "/vagas/{id}/entrega"),
+        ("get", "/vagas/{id}/convites"),
         ("get", "/vagas/{id}/resumo"),
         ("get", "/vagas/{id}/metricas"),
         ("get", "/candidatos/{id}/decisao"),
@@ -137,6 +138,7 @@ def test_expoe_exatamente_as_rotas_combinadas():
         ("post", "/vagas/{id}/retomar"),
         ("post", "/candidatos/{id}/reverter"),
         ("post", "/candidatos/{id}/destino"),
+        ("post", "/convites/{id}/resposta"),
         ("post", "/sessoes/reiniciar"),
     }
 

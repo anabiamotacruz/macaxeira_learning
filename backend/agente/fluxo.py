@@ -809,6 +809,13 @@ class FluxoVaga:
             )
         return situacao
 
+    def convites(self) -> list[RegistroConvite]:
+        """Os convites da vaga, na ordem de envio, com o estado de cada um."""
+        dados = self._repo.carregar_progresso(self.vaga.empresa_id, self.vaga.id)
+        if dados is None:
+            return []
+        return ProgressoFluxo.model_validate_json(dados).convites
+
     def pacotes_entregues(self) -> list[PacoteContexto]:
         """Os pacotes que já chegaram ao destino, montados como na entrega."""
         dados = self._repo.carregar_progresso(self.vaga.empresa_id, self.vaga.id)

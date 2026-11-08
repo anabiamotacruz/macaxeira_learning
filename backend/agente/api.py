@@ -11,6 +11,7 @@ Depois de mudar este arquivo, gere o contrato com:
 """
 
 import logging
+import os
 import re
 import threading
 from collections.abc import Callable, Sequence
@@ -18,6 +19,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -27,7 +29,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.agente import exemplos_api as exemplos
 from backend.agente.auditoria import DecisoesAutomaticasPausadas
-from backend.agente.fluxo import AcaoRecusada, ResponsavelInvalido, TransicaoInvalida
+from backend.agente.fluxo import (
+    AcaoRecusada,
+    EstadoConvite,
+    ResponsavelInvalido,
+    TransicaoInvalida,
+)
 from backend.agente.mandato import MandatoInvalido
 from backend.agente.montagem import montar_demo
 from backend.agente.servico import (
@@ -44,6 +51,7 @@ from backend.contratos.modelos import (
     Candidato,
     Competencia,
     Contrato,
+    Convite,
     Decisao,
     DestinoPessoa,
     EstadoVaga,
@@ -51,12 +59,14 @@ from backend.contratos.modelos import (
     Mandato,
     Politica,
     Requisito,
+    RespostaCandidato,
     ResumoExecucao,
     SaidaPersonalizada,
     TaxaMedida,
     Texto,
     TipoDecisao,
     TipoErro,
+    TipoResposta,
     Vaga,
 )
 
@@ -64,6 +74,8 @@ logger = logging.getLogger(__name__)
 
 LIMITE_PADRAO = 20
 LIMITE_MAXIMO = 100
+ORIGENS_PAINEL_PADRAO = "http://localhost:3000,http://127.0.0.1:3000"
+"""Origens do painel local. Em outro endereço, defina `ORIGENS_PAINEL`, separadas por vírgula."""
 """Maior `limite` aceito nas listas."""
 
 _MAX_ERROS_NA_MENSAGEM = 5
@@ -157,6 +169,56 @@ class PedidoDestino(Contrato):
         Field(description="Pessoa do RH que decidiu o destino. O agente não decide o destino."),
     ]
     chave_idempotencia: Texto
+
+
+class PedidoResposta(Contrato):
+    """Resposta da pessoa ao convite. Na demonstração, quem testa faz o papel da pessoa."""
+
+    vaga_id: Texto
+    tipo: TipoResposta
+    texto: Annotated[
+        str, Field(description="Texto da pessoa. É dado, nunca instrução, e não vai aos eventos.")
+    ] = ""
+    chave_idempotencia: Texto
+
+
+class ItemConvite(Contrato):
+    """O convite como o painel mostra. O agente não agenda: o link é do agente de destino."""
+
+    id: Texto
+    candidato_id: Texto
+    canal: str
+    mensagem: str
+    link_destino: Annotated[
+        str | None, Field(description="Link do agente de destino que a pessoa usa, se houver.")
+    ] = None
+    simulado: bool
+    estado: EstadoConvite
+    tentativa: int
+
+    @classmethod
+    def de(cls, convite: Convite, estado: EstadoConvite, tentativa: int) -> "ItemConvite":
+        return cls(
+            id=convite.id,
+            candidato_id=convite.candidato_id,
+            canal=convite.canal,
+            mensagem=convite.mensagem,
+            link_destino=convite.link_agendamento,
+            simulado=convite.simulado,
+            estado=estado,
+            tentativa=tentativa,
+        )
+
+
+class RespostaConvites(RespostaSimulada):
+    vaga_id: Texto
+    itens: list[ItemConvite]
+
+
+class RespostaRegistroResposta(RespostaSimulada):
+    vaga_id: Texto
+    convite_id: Texto
+    tipo: TipoResposta
 
 
 class RespostaVaga(RespostaSimulada):
@@ -544,6 +606,25 @@ def consultar_entrega(id: str, empresa: EmpresaDaSessao, servico: Servico) -> Re
 
 
 @rotas.get(
+    "/vagas/{id}/convites",
+    tags=["vagas"],
+    response_model=RespostaConvites,
+    responses=_respostas(
+        RespostaConvites(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            itens=[ItemConvite.de(exemplos.CONVITE, EstadoConvite.AGUARDANDO, 1)],
+        )
+    ),
+)
+def listar_convites(id: str, empresa: EmpresaDaSessao, servico: Servico) -> RespostaConvites:
+    """Lista os convites da vaga com o estado de cada um. Todo convite aqui é simulado."""
+    itens = [
+        ItemConvite.de(r.convite, r.estado, r.tentativa) for r in servico.convites(empresa, id)
+    ]
+    return RespostaConvites(vaga_id=id, itens=itens)
+
+
+@rotas.get(
     "/vagas/{id}/resumo",
     tags=["vagas"],
     response_model=RespostaResumo,
@@ -721,6 +802,44 @@ def registrar_destino(
 
 
 @rotas.post(
+    "/convites/{id}/resposta",
+    tags=["controle"],
+    response_model=RespostaRegistroResposta,
+    responses=_respostas(
+        RespostaRegistroResposta(
+            vaga_id=exemplos.VAGA_EXEMPLO,
+            convite_id=exemplos.CONVITE.id,
+            tipo=TipoResposta.ACEITE,
+        ),
+        erros=_ERROS_DE_ACAO,
+    ),
+)
+def registrar_resposta(
+    id: str,
+    pedido: Annotated[
+        PedidoResposta, Body(openapi_examples=_exemplo_de_pedido(exemplos.PEDIDO_RESPOSTA))
+    ],
+    empresa: EmpresaDaSessao,
+    servico: Servico,
+) -> RespostaRegistroResposta:
+    """Registra a resposta da pessoa ao convite. Aceite leva o contexto ao agente de destino."""
+    servico.consultar(empresa, pedido.vaga_id)
+
+    def acao() -> RespostaRegistroResposta:
+        resposta = RespostaCandidato(convite_id=id, tipo=pedido.tipo, texto=pedido.texto)
+        servico.registrar_resposta(empresa, pedido.vaga_id, resposta)
+        return RespostaRegistroResposta(vaga_id=pedido.vaga_id, convite_id=id, tipo=pedido.tipo)
+
+    return servico.idempotente(
+        empresa,
+        f"resposta:{pedido.vaga_id}:{id}:{pedido.chave_idempotencia}",
+        pedido.model_dump_json(),
+        RespostaRegistroResposta,
+        acao,
+    )
+
+
+@rotas.post(
     "/sessoes/reiniciar",
     tags=["sessoes"],
     response_model=RespostaReinicio,
@@ -892,6 +1011,13 @@ def criar_app(servico: ServicoVagas | None = None) -> FastAPI:
     )
     aplicacao.state.obter_servico = _lazy_demo() if servico is None else (lambda: servico)
     aplicacao.include_router(rotas)
+    origens = os.environ.get("ORIGENS_PAINEL", ORIGENS_PAINEL_PADRAO)
+    aplicacao.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in origens.split(",") if o.strip()],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "X-Empresa-Id"],
+    )
     aplicacao.add_exception_handler(ErroApi, _tratar_erro_api)
     for tipo in _ERROS_DE_DOMINIO:
         aplicacao.add_exception_handler(tipo, _tratar_erro_de_dominio)
