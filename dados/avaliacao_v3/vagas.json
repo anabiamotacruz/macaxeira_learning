@@ -30,7 +30,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-backend",
@@ -63,7 +64,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-frontend",
@@ -96,7 +98,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-frontend",
@@ -129,7 +132,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-mobile",
@@ -162,7 +166,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-mobile",
@@ -195,7 +200,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-dados",
@@ -228,7 +234,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-dados",
@@ -261,7 +268,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-qa",
@@ -294,7 +302,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-qa",
@@ -327,7 +336,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-sre",
@@ -360,7 +370,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-sre",
@@ -393,7 +404,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-seguranca",
@@ -426,7 +438,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-seguranca",
@@ -459,7 +472,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-ml",
@@ -492,7 +506,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-ml",
@@ -525,7 +540,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-produto",
@@ -558,7 +574,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-produto",
@@ -591,7 +608,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-ux",
@@ -624,7 +642,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-ux",
@@ -657,7 +676,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-plataforma",
@@ -690,7 +710,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-plataforma",
@@ -723,7 +744,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-1-integracoes",
@@ -756,7 +778,8 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   },
   {
     "id": "empresa-v3-2-integracoes",
@@ -789,6 +812,7 @@
     "meta_candidatos": 5,
     "prazo_dias": 7,
     "max_tentativas_contato": 2,
-    "aprovada": false
+    "aprovada": false,
+    "palavras_chave": []
   }
 ]

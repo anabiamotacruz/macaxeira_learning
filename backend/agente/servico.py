@@ -34,6 +34,7 @@ from backend.agente.fluxo import (
     exigir_humano,
 )
 from backend.agente.mandato import MandatoInvalido, Politica
+from backend.agente.palavras_chave import limpar_palavras_chave
 from backend.agente.persistencia import Repositorio
 from backend.agente.regras import requisitos_sem_valor, validar_criterios
 from backend.contratos.erros import ErroContrato
@@ -201,8 +202,14 @@ class ServicoVagas:
         return self.repositorio.listar_vagas(empresa_id)
 
     def criar_vaga(self, empresa_id: str, dados: dict[str, Any]) -> FluxoVaga:
-        """Grava a vaga e a deixa à espera do mandato. Critério sensível não entra."""
-        vaga = Vaga.model_validate({**dados, "id": self._gerar_id(), "empresa_id": empresa_id})
+        """Grava a vaga e a deixa à espera do mandato. Critério sensível não entra.
+
+        As palavras-chave são gravadas já limpas: é o que a busca vai usar.
+        """
+        palavras = limpar_palavras_chave(dados.get("palavras_chave") or [])
+        vaga = Vaga.model_validate(
+            {**dados, "palavras_chave": palavras, "id": self._gerar_id(), "empresa_id": empresa_id}
+        )
         if requisitos_sem_valor(vaga):
             raise RequisitoIncompleto("todo requisito precisa do atributo e do valor esperado")
         if validar_criterios(vaga):
