@@ -50,7 +50,7 @@ const ESTADOS: Record<string, string> = {
   decidindo: "Decidindo",
   meta_em_risco: "Meta em risco",
   convidando: "Convidando",
-  entregando: "Entregando à Nara",
+  entregando: "Entregando ao recrutador",
   concluida: "Concluída",
   pausada: "Pausada",
 };
@@ -624,7 +624,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
     ["quadro", "Quadro", null],
     ["lista", "Lista", lista.length],
     ["conversas", "Conversas", convites.length],
-    ["nara", "Nara e retorno", pacotes.length],
+    ["nara", "Entrega e retorno", pacotes.length],
     ["rastro", "Rastro", eventos.length],
     ["criterios", "Critérios", null],
   ];
@@ -791,7 +791,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                             </span>
                             <span className="flex flex-wrap gap-1.5">
                               <span className={card.estilo}>{card.etiqueta}</span>
-                              {card.nara && <span className={etiquetaSimulada}>Nara simulada</span>}
+                              {card.nara && <span className={etiquetaNeutra}>entregue ao recrutador</span>}
                               {card.item.candidato.simulado && <span className={etiquetaSimulada}>perfil sintético</span>}
                             </span>
                             {card.detalhe && (
@@ -867,8 +867,8 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
               <div className="grid gap-4">
                 <div className="grid gap-3">
                   <p className="flex flex-wrap items-center gap-2 text-[13px] text-cora-muted">
-                    Quem aceita vai para a Nara com o porquê da indicação. A Nara agenda e entrevista; a CORA não agenda.
-                    <span className={etiquetaSimulada}>Nara simulada</span>
+                    Quem aceita é entregue ao recrutador, ou ao agente de entrevista que a empresa usa (como a Nara), com o porquê da indicação. Quem agenda e entrevista é o recrutador; a CORA não agenda.
+                    <span className={etiquetaNeutra}>retorno do recrutador</span>
                   </p>
                   {pacotes.length ? (
                     pacotes.map((pacote) => (
@@ -885,7 +885,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                             </div>
                           ))}
                         </dl>
-                        {pacote.pontos_a_aprofundar.length > 0 && <p className="text-[13px] text-cora-ink-2"><b>Para a Nara aprofundar:</b> {pacote.pontos_a_aprofundar.join("; ")}</p>}
+                        {pacote.pontos_a_aprofundar.length > 0 && <p className="text-[13px] text-cora-ink-2"><b>Para aprofundar na entrevista:</b> {pacote.pontos_a_aprofundar.join("; ")}</p>}
                         {pacote.lacunas.length > 0 && <p className="text-[13px] text-cora-placeholder">Lacunas: {pacote.lacunas.join("; ")}</p>}
                       </article>
                     ))
@@ -898,10 +898,10 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <span className="flex flex-col">
                       <span className="font-semibold">Depois da entrevista</span>
-                      <span className="text-xs text-cora-placeholder">A Nara entrevista e decide. A CORA só avisa cada pessoa do resultado, uma vez, sem mostrar nota.</span>
+                      <span className="text-xs text-cora-placeholder">O recrutador entrevista e decide. A CORA só avisa cada pessoa do resultado, uma vez, sem mostrar nota.</span>
                     </span>
                     <button className="cora-btn cora-btn-primary h-10" disabled={avisando || !pacotes.length} onClick={avisarResultados} type="button">
-                      {avisando ? "Avisando…" : "A Nara terminou: avisar as pessoas"}
+                      {avisando ? "Avisando…" : "Registrar o retorno do recrutador e avisar as pessoas"}
                     </button>
                   </div>
                   {comRetorno.length > 0 && (
@@ -909,7 +909,7 @@ export function PainelVaga({ vagaId }: { vagaId: string }) {
                       {comRetorno.map((convite) => (
                         <li className="flex flex-wrap items-center gap-2 border-t border-cora-subtle pt-2" key={convite.id}>
                           <b>{nomes[convite.candidato_id] ?? convite.candidato_id}</b>
-                          <span className={convite.retorno?.aprovado ? etiquetaOk : etiquetaNeutra}>Nara: {convite.retorno?.aprovado ? "seguir" : "não seguir"}</span>
+                          <span className={convite.retorno?.aprovado ? etiquetaOk : etiquetaNeutra}>Recrutador: {convite.retorno?.aprovado ? "seguir" : "não seguir"}</span>
                           <span className={convite.retorno?.enviado ? "text-cora-muted" : "text-cora-coral-ink"}>{convite.retorno?.enviado ? "mensagem enviada" : "mensagem não saiu, tente de novo"}</span>
                         </li>
                       ))}
