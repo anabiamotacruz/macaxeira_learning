@@ -176,11 +176,11 @@ Esta tarefa é da Frente 1 e substitui a T3.8 proposta na spec da Frente 3. Não
 A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste, 18 de prova e 4 duplicatas, em cerca de 1h15 a 1h50. O resultado valida o gabarito e calibra o agente, mas não prova desempenho com pessoas reais.
 
 - [ ] Combinar data e horário com a pessoa de RH.
-- [ ] Testar `test_ficha_nao_mostra_gabarito_nem_resposta_do_agente`.
-- [ ] Testar `test_selecao_e_reproduzivel_e_respeita_as_particoes`.
-- [ ] Testar `test_importacao_guarda_decisao_e_motivo` e `test_resposta_incompleta_e_recusada`.
-- [ ] Testar `test_mede_concordancia_por_tipo_de_caso` e `test_duplicatas_medem_consistencia`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_ficha_nao_mostra_gabarito_nem_resposta_do_agente`.
+- [x] Testar `test_selecao_e_reproduzivel_e_respeita_as_particoes`.
+- [x] Testar `test_importacao_guarda_decisao_e_motivo` e `test_resposta_incompleta_e_recusada`.
+- [x] Testar `test_mede_concordancia_por_tipo_de_caso` e `test_duplicatas_medem_consistencia`.
+- [x] Implementar e verificar.
 - [ ] Aplicar a avaliação e, se houver muita discordância, corrigir o gerador antes de usar as taxas de erro.
 - [ ] Registrar o resultado no relatório, sem dados reais e com os limites da medição.
 
