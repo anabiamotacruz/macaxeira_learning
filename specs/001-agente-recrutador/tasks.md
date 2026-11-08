@@ -388,11 +388,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Arquivo:** `tests/ponta_a_ponta/test_fluxo_demo.py`.
 
-- [ ] Testar `test_da_base_baguncada_a_entrega_na_nara`, com modelo simulado.
-- [ ] Testar `test_jurado_altera_vaga_e_plano_muda`.
-- [ ] Testar `test_fonte_cai_e_execucao_continua`.
-- [ ] Testar `test_reinicio_nao_duplica_convite_nem_entrega`.
-- [ ] Testar `test_dois_jurados_nao_se_afetam`.
+- [x] Testar `test_da_base_baguncada_a_entrega_na_nara`, com modelo simulado.
+- [x] Testar `test_jurado_altera_vaga_e_plano_muda`.
+- [x] Testar `test_fonte_cai_e_execucao_continua`.
+- [x] Testar `test_reinicio_nao_duplica_convite_nem_entrega`.
+- [x] Testar `test_dois_jurados_nao_se_afetam`.
 - [ ] Rodar com o modelo real uma vez antes de cada congelamento.
 
 ### T4.3 (onda 2): deploy e link testável
