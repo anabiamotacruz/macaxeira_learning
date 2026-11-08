@@ -122,7 +122,25 @@ export function listarIdsLocais(): string[] {
 
 export async function listarVagas(): Promise<ApiVagaListItem[]> {
   if (RESERVA_ATIVA) return [];
-  return Promise.all(idsSalvos().map(async (id) => ({ ...(await obterVaga(id)), fonte: "api" as const })));
+  try {
+    const resposta = await request<ApiEnvelope & { itens: ApiVagaResponse[] }>("/vagas");
+    return resposta.itens.map((item) => ({ ...item, fonte: "api" as const }));
+  } catch (erro) {
+    // API sem a listagem: cai para as vagas criadas neste navegador.
+    if (!(erro instanceof ApiError) || (erro.status !== 404 && erro.status !== 405)) throw erro;
+  }
+  const vagas: Array<ApiVagaListItem | null> = await Promise.all(
+    idsSalvos().map(async (id) => {
+      try {
+        return { ...(await obterVaga(id)), fonte: "api" as const };
+      } catch (erro) {
+        // A API guarda as vagas em memória: uma vaga que sumiu no reinício não derruba o catálogo.
+        if (erro instanceof ApiError && erro.status === 404) return null;
+        throw erro;
+      }
+    }),
+  );
+  return vagas.filter((vaga): vaga is ApiVagaListItem => vaga !== null);
 }
 
 export async function obterVaga(id: string): Promise<ApiVagaResponse> {
@@ -408,4 +426,73 @@ export async function obterAudioWhatsApp(vagaId: string, audioId: string): Promi
   );
   if (!resposta.ok) throw new ApiError(resposta.status);
   return URL.createObjectURL(await resposta.blob());
+}
+
+// Controle da vaga e da decisão: pausa, retomada, reversão, destino, métricas e reinício da sessão.
+
+export type ControleVaga = { vaga_id: string; estado: EstadoVaga; estado_anterior: EstadoVaga };
+
+export async function pararVaga(vagaId: string, responsavel: string, motivo = ""): Promise<ControleVaga> {
+  return requestComMotivo<ControleVaga>(`/vagas/${encodeURIComponent(vagaId)}/parar`, {
+    method: "POST",
+    body: JSON.stringify({ responsavel, motivo, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export async function retomarVaga(vagaId: string, responsavel: string, motivo = ""): Promise<ControleVaga> {
+  return requestComMotivo<ControleVaga>(`/vagas/${encodeURIComponent(vagaId)}/retomar`, {
+    method: "POST",
+    body: JSON.stringify({ responsavel, motivo, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export async function reverterDecisao(
+  candidatoId: string,
+  pedido: { vaga_id: string; motivo: string; responsavel: string },
+): Promise<{ decisao_original: Decisao; decisao_nova: Decisao }> {
+  return requestComMotivo(`/candidatos/${encodeURIComponent(candidatoId)}/reverter`, {
+    method: "POST",
+    body: JSON.stringify({ ...pedido, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export type DestinoPessoa = "banco" | "talent_garden" | "contratada";
+
+export async function registrarDestino(
+  candidatoId: string,
+  pedido: { vaga_id: string; destino: DestinoPessoa; responsavel: string },
+): Promise<{ vaga_id: string; candidato_id: string; destino: DestinoPessoa; responsavel: string }> {
+  return requestComMotivo(`/candidatos/${encodeURIComponent(candidatoId)}/destino`, {
+    method: "POST",
+    body: JSON.stringify({ ...pedido, chave_idempotencia: crypto.randomUUID() }),
+  });
+}
+
+export type TaxaMedida = {
+  valor: number | null;
+  casos: number;
+  wilson_inferior: number | null;
+  wilson_superior: number | null;
+};
+
+export type MetricasVaga = ApiEnvelope & {
+  vaga_id: string;
+  sem_revisao: TaxaMedida;
+  erros_por_tipo: Record<string, TaxaMedida>;
+};
+
+export async function obterMetricas(vagaId: string): Promise<MetricasVaga> {
+  return request<MetricasVaga>(`/vagas/${encodeURIComponent(vagaId)}/metricas`);
+}
+
+export async function reiniciarSessao(): Promise<ApiEnvelope & { dados_recarregados: boolean; mensagem: string }> {
+  return requestComMotivo(`/sessoes/reiniciar`, { method: "POST", body: "{}" });
+}
+
+export async function statusWhatsApp(): Promise<{ ligado: boolean; voz: string | null }> {
+  try {
+    return await request<{ ligado: boolean; voz: string | null }>(`/whatsapp/status`);
+  } catch {
+    return { ligado: false, voz: null };
+  }
 }

@@ -3,248 +3,298 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { Sidebar } from "../../components/Sidebar";
-import { SimuladoBadge } from "../../components/SimuladoBadge";
-import { candidatosIniciais } from "../../lib/dados";
+import { AppHeader, AppMain } from "../../components/AppHeader";
 import { modoReservaAtivo } from "../../lib/api";
-import type { EstadoBanco } from "../../lib/tipos";
+import { candidatosIniciais } from "../../lib/dados";
+import type { Candidato, EstadoBanco } from "../../lib/tipos";
 
-const estados: Array<EstadoBanco | "todos"> = [
-  "todos",
-  "ativo",
-  "pendente",
-  "desatualizado",
-  "expirado",
-  "removido",
+const EMPRESA_ID = process.env.NEXT_PUBLIC_EMPRESA_ID || "empresa-exemplo";
+const POR_PAGINA = 8;
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+type Filtro = "todas" | "autorizada" | "aguardando" | "fora";
+
+const ABAS: Array<{ id: Filtro; rotulo: string; explicacao: string }> = [
+  { id: "todas", rotulo: "Todas", explicacao: "Todas as pessoas do banco desta empresa, com a situação de cada uma." },
+  { id: "autorizada", rotulo: "Autorizadas", explicacao: "Autorizaram o contato e a autorização está válida: a CORA pode analisar e convidar." },
+  { id: "aguardando", rotulo: "Aguardando", explicacao: "Ainda não autorizaram. Recebem só o pedido de autorização, nunca a vaga." },
+  { id: "fora", rotulo: "Fora da busca", explicacao: "Autorização vencida, pedido de remoção ou perfil removido: não entram em nenhuma busca." },
 ];
 
-function Icon({
-  name,
-  size = 18,
-}: {
-  name: "bell" | "briefcase" | "grid" | "people" | "search";
-  size?: number;
-}) {
-  const common = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeWidth: 1.8,
-  };
+const ROTULO_ESTADO: Record<EstadoBanco, string> = {
+  ativo: "Ativo",
+  pendente: "Pendente",
+  desatualizado: "Desatualizado",
+  expirado: "Autorização vencida",
+  removido: "Removido",
+};
 
-  const paths = {
-    bell: (
-      <>
-        <path {...common} d="M5 8.5a4 4 0 0 1 8 0c0 4 1.5 4 1.5 5H3.5c0-1 1.5-1 1.5-5Z" />
-        <path {...common} d="M8 15.5a1.5 1.5 0 0 0 2.8 0" />
-      </>
-    ),
-    briefcase: (
-      <>
-        <rect {...common} height="8" rx="1.5" width="13" x="2.5" y="5.5" />
-        <path {...common} d="M6 5.5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1.5M2.5 9h13M8 9v1.5h2V9" />
-      </>
-    ),
-    grid: (
-      <>
-        <rect {...common} height="4" rx="1" width="4" x="2" y="2" />
-        <rect {...common} height="4" rx="1" width="4" x="10" y="2" />
-        <rect {...common} height="4" rx="1" width="4" x="2" y="10" />
-        <rect {...common} height="4" rx="1" width="4" x="10" y="10" />
-      </>
-    ),
-    people: (
-      <>
-        <circle {...common} cx="6" cy="5" r="2" />
-        <circle {...common} cx="11" cy="5.5" r="1.6" />
-        <path {...common} d="M2.5 13c.3-2 1.5-3 3.5-3s3.2 1 3.5 3M9 10.5c2.4-.7 4.2.3 4.5 2.5" />
-      </>
-    ),
-    search: <circle {...common} cx="7" cy="7" r="4.3" />,
-  };
-
-  return (
-    <svg aria-hidden="true" height={size} viewBox="0 0 16 16" width={size}>
-      {paths[name]}
-    </svg>
-  );
+function situacao(c: Candidato): Exclude<Filtro, "todas"> {
+  if (c.opt_out || c.estado === "removido" || c.estado === "expirado") return "fora";
+  return c.autorizou_contato ? "autorizada" : "aguardando";
 }
 
-function CoralMark() {
-  return <img alt="Coral da CORA" className="h-10 w-10 shrink-0 object-contain" src="/coral.png" />;
-  /*
-  return (
-    <svg
-      aria-label="Ícone coral da CORA"
-      className="h-10 w-10 shrink-0"
-      fill="none"
-      role="img"
-      viewBox="0 0 48 48"
-    >
-      <path
-        d="M7 29c4-5 5-11 5-17 0-2 2-3 3-1 3 4 3 8 3 12 2-7 5-14 9-19 1-2 4-1 4 2v12c2-5 5-9 9-12 2-1 4 0 3 3-2 7-5 12-10 17 4-2 7-3 11-2 2 0 3 3 1 4-5 5-10 7-16 7 2 2 3 5 2 7-1 2-3 2-5 0-3-3-5-6-6-10-3 3-7 5-11 6-2 0-3-2-2-4Z"
-        fill="#fb3c0d"
-      />
-      <path
-        d="M12 30c5-3 9-7 11-12 1-3 3-7 5-10-1 7 0 13 3 18-4 3-8 5-13 6-2 0-4 0-6-2Z"
-        fill="#ed2e23"
-        opacity=".55"
-      />
-    </svg>
-  );
-  */
+function iniciais(nome: string): string {
+  return nome
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join("");
+}
+
+function data(iso: string | null): string {
+  if (!iso) return "—";
+  const [a, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${a}`;
+}
+
+function chipSituacao(c: Candidato) {
+  const s = situacao(c);
+  if (s === "autorizada") return <span className="cora-chip cora-chip-ok">Autorizada</span>;
+  if (s === "aguardando") return <span className="cora-chip cora-chip-warn">Aguardando autorização</span>;
+  return <span className="cora-chip cora-chip-coral">{c.opt_out ? "Pediu remoção" : ROTULO_ESTADO[c.estado]}</span>;
 }
 
 export default function BancoPage() {
   const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<Filtro>("todas");
   const [estado, setEstado] = useState<EstadoBanco | "todos">("todos");
-  const candidatos = useMemo(() => {
+  const [pagina, setPagina] = useState(1);
+
+  const contagem = useMemo(() => {
+    const base: Record<Filtro, number> = { todas: candidatosIniciais.length, autorizada: 0, aguardando: 0, fora: 0 };
+    for (const c of candidatosIniciais) base[situacao(c)] += 1;
+    return base;
+  }, []);
+
+  const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return candidatosIniciais.filter((candidato) => {
+    return candidatosIniciais.filter((c) => {
       const combinaBusca =
         !termo ||
-        candidato.nome.toLowerCase().includes(termo) ||
-        Object.keys(candidato.atributos).some((competencia) =>
-          competencia.toLowerCase().includes(termo),
-        );
-      return combinaBusca && (estado === "todos" || candidato.estado === estado);
+        c.nome.toLowerCase().includes(termo) ||
+        Object.keys(c.atributos).some((k) => k.toLowerCase().includes(termo));
+      return (
+        combinaBusca &&
+        (filtro === "todas" || situacao(c) === filtro) &&
+        (estado === "todos" || c.estado === estado)
+      );
     });
-  }, [busca, estado]);
+  }, [busca, filtro, estado]);
+
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const visiveis = filtrados.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
+
+  const remocoes = candidatosIniciais.filter((c) => c.opt_out || c.estado === "removido");
+  const hoje = new Date("2026-11-08").getTime();
+  const vencendo = candidatosIniciais.filter((c) => {
+    if (!c.autorizacao_valida_ate || !c.autorizou_contato) return false;
+    const fim = new Date(c.autorizacao_valida_ate).getTime();
+    return fim >= hoje && fim - hoje <= 30 * DIA_MS;
+  });
+  const vencidas = candidatosIniciais.filter((c) => c.estado === "expirado");
+
+  const explicacao = ABAS.find((a) => a.id === filtro)?.explicacao ?? "";
 
   return (
-    <main className="min-h-screen bg-[#f7f8f5] text-[#0e3038]">
-      <Sidebar active="banco" />
-
-      <div className="md:pl-[238px]">
-        <header className="flex h-[80px] items-center justify-between border-b border-[#e4e9e5] bg-white/80 px-5 sm:px-10 md:h-[94px]">
-          <div className="flex items-center gap-2 md:hidden">
-            <CoralMark />
-            <div>
-              <p className="text-xl font-semibold leading-none tracking-tight text-[#0b3038]">CORA</p>
-              <p className="mt-1 text-[7px] font-medium uppercase leading-tight tracking-wide text-[#718784]">
-                Recrutamento ativo
-              </p>
+    <div className="flex min-h-screen flex-col">
+      <AppHeader ativo="banco" />
+      <AppMain>
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="m-0 text-[30px] font-semibold leading-[1.15] tracking-[-0.04em]">Banco de talentos</h1>
+              <span className="cora-chip cora-chip-warn font-semibold">Dados sintéticos</span>
             </div>
-          </div>
-          <div className="hidden h-10 w-full max-w-[320px] items-center gap-3 rounded-lg bg-[#f0f4f1] px-4 text-sm text-[#8b9b99] md:flex">
-            <Icon name="search" size={17} />
-            <span>Buscar candidatos ou competências</span>
-          </div>
-          <div className="ml-4 flex items-center gap-2 sm:gap-3">
-            <button aria-label="Notificações" className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-[#e0e7e2] bg-white text-[#67807d]" type="button">
-              <Icon name="bell" />
-              <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#fb7356]" />
-            </button>
-            <button className="hidden rounded-lg border border-[#e0e7e2] bg-white px-4 py-2.5 text-xs font-medium text-[#526c68] sm:block" type="button">
-              Ajuda
-            </button>
-          </div>
-        </header>
-
-        <div className="mx-auto max-w-[1235px] px-5 py-10 sm:px-8 lg:px-11">
-          <header className="mb-8 flex flex-wrap items-end justify-between gap-5">
-            <div>
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4c8885]">Recrutamento inteligente</p>
-              <h1 className="text-4xl font-semibold tracking-[-0.04em] text-[#0b3038] sm:text-[38px]">Banco de talentos</h1>
-              <p className="mt-2 text-sm text-[#718784]">Consulte perfis por estado e autorização de contato.</p>
-            </div>
-            <SimuladoBadge />
-          </header>
-
-          {modoReservaAtivo() && (
-            <p className="mb-5 rounded-lg border border-[#f1c36a] bg-[#fff7df] px-4 py-3 text-sm text-[#805d16]">
-              Dados locais de reserva
+            <p className="m-0 text-[15px] text-cora-muted">
+              As pessoas da empresa, de onde cada uma veio e o que a CORA pode fazer com ela.
             </p>
-          )}
-          {!modoReservaAtivo() ? (
-            <p className="mb-5 rounded-xl border border-[#dfe7e2] bg-white p-8 text-center text-sm text-[#718784]">
-              O banco geral ainda não possui uma rota na API. Abra os candidatos a partir de uma vaga.
-            </p>
-          ) : (
-            <>
-              <section className="mb-5 grid gap-3 rounded-xl border border-[#dfe7e2] bg-white p-5 md:grid-cols-[1fr_220px]">
-                <label className="grid gap-2 text-sm font-medium text-[#526c68]">
-                  Buscar por nome ou competência
+          </div>
+        </div>
+
+        {modoReservaAtivo() && (
+          <p className="rounded-lg border border-[#f1c36a] bg-[#fff7df] px-4 py-3 text-sm text-[#805d16]">Dados locais de reserva</p>
+        )}
+        <p className="rounded-lg border border-cora-line-2 bg-cora-muted-bg px-4 py-3 text-[13px] text-cora-ink-2">
+          A API ainda não tem uma rota que lista o banco inteiro. Esta tela mostra a base sintética da demonstração; os
+          candidatos analisados de verdade aparecem dentro de cada vaga.
+        </p>
+
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section aria-label="Pessoas do banco" className="overflow-hidden rounded-xl border border-cora-line-2 bg-cora-surface shadow-[0_1px_2px_rgba(11,48,56,0.06)]">
+            <div className="flex flex-col gap-3.5 border-b border-[#edf1ee] px-[18px] py-4">
+              <div aria-label="Situação" className="inline-flex flex-wrap gap-0.5 self-start rounded-[10px] bg-[#eaf0ec] p-1" role="tablist">
+                {ABAS.map((aba) => {
+                  const sel = filtro === aba.id;
+                  return (
+                    <button
+                      aria-selected={sel}
+                      className={`h-8 rounded-lg px-3 text-[13px] ${sel ? "bg-cora-surface font-semibold text-cora-ink shadow-[0_1px_2px_rgba(11,48,56,0.08)]" : "font-medium text-cora-ink-2 hover:bg-white/60"}`}
+                      key={aba.id}
+                      onClick={() => {
+                        setFiltro(aba.id);
+                        setPagina(1);
+                      }}
+                      role="tab"
+                      type="button"
+                    >
+                      {aba.rotulo} <span className="num text-xs font-medium text-cora-muted">{contagem[aba.id]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="m-0 text-[13px] text-cora-ink-2">{explicacao}</p>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex h-[38px] flex-[2_1_240px] items-center gap-2.5 rounded-lg border border-cora-line-2 px-3 text-cora-muted">
+                  <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" viewBox="0 0 16 16" width="15"><circle cx="7" cy="7" r="4.3" /><path d="m10.4 10.4 3.1 3.1" /></svg>
+                  <span className="sr-only">Buscar por nome ou competência</span>
                   <input
-                    className="rounded-lg border border-[#dce5e0] bg-white px-3 py-2 text-[#0e3038] outline-none focus:border-[#fb3c0d]"
+                    className="min-w-0 flex-1 border-0 bg-transparent text-sm text-cora-ink outline-none"
+                    onChange={(e) => {
+                      setBusca(e.target.value);
+                      setPagina(1);
+                    }}
+                    placeholder="Buscar por nome ou competência"
+                    type="search"
                     value={busca}
-                    onChange={(evento) => setBusca(evento.target.value)}
-                    placeholder="Ex.: Python"
                   />
                 </label>
-                <label className="grid gap-2 text-sm font-medium text-[#526c68]">
+                <label className="flex flex-[1_1_200px] items-center gap-2 text-[13px] text-cora-muted">
                   Estado
                   <select
-                    className="rounded-lg border border-[#dce5e0] bg-white px-3 py-2 text-[#0e3038] outline-none focus:border-[#fb3c0d]"
+                    className="h-[38px] flex-1 rounded-lg border border-cora-line-2 bg-cora-surface px-2.5 text-sm text-cora-ink"
+                    onChange={(e) => {
+                      setEstado(e.target.value as EstadoBanco | "todos");
+                      setPagina(1);
+                    }}
                     value={estado}
-                    onChange={(evento) => setEstado(evento.target.value as EstadoBanco | "todos")}
                   >
-                    {estados.map((opcao) => (
-                      <option key={opcao} value={opcao}>{opcao === "todos" ? "Todos" : opcao}</option>
+                    <option value="todos">Todos os estados</option>
+                    {(Object.keys(ROTULO_ESTADO) as EstadoBanco[]).map((e) => (
+                      <option key={e} value={e}>{ROTULO_ESTADO[e]}</option>
                     ))}
                   </select>
                 </label>
-              </section>
-              {candidatos.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-[#cbd8d2] bg-white p-8 text-center text-sm text-[#81908d]">
-                  Nenhum candidato encontrado com esses filtros.
-                </p>
-              ) : (
-                <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {candidatos.map((candidato) => {
-                    const experiencia = candidato.historico.at(-1);
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <div aria-label="Pessoas" className="min-w-[820px]" role="table">
+                <div className="grid grid-cols-[1.5fr_1.7fr_1.3fr_1.1fr_0.6fr] gap-3.5 border-b border-[#edf1ee] bg-cora-row px-[18px] py-2.5 text-xs font-medium text-cora-placeholder" role="row">
+                  <span role="columnheader">Pessoa</span>
+                  <span role="columnheader">Situação</span>
+                  <span role="columnheader">Origem</span>
+                  <span role="columnheader">Autorização</span>
+                  <span role="columnheader">Competências</span>
+                </div>
+                {visiveis.length === 0 ? (
+                  <p className="px-[18px] py-8 text-center text-sm text-cora-muted">Nenhuma pessoa encontrada com esses filtros.</p>
+                ) : (
+                  visiveis.map((c) => {
+                    const fora = situacao(c) === "fora";
                     return (
-                      <Link
-                        className="group rounded-xl border border-[#dfe7e2] bg-white p-5 shadow-[0_1px_2px_rgba(29,55,47,.02)] transition hover:-translate-y-1 hover:border-[#fb3c0d]"
-                        href={`/candidatos/${candidato.id}`}
-                        key={candidato.id}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <h2 className="text-lg font-semibold text-[#113b43]">{candidato.nome}</h2>
-                          <SimuladoBadge />
-                        </div>
-                        <p className="mt-3 text-sm text-[#4c8885]">{experiencia?.cargo ?? "Experiência não informada"}</p>
-                        <div className="mt-5 flex flex-wrap gap-2">
-                          {Object.keys(candidato.atributos).map((competencia) => (
-                            <span className="rounded-full bg-[#edf5f0] px-2.5 py-1 text-xs text-[#526c68]" key={competencia}>{competencia}</span>
-                          ))}
-                        </div>
-                        <div className="mt-6 flex flex-wrap items-center gap-2 text-xs">
-                          <span className="rounded-full bg-[#edf0ef] px-2.5 py-1 text-[#526c68]">Estado: {candidato.estado}</span>
-                          <span className={`rounded-full px-2.5 py-1 font-semibold ${candidato.autorizou_contato ? "bg-[#e3f3e8] text-[#377b5d]" : "bg-[#fff1ee] text-[#a43826]"}`}>
-                            {candidato.autorizou_contato ? "Autorizado para contato" : "Sem autorização"}
+                      <div className="cora-row grid grid-cols-[1.5fr_1.7fr_1.3fr_1.1fr_0.6fr] items-center gap-3.5 border-b border-cora-subtle px-[18px] py-3 text-[13px]" key={c.id} role="row">
+                        <span className="flex min-w-0 items-center gap-2.5" role="cell">
+                          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cora-muted-bg text-xs font-semibold text-cora-ink">{iniciais(c.nome)}</span>
+                          <span className="flex min-w-0 flex-col">
+                            <Link className="truncate font-semibold text-cora-ink no-underline hover:text-cora-primary" href={`/candidatos/${c.id}`}>{c.nome}</Link>
+                            <span className="truncate text-xs text-cora-placeholder">{c.historico.at(-1)?.cargo ?? "Experiência não informada"}</span>
                           </span>
-                        </div>
-                      </Link>
+                        </span>
+                        <span className="flex flex-col items-start gap-1" role="cell">
+                          {chipSituacao(c)}
+                          {fora && <span className="text-xs text-cora-coral-ink">Sai da busca e não recebe contato</span>}
+                        </span>
+                        <span className="flex flex-col" role="cell">
+                          <span className="capitalize">{c.origem}</span>
+                          <span className="num text-xs text-cora-placeholder">atualizado {data(c.atualizado_em)}</span>
+                        </span>
+                        <span className={`num ${c.estado === "expirado" ? "font-semibold text-cora-coral-ink" : c.autorizou_contato ? "text-cora-ink-2" : "text-cora-warn-ink"}`} role="cell">
+                          {c.autorizou_contato ? `até ${data(c.autorizacao_valida_ate)}` : "Não autorizada"}
+                        </span>
+                        <span className="truncate font-mono text-xs text-cora-muted" role="cell" title={Object.keys(c.atributos).join(", ")}>
+                          {Object.keys(c.atributos).slice(0, 2).join(", ")}
+                        </span>
+                      </div>
                     );
-                  })}
-                </section>
+                  })
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2.5 px-[18px] py-3 text-[13px] text-cora-muted">
+              <span className="num">
+                {filtrados.length === 0
+                  ? "0 pessoas"
+                  : `${(paginaAtual - 1) * POR_PAGINA + 1}–${Math.min(paginaAtual * POR_PAGINA, filtrados.length)} de ${filtrados.length} pessoas`}
+              </span>
+              <div className="flex gap-2">
+                <button className="cora-btn cora-btn-outline !h-8 !px-3 text-[13px]" disabled={paginaAtual <= 1} onClick={() => setPagina(paginaAtual - 1)} type="button">Anterior</button>
+                <button className="cora-btn cora-btn-outline !h-8 !px-3 text-[13px]" disabled={paginaAtual >= totalPaginas} onClick={() => setPagina(paginaAtual + 1)} type="button">Próxima</button>
+              </div>
+            </div>
+          </section>
+
+          <aside aria-label="Privacidade" className="flex min-w-0 flex-col gap-4">
+            <section aria-labelledby="sec-remocao" className="flex flex-col gap-3 rounded-xl border border-cora-line-2 bg-cora-surface p-[18px] shadow-[0_1px_2px_rgba(11,48,56,0.06)]">
+              <div className="flex items-center justify-between gap-2.5">
+                <h2 className="m-0 text-base font-semibold tracking-[-0.02em]" id="sec-remocao">Pedidos de remoção</h2>
+                <span className="cora-chip cora-chip-warn num font-semibold">{remocoes.length} {remocoes.length === 1 ? "pedido" : "pedidos"}</span>
+              </div>
+              <p className="m-0 text-[13px] text-cora-muted">Quem pede remoção sai da busca na hora e não recebe novo contato.</p>
+              {remocoes.length === 0 ? (
+                <p className="m-0 rounded-[10px] border border-[#edf1ee] bg-cora-row p-3 text-[13px] text-cora-muted">Nenhum pedido de remoção nesta base.</p>
+              ) : (
+                remocoes.map((c) => (
+                  <div className="flex flex-col gap-1.5 rounded-[10px] border border-[#edf1ee] bg-cora-row p-3" key={c.id}>
+                    <span className="flex justify-between gap-2">
+                      <span className="font-semibold">{c.nome}</span>
+                      <span className="cora-chip cora-chip-ok font-semibold">{c.estado === "removido" ? "Removido" : "Fora da busca"}</span>
+                    </span>
+                  </div>
+                ))
               )}
-            </>
-          )}
+            </section>
 
-          <div className="mt-5 flex items-center justify-between">
-            <SimuladoBadge />
-            <p className="text-[11px] text-[#8b9996]">Dados sintéticos · revisão humana</p>
-          </div>
+            <section aria-labelledby="sec-validade" className="flex flex-col gap-3 rounded-xl border border-cora-line-2 bg-cora-surface p-[18px] shadow-[0_1px_2px_rgba(11,48,56,0.06)]">
+              <h2 className="m-0 text-base font-semibold tracking-[-0.02em]" id="sec-validade">Autorizações vencendo</h2>
+              <p className="m-0 text-[13px] text-cora-muted">Autorização vencida tira a pessoa da busca. Estas vencem nos próximos 30 dias.</p>
+              {vencendo.length === 0 ? (
+                <p className="m-0 text-[13px] text-cora-ink-2">Nenhuma autorização vence nos próximos 30 dias.</p>
+              ) : (
+                <ul className="m-0 flex list-none flex-col gap-2 p-0 text-[13px]">
+                  {vencendo.map((c) => (
+                    <li className="flex justify-between gap-2.5" key={c.id}>
+                      <span>{c.nome}</span>
+                      <span className="num font-semibold text-cora-warn-ink">{data(c.autorizacao_valida_ate)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {vencidas.length > 0 && (
+                <>
+                  <h3 className="m-0 mt-1 text-[13px] font-semibold">Já vencidas</h3>
+                  <ul className="m-0 flex list-none flex-col gap-2 p-0 text-[13px]">
+                    {vencidas.map((c) => (
+                      <li className="flex justify-between gap-2.5" key={c.id}>
+                        <span>{c.nome}</span>
+                        <span className="num font-semibold text-cora-coral-ink">{data(c.autorizacao_valida_ate)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+
+            <section aria-labelledby="sec-isolado" className="flex flex-col gap-2 rounded-xl border border-cora-line-2 bg-cora-muted-bg p-[18px]">
+              <h2 className="m-0 text-sm font-semibold" id="sec-isolado">Banco só desta empresa</h2>
+              <p className="m-0 text-[13px] text-cora-ink-2">Nenhuma pessoa daqui aparece para outra empresa, nem a CORA cruza bancos.</p>
+              <span className="font-mono text-xs text-cora-ink-2">empresa_id {EMPRESA_ID}</span>
+            </section>
+          </aside>
         </div>
-      </div>
-
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-[#dfe7e2] bg-[#5b5b5b] px-2 py-2 text-[10px] text-[#d0d6d5] md:hidden">
-        <Link className="flex flex-col items-center gap-1 rounded-lg px-1 py-2" href="/">
-          <Icon name="briefcase" size={18} />
-          Catálogo
-        </Link>
-        <Link className="flex flex-col items-center gap-1 rounded-lg bg-[#fb3c0d] px-1 py-2 font-semibold text-white" href="/banco">
-          <Icon name="people" size={18} />
-          Banco
-        </Link>
-        <Link className="flex flex-col items-center gap-1 rounded-lg px-1 py-2" href="/candidatos">
-          <Icon name="grid" size={18} />
-          Candidatos
-        </Link>
-      </nav>
-    </main>
+      </AppMain>
+    </div>
   );
 }
