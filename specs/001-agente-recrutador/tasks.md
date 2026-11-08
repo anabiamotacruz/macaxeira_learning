@@ -378,11 +378,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Arquivos:** `backend/agente/api.py`, em conjunto com a Frente 1, `tests/agente/test_seguranca_api.py`.
 
-- [ ] Testar `test_sessao_nao_acessa_dados_de_outra_empresa`.
-- [ ] Testar `test_limite_de_requisicoes_por_sessao`.
-- [ ] Testar `test_erros_nao_expoem_chave_nem_stack_trace`.
-- [ ] Testar `test_limite_de_gasto_por_sessao_bloqueia_novas_execucoes`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_sessao_nao_acessa_dados_de_outra_empresa`.
+- [x] Testar `test_limite_de_requisicoes_por_sessao`.
+- [x] Testar `test_erros_nao_expoem_chave_nem_stack_trace`.
+- [x] Testar `test_limite_de_gasto_por_sessao_bloqueia_novas_execucoes`.
+- [x] Implementar e verificar.
 
 ### T4.6 (onda 2): teste de ponta a ponta
 

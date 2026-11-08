@@ -11,9 +11,12 @@ Depois de mudar este arquivo, gere o contrato com:
 """
 
 import logging
+import math
 import os
 import re
 import threading
+import time
+from collections import deque
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, Literal
 
@@ -1158,7 +1161,55 @@ def _gerar_openapi(aplicacao: FastAPI) -> dict[str, Any]:
     return esquema
 
 
-def criar_app(servico: ServicoVagas | None = None) -> FastAPI:
+LIMITE_REQUISICOES_POR_MINUTO_PADRAO = 600
+"""Folga para o painel, que consulta a vaga a cada poucos segundos, sem deixar uma sessão abusar."""
+
+
+class LimiteRequisicoes:
+    """Janela deslizante por sessão (`X-Empresa-Id`, ou o endereço quando não há cabeçalho).
+
+    Fica em memória, por processo: serve ao link público da demonstração, não a vários servidores.
+    """
+
+    def __init__(
+        self,
+        maximo: int,
+        janela_s: float = 60.0,
+        relogio: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if maximo < 1 or janela_s <= 0:
+            raise ValueError("o limite precisa de máximo e janela positivos")
+        self._maximo = maximo
+        self._janela = janela_s
+        self._relogio = relogio
+        self._pedidos: dict[str, deque[float]] = {}
+        self._trava = threading.Lock()
+
+    @classmethod
+    def do_ambiente(cls) -> "LimiteRequisicoes":
+        texto = os.environ.get("LIMITE_REQUISICOES_POR_MINUTO", "").strip()
+        try:
+            maximo = int(texto) if texto else LIMITE_REQUISICOES_POR_MINUTO_PADRAO
+        except ValueError:
+            maximo = LIMITE_REQUISICOES_POR_MINUTO_PADRAO
+        return cls(max(1, maximo))
+
+    def esperar_s(self, chave: str) -> int:
+        """Zero quando o pedido pode seguir e já foi contado; senão, os segundos de espera."""
+        agora = self._relogio()
+        with self._trava:
+            pedidos = self._pedidos.setdefault(chave, deque())
+            while pedidos and agora - pedidos[0] >= self._janela:
+                pedidos.popleft()
+            if len(pedidos) >= self._maximo:
+                return max(1, math.ceil(self._janela - (agora - pedidos[0])))
+            pedidos.append(agora)
+            return 0
+
+
+def criar_app(
+    servico: ServicoVagas | None = None, *, limite: LimiteRequisicoes | None = None
+) -> FastAPI:
     """Cria a aplicação com o serviço injetado. Sem ele, monta a demonstração no primeiro pedido."""
     aplicacao = FastAPI(
         title="API do agente recrutador (proposta simulada)",
@@ -1168,6 +1219,28 @@ def criar_app(servico: ServicoVagas | None = None) -> FastAPI:
     )
     aplicacao.state.obter_servico = _lazy_demo() if servico is None else (lambda: servico)
     aplicacao.include_router(rotas)
+    limitador = LimiteRequisicoes.do_ambiente() if limite is None else limite
+
+    @aplicacao.middleware("http")
+    async def limitar_por_sessao(request: Request, seguir):
+        """Antes do CORS na pilha: a resposta 429 também leva os cabeçalhos de CORS."""
+        if request.method == "OPTIONS":
+            return await seguir(request)
+        sessao = (request.headers.get("X-Empresa-Id") or "").strip()
+        chave = (
+            f"sessao:{sessao}" if sessao else f"ip:{request.client.host if request.client else '-'}"
+        )
+        espera = limitador.esperar_s(chave)
+        if espera:
+            return JSONResponse(
+                _corpo_erro(
+                    "muitas_requisicoes", "Muitas requisições. Tente de novo em instantes."
+                ),
+                status_code=429,
+                headers={"Retry-After": str(espera)},
+            )
+        return await seguir(request)
+
     origens = os.environ.get("ORIGENS_PAINEL", ORIGENS_PAINEL_PADRAO)
     aplicacao.add_middleware(
         CORSMiddleware,
