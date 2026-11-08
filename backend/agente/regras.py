@@ -575,13 +575,21 @@ def decidir(
     )
 
 
-def nao_priorizada(decisao: Decisao, limite: int) -> Decisao:
-    """Passa à fila quem ficou na faixa verde além de `max_indicacoes`, sem descartar ninguém."""
+def alem_do_teto(decisao: Decisao, limite: int) -> Decisao:
+    """Segura quem estava na faixa verde além do teto de segurança do mandato.
+
+    Não vai a uma pessoa: fica registrada como descarte com a nota e o teto, para o RH reverter.
+    """
+    nota = decisao.entrada.get("nota")
+    nota_texto = f"nota {float(nota):.2f}" if nota is not None else "nota não informada"
     return decisao.model_copy(
         update={
-            "tipo": TipoDecisao.PEDIR_HUMANO,
-            "regra": "nao_priorizado",
-            "motivo": f"dentro da faixa verde, além do limite de {limite} indicações do mandato",
+            "tipo": TipoDecisao.DESCARTAR,
+            "regra": "alem_do_teto_do_mandato",
+            "motivo": (
+                f"estava na faixa verde ({nota_texto}), mas o teto de segurança do mandato "
+                f"é de {limite} indicações; o RH pode reverter"
+            ),
         }
     )
 
