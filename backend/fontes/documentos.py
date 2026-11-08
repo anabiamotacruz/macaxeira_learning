@@ -10,14 +10,15 @@ import re
 import shutil
 import warnings
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pypdfium2
 import pytesseract
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, Field
-from pypdf import PdfReader
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
+from pypdf import PdfReader, apply_configuration
+from pypdf.errors import LimitReachedError
 
 from backend.agente.auditoria import rastreado
 from backend.agente.prompts import como_dado
@@ -26,6 +27,7 @@ from backend.contratos.interfaces import ClienteModelo
 from backend.contratos.modelos import (
     Candidato,
     ContatoColetado,
+    EstadoBanco,
     FatoColetado,
     PerfilColetado,
     TipoContato,
@@ -49,6 +51,7 @@ ETAPA_EXTRAIR_PERFIL = "extrair_perfil"
 FONTE_DOCUMENTO = "documento_enviado"
 MAX_BYTES_DOCUMENTO = 5 * 1024 * 1024
 MAX_CARACTERES_DOCUMENTO = 200_000
+MAX_BYTES_STREAM_PDF = 1024 * 1024
 MAX_PAGINAS_PDF = 30
 MAX_PAGINAS_OCR = 10
 MAX_PIXELS_IMAGEM = 40_000_000
@@ -86,9 +89,10 @@ class OcrIndisponivel(ErroContrato):
 
 
 class RespostaExtracaoPerfil(BaseModel):
-    cargo: str = ""
-    experiencias: list[str] = Field(default_factory=list)
-    competencias: list[str] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid")
+    cargo: StrictStr = Field(default="", max_length=MAX_CARACTERES_DOCUMENTO)
+    experiencias: list[StrictStr] = Field(default_factory=list, max_length=200)
+    competencias: list[StrictStr] = Field(default_factory=list, max_length=200)
 
 
 def _exigir_tesseract() -> None:
@@ -124,12 +128,27 @@ def _ler_imagem(conteudo: bytes, extensao: str) -> str:
         raise DocumentoInvalido("A imagem passa do limite de tamanho.") from erro
     except (UnidentifiedImageError, OSError) as erro:
         raise DocumentoIlegivel("Não foi possível ler a imagem; peça um novo envio.") from erro
-    largura, altura = imagem.size
-    if largura * altura > MAX_PIXELS_IMAGEM:
-        raise DocumentoInvalido("A imagem passa do limite de tamanho.")
-    return _ocr(imagem)
+    with imagem:
+        largura, altura = imagem.size
+        if largura * altura > MAX_PIXELS_IMAGEM:
+            raise DocumentoInvalido("A imagem passa do limite de tamanho.")
+        return _ocr(imagem)
 
 
+@apply_configuration(
+    maximum_declared_stream_length=MAX_BYTES_STREAM_PDF,
+    array_based_stream_maximum_output_length=MAX_BYTES_STREAM_PDF,
+    zlib_maximum_output_length=MAX_BYTES_STREAM_PDF,
+    lzw_maximum_output_length=MAX_BYTES_STREAM_PDF,
+    run_length_maximum_output_length=MAX_BYTES_STREAM_PDF,
+    brotli_maximum_output_length=MAX_BYTES_STREAM_PDF,
+    jbig2_maximum_output_length=MAX_BYTES_STREAM_PDF,
+    image_maximum_buffer_size=MAX_BYTES_STREAM_PDF,
+    stream_decoding_work_maximum_length=4 * MAX_BYTES_STREAM_PDF,
+    stream_parsing_work_maximum_count=200000,
+    page_tree_maximum_entries=1000,
+    jbig2dec_binary=None,
+)
 def _texto_do_pdf(conteudo: bytes) -> str:
     try:
         leitor = PdfReader(io.BytesIO(conteudo))
@@ -137,12 +156,25 @@ def _texto_do_pdf(conteudo: bytes) -> str:
             raise DocumentoIlegivel("O PDF está protegido por senha; peça um arquivo sem senha.")
         if len(leitor.pages) > MAX_PAGINAS_PDF:
             raise DocumentoInvalido(f"O PDF passa do limite de {MAX_PAGINAS_PDF} páginas.")
-        partes = [(pagina.extract_text() or "").strip() for pagina in leitor.pages]
+        partes, tamanho = [], 0
+        for pagina in leitor.pages:
+            stream = pagina.get_contents()
+            if stream is not None and len(stream.get_data()) > MAX_BYTES_STREAM_PDF:
+                raise DocumentoInvalido("O conteúdo de uma página do PDF excede o limite.")
+            parte = (pagina.extract_text() or "").strip()
+            tamanho += len(parte) + bool(partes)
+            if tamanho > MAX_CARACTERES_DOCUMENTO:
+                raise DocumentoInvalido("O PDF passa do limite de caracteres.")
+            partes.append(parte)
+    except LimitReachedError as erro:
+        raise DocumentoInvalido("O PDF excede o limite de expansão ou complexidade.") from erro
     except ErroContrato:
         raise
     except Exception as erro:  # arquivo não confiável: qualquer falha do leitor é arquivo ilegível
         raise DocumentoIlegivel("Não foi possível ler o PDF; peça um novo envio.") from erro
-    return "\n".join(parte for parte in partes if parte)
+    # Não devolver apenas a capa de um PDF misto. OCR relê o documento inteiro
+    # na ordem original, dentro do limite próprio, ou falha de forma explícita.
+    return "\n".join(partes) if all(partes) else ""
 
 
 def _ocr_do_pdf(conteudo: bytes) -> str:
@@ -154,12 +186,31 @@ def _ocr_do_pdf(conteudo: bytes) -> str:
     except pypdfium2.PdfiumError as erro:
         raise DocumentoIlegivel("Não foi possível ler o PDF; peça um novo envio.") from erro
     try:
-        for indice in range(min(len(documento), MAX_PAGINAS_OCR)):
+        if len(documento) > MAX_PAGINAS_OCR:
+            raise DocumentoInvalido(
+                f"O PDF precisa de OCR e passa do limite de {MAX_PAGINAS_OCR} páginas."
+            )
+        tamanho = 0
+        for indice in range(len(documento)):
             pagina = documento[indice]
-            largura, altura = pagina.get_size()
-            if largura * altura * escala * escala > MAX_PIXELS_IMAGEM:
-                raise DocumentoInvalido("Uma página do PDF passa do limite de tamanho.")
-            partes.append(_ocr(pagina.render(scale=escala).to_pil()))
+            try:
+                largura, altura = pagina.get_size()
+                if largura * altura * escala * escala > MAX_PIXELS_IMAGEM:
+                    raise DocumentoInvalido("Uma página do PDF passa do limite de tamanho.")
+                bitmap = pagina.render(scale=escala)
+                try:
+                    with bitmap.to_pil() as imagem:
+                        parte = _ocr(imagem)
+                finally:
+                    bitmap.close()
+            finally:
+                pagina.close()
+            tamanho += len(parte) + bool(partes)
+            if tamanho > MAX_CARACTERES_DOCUMENTO:
+                raise DocumentoInvalido("O PDF passa do limite de caracteres durante o OCR.")
+            partes.append(parte)
+    except pypdfium2.PdfiumError as erro:
+        raise DocumentoIlegivel("Não foi possível renderizar o PDF; peça um novo envio.") from erro
     finally:
         documento.close()
     return "\n".join(partes)
@@ -234,7 +285,30 @@ def _nome_do_cabecalho(texto: str) -> str:
 def _no_documento(perfil: PerfilPseudonimizado, citado: str) -> str | None:
     """O que o modelo citou, de volta ao texto original. Fora do documento, não existe."""
     na_fonte = perfil.na_fonte(citado.strip()) if citado.strip() else None
-    return na_fonte.texto if na_fonte is not None else None
+    if na_fonte is None:
+        return None
+    antes = perfil.fonte[na_fonte.inicio - 1:na_fonte.inicio] if na_fonte.inicio else ""
+    depois = perfil.fonte[na_fonte.fim:na_fonte.fim + 1]
+    if antes in {"+", "#"} or depois in {"+", "#"}:
+        return None
+    return na_fonte.texto
+
+
+_NEGACAO = re.compile(r"\b(nao|nunca|sem|jamais|never|without|no)\b")
+
+
+def _preserva_polaridade(trecho: str, frases: list[str], *, permitir_negativa: bool) -> bool:
+    alvo = normalizar(trecho).strip().rstrip(".;!?")
+    padrao = re.compile(r"(?<![\w+#])" + re.escape(alvo) + r"(?![\w+#])")
+    for frase in frases:
+        for parte in re.split(r"\b(?:mas|porém|contudo)\b", frase):
+            contexto = normalizar(parte)
+            if padrao.search(contexto) and (
+                not _NEGACAO.search(contexto)
+                or (permitir_negativa and _NEGACAO.search(alvo))
+            ):
+                return True
+    return False
 
 
 @rastreado(ETAPA_EXTRAIR_PERFIL)
@@ -248,6 +322,8 @@ def extrair_perfil(
     candidato_id: str = "documento",
 ) -> dict[str, str]:
     """Extrai resumo, experiências, competências, links e contatos, sem inventar dados."""
+    if not isinstance(texto, str) or len(texto) > MAX_CARACTERES_DOCUMENTO:
+        raise DocumentoInvalido("O documento passa do limite de caracteres ou não é texto.")
     canonico = forma_canonica(texto)
     contatos = extrair_links_e_contatos(canonico)
     sessao = (pseudonimizador or Pseudonimizador()).sessao_de_texto(
@@ -272,12 +348,19 @@ def extrair_perfil(
             RespostaExtracaoPerfil,
             ETAPA_EXTRAIR_PERFIL,
         )
-    except (RespostaInvalida, ModeloIndisponivel):
+        resposta = RespostaExtracaoPerfil.model_validate(resposta.model_dump())
+    except (RespostaInvalida, ModeloIndisponivel, ValidationError):
         experiencias = list(frases)
+        falha = True
     else:
+        falha = False
         cargo = _no_documento(perfil, resposta.cargo) or ""
-        experiencias = [t for c in resposta.experiencias if (t := _no_documento(perfil, c))]
-        competencias = [t for c in resposta.competencias if (t := _no_documento(perfil, c))]
+        if cargo and not _preserva_polaridade(cargo, frases, permitir_negativa=False):
+            cargo = ""
+        experiencias = [t for c in resposta.experiencias if (t := _no_documento(perfil, c))
+                        and _preserva_polaridade(t, frases, permitir_negativa=True)]
+        competencias = [t for c in resposta.competencias if (t := _no_documento(perfil, c))
+                        and _preserva_polaridade(t, frases, permitir_negativa=False)]
 
     saida = {
         "cargo": cargo,
@@ -286,8 +369,11 @@ def extrair_perfil(
         "competencias": ", ".join(competencias),
         **contatos,
     }
-    if preparado.tem_instrucao:
-        saida["alerta"] = ALERTA_INSTRUCAO_DOCUMENTO
+    alertas = [ALERTA_INSTRUCAO_DOCUMENTO] if preparado.tem_instrucao else []
+    if falha:
+        alertas.append("Extração indisponível ou inválida: requer revisão humana.")
+    if alertas:
+        saida["alerta"] = " ".join(alertas)
     return saida
 
 
@@ -391,7 +477,8 @@ def candidato_de_documento(
 class FonteDocumentosEnviados:
     """Implementa `FonteCandidatos` para quem já enviou o próprio documento."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, hoje: date | None = None) -> None:
+        self.hoje = hoje
         self._candidatos: list[Candidato] = []
 
     def adicionar(self, candidato: Candidato) -> None:
@@ -400,7 +487,7 @@ class FonteDocumentosEnviados:
             for c in self._candidatos
             if (c.empresa_id, c.id) != (candidato.empresa_id, candidato.id)
         ]
-        self._candidatos.append(candidato)
+        self._candidatos.append(candidato.model_copy(deep=True))
 
     def remover(self, empresa_id: str, candidato_id: str) -> None:
         self._candidatos = [
@@ -410,8 +497,12 @@ class FonteDocumentosEnviados:
     def buscar(self, empresa_id: str, consulta: str, pagina: int = 1) -> list[Candidato]:
         if pagina > 1:
             return []
+        hoje = self.hoje if self.hoje is not None else datetime.now(UTC).date()
         return [
-            c
+            c.model_copy(deep=True)
             for c in self._candidatos
-            if c.empresa_id == empresa_id and combina_com_consulta(c, normalizar(consulta))
+            if c.empresa_id == empresa_id and not c.opt_out
+            and c.estado not in {EstadoBanco.REMOVIDO, EstadoBanco.EXPIRADO}
+            and (c.autorizacao_valida_ate is None or c.autorizacao_valida_ate >= hoje)
+            and combina_com_consulta(c, normalizar(consulta))
         ]

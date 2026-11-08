@@ -277,11 +277,11 @@ A pessoa de RH avalia às cegas cerca de 34 fichas sintéticas, com 12 de ajuste
 
 **Produz:** `ler_documento(nome: str, conteudo: bytes) -> str`, para texto e PDF, e `extrair_perfil(texto: str, cliente_modelo) -> dict[str, str]`.
 
-- [ ] Testar `test_recusa_tipo_nao_permitido_e_arquivo_grande`, com limite de 5 MB.
-- [ ] Testar `test_pdf_sem_texto_gera_pedido_de_novo_envio`.
-- [ ] Testar `test_instrucao_no_documento_vira_alerta`.
-- [ ] Testar `test_extracao_nao_inventa_experiencia`.
-- [ ] Implementar e verificar.
+- [x] Testar `test_recusa_tipo_nao_permitido_e_arquivo_grande`, com limite de 5 MB.
+- [x] Testar `test_pdf_sem_texto_gera_pedido_de_novo_envio`.
+- [x] Testar `test_instrucao_no_documento_vira_alerta`.
+- [x] Testar `test_extracao_nao_inventa_experiencia`.
+- [x] Implementar e verificar.
 
 ### T2.5 (onda 3, corte): GitHub com contas de teste
 

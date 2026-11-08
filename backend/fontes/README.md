@@ -185,3 +185,46 @@ modelo real e validação humana continuam pendentes; uma citação literal pode
 interpretada incorretamente pelo modelo. A sanitização compartilha os limites
 conhecidos documentados na T2.3. A integração do fluxo com T1.1/T1.3/T1.11 ainda
 precisa ser validada quando essas tarefas estiverem disponíveis.
+
+## T2.9 — revisão da leitura e extração de documentos
+
+A implementação integrada em `documentos.py` aceita texto, PDF e imagens, mantém
+pseudonimização antes de enviar dados ao modelo e produz fatos declarados com
+origem. Esta revisão preserva essas interfaces e os limites existentes: 5 MiB de
+entrada, 200 mil caracteres, 30 páginas de PDF e 10 páginas quando há OCR.
+
+A extração de PDF agora verifica caracteres progressivamente e configura os
+limites de descompressão/concatenação no contexto do `pypdf` antes de ler streams:
+1 MiB por stream, com orçamento de decodificação e navegação. A configuração é
+restaurada ao terminar a chamada, sem mudar limites de outras requisições. Isso
+exige `pypdf>=7,<8`. Não equivale a um teto global de RAM/CPU ou isolamento de processo.
+O lockfile também troca o `pypdfium2` 5.15.0, retirado do registro, pelo 5.15.1.
+
+Se alguma página não produzir texto, o PDF inteiro segue para OCR, preservando a
+ordem, ou falha explicitamente se exceder seu limite. Não devolve somente a capa
+nem corta páginas após a décima. A contagem de caracteres também é progressiva no
+OCR. Páginas, bitmaps e imagens são fechados; erros de renderização pedem novo
+arquivo. Sem Tesseract, o caminho de OCR devolve `OcrIndisponivel`, como antes.
+
+A extração direta também verifica o tamanho antes de pseudonimizar ou chamar o
+modelo e revalida o esquema da resposta. Falhas preservam apenas frases do próprio
+documento e acrescentam alerta de revisão humana, sem apagar alerta de instrução.
+Negações conhecidas não viram competência positiva e um recorte de experiência não
+pode retirar sua negação. Fronteiras de linguagens preservam C, C++ e C#.
+
+`FonteDocumentosEnviados` mantém pendentes para o fluxo de pedido de autorização,
+conforme o comportamento integrado; isso não autoriza contato sobre vaga nem
+importação no banco. Opt-out, estado removido/expirado e autorização vencida ficam
+fora da fonte. A data pode ser injetada com `hoje`; sem ela, usa a data UTC atual.
+Entradas e resultados são cópias independentes, sem mutações externas do armazenamento.
+
+Os testes da revisão usam apenas documentos e respostas sintéticas. Fronteiras,
+pseudonimização e negações são salvaguardas limitadas: não comprovam compreensão
+semântica nem precisão do modelo real. A validação do OCR real depende de Tesseract
+instalado; os testes que exigem esse binário são pulados quando ele não existe.
+
+```bash
+.venv/bin/pytest tests/fontes/test_documentos.py tests/fontes/test_documentos_correcao.py -q
+.venv/bin/pytest tests/fontes -m eval -q
+.venv/bin/ruff check .
+```
